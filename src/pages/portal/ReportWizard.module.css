@@ -1,114 +1,195 @@
 .wizardContainer {
-    padding: var(--spacing-xl) 0;
-    max-width: 800px;
-    margin: 0 auto;
+    padding-top: var(--space-8);
+    padding-bottom: var(--space-12);
+    max-width: 800px !important;
+    /* Override generic container for focused task */
+}
+
+.successContainer {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+}
+
+.successIcon {
+    color: var(--color-success);
+    margin-bottom: var(--space-6);
 }
 
 .title {
     text-align: center;
-    margin-bottom: var(--spacing-xl);
+    margin-bottom: var(--space-8);
 }
 
 .stepContent {
-    margin-bottom: var(--spacing-xl);
-    min-height: 400px;
+    margin-top: var(--space-8);
+    margin-bottom: var(--space-8);
+    min-height: 300px;
 }
 
 .actions {
     display: flex;
     justify-content: space-between;
-    margin-top: var(--spacing-xl);
+    margin-top: var(--space-8);
+    padding-top: var(--space-6);
     border-top: 1px solid var(--color-border);
-    padding-top: var(--spacing-lg);
 }
 
-/* Violation Type Step */
+/* Step 1: Violation Grid */
 .violationGrid {
     display: grid;
     grid-template-columns: 1fr;
-    gap: var(--spacing-md);
+    gap: var(--space-4);
 }
 
 .violationCard {
-    cursor: pointer;
-    border: 2px solid transparent;
-    transition: all 0.2s ease;
     display: flex;
     align-items: center;
-    gap: var(--spacing-md);
+    gap: var(--space-4);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 2px solid transparent;
 }
 
-.violationCard.selected {
+.violationCard:hover {
     border-color: var(--color-primary);
-    background-color: rgba(11, 58, 102, 0.05);
+    background-color: #f0f7ff;
+}
+
+.selected {
+    border-color: var(--color-primary);
+    background-color: #f0f7ff;
+    box-shadow: 0 0 0 1px var(--color-primary);
+    position: relative;
+}
+
+.selected::after {
+    content: "✓";
+    position: absolute;
+    top: 50%;
+    right: var(--space-6);
+    transform: translateY(-50%);
+    color: var(--color-primary);
+    font-weight: bold;
+    font-size: var(--text-xl);
 }
 
 .violationIcon {
     color: var(--color-primary);
-    padding: var(--spacing-sm);
     background-color: rgba(11, 58, 102, 0.1);
-    border-radius: 50%;
+    padding: var(--space-3);
+    border-radius: var(--radius-full);
 }
 
-/* Evidence Step */
+/* Step 3: Evidence */
 .uploadArea {
     border: 2px dashed var(--color-border);
-    border-radius: var(--radius-md);
-    padding: var(--spacing-xl);
+    border-radius: var(--radius-lg);
+    padding: var(--space-8);
     text-align: center;
     cursor: pointer;
     transition: all 0.2s ease;
-    margin-bottom: var(--spacing-md);
+    background-color: var(--color-surface);
 }
 
 .uploadArea:hover {
     border-color: var(--color-primary);
-    background-color: rgba(11, 58, 102, 0.02);
+    background-color: #f8fbff;
 }
 
 .fileList {
+    margin-top: var(--space-4);
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-sm);
+    gap: var(--space-2);
 }
 
 .fileItem {
     display: flex;
-    align-items: center;
     justify-content: space-between;
-    padding: var(--spacing-sm);
-    background-color: var(--color-background);
-    border-radius: var(--radius-sm);
-}
-
-.successContainer {
-    text-align: center;
-    padding: var(--spacing-xl) 0;
-}
-
-.successIcon {
-    color: var(--color-success);
-    margin-bottom: var(--spacing-md);
-}
-
-.trackingBox {
-    background-color: var(--color-background);
-    padding: var(--spacing-lg);
+    align-items: center;
+    padding: var(--space-3);
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
-    margin: var(--spacing-lg) 0;
-    display: inline-block;
+}
+
+/* Step 4: textarea */
+.textarea {
+    width: 100%;
+    padding: var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    font-family: inherit;
+    font-size: var(--text-base);
+    resize: vertical;
+    min-height: 100px;
+}
+
+.textarea:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: var(--focus-ring);
+}
+
+/* Tracking ID Box */
+.trackingBox {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--space-6);
+    margin: var(--space-6) 0;
+    text-align: center;
+    min-width: 300px;
 }
 
 .trackingId {
-    font-size: 1.5rem;
+    font-family: monospace;
+    font-size: var(--text-2xl);
     font-weight: 700;
     color: var(--color-primary);
-    font-family: monospace;
-    margin-top: var(--spacing-xs);
+    margin-top: var(--space-2);
+    letter-spacing: 0.05em;
 }
 
-@media (min-width: 768px) {
+/* Error Summary */
+.errorSummary {
+    border: 2px solid var(--color-error);
+    padding: var(--space-4);
+    margin-bottom: var(--space-6);
+    background-color: #fff;
+}
+
+.errorSummary h3 {
+    color: var(--color-error);
+    margin-top: 0;
+    margin-bottom: var(--space-2);
+}
+
+.errorSummary ul {
+    margin: 0;
+    padding-left: var(--space-4);
+    color: var(--color-error);
+}
+
+.errorSummary a {
+    color: var(--color-error);
+    font-weight: 600;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.errorMessage {
+    color: var(--color-error);
+    font-size: var(--text-sm);
+    margin-top: var(--space-1);
+}
+
+@media (min-width: 640px) {
     .violationGrid {
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: 1fr 1fr 1fr;
     }
 }

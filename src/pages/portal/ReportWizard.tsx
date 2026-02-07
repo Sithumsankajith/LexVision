@@ -171,6 +171,29 @@ export const ReportWizard: React.FC = () => {
 
             <Stepper steps={STEPS} currentStep={currentStep} />
 
+            {Object.keys(errors).length > 0 && (
+                <div
+                    className={styles.errorSummary}
+                    role="alert"
+                    aria-labelledby="error-summary-title"
+                    tabIndex={-1}
+                >
+                    <h3 id="error-summary-title">There is a problem</h3>
+                    <ul>
+                        {Object.entries(errors).map(([key, error]) => (
+                            <li key={key}>
+                                <a href={`#${key}-input`} onClick={(e) => {
+                                    e.preventDefault();
+                                    document.getElementById(`${key}-input`)?.focus();
+                                }}>
+                                    {error}
+                                </a>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+
             <div className={styles.stepContent}>
                 {/* Step 1: Violation Type */}
                 {currentStep === 1 && (
@@ -201,6 +224,7 @@ export const ReportWizard: React.FC = () => {
                     <div className={styles.formGrid}>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                             <Input
+                                id="date-input"
                                 label="Date of Incident"
                                 type="date"
                                 value={formData.date}
@@ -209,6 +233,7 @@ export const ReportWizard: React.FC = () => {
                                 max={new Date().toISOString().split('T')[0]}
                             />
                             <Input
+                                id="time-input"
                                 label="Time of Incident"
                                 type="time"
                                 value={formData.time}
@@ -218,6 +243,7 @@ export const ReportWizard: React.FC = () => {
                         </div>
 
                         <Input
+                            id="city-input"
                             label="City / Town"
                             placeholder="e.g. Colombo 03"
                             value={formData.city}
@@ -226,6 +252,7 @@ export const ReportWizard: React.FC = () => {
                         />
 
                         <Input
+                            id="location-input"
                             label="Location / Landmark"
                             placeholder="e.g. Near Liberty Plaza Junction"
                             value={formData.location}
