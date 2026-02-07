@@ -6,6 +6,7 @@
     z-index: 1000;
     box-shadow: var(--shadow-md);
     height: 72px;
+    width: 100%;
     /* Consistent fixed height */
 }
 
