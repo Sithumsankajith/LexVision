@@ -5,7 +5,6 @@ import styles from './Features.module.css';
 
 export const Features: React.FC = () => {
     return (
-    return (
         <div className={styles.pageWrapper}>
             <div className="container">
                 <h1 className={styles.title}>System Features</h1>
@@ -68,6 +67,5 @@ export const Features: React.FC = () => {
                 </section>
             </div>
         </div>
-    );
     );
 };

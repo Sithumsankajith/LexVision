@@ -6,7 +6,6 @@ import { Button } from '../../components/ui/Button';
 
 export const Contact: React.FC = () => {
     return (
-    return (
         <div className="container" style={{ padding: 'var(--space-12) var(--space-4)' }}>
             <h1 style={{ textAlign: 'center', marginBottom: 'var(--space-12)' }}>Contact Us</h1>
 

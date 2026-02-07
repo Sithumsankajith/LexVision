@@ -5,16 +5,15 @@
     top: 0;
     z-index: 1000;
     box-shadow: var(--shadow-md);
+    height: 72px;
+    /* Consistent fixed height */
 }
 
 .container {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    height: 72px;
-    width: 100%;
-    /* Ensure it fills the parent flex item if needed, but max-width comes from global .container */
-    /* Padding is handled by global .container class composition */
+    height: 100%;
 }
 
 .logo {
@@ -26,6 +25,8 @@
     align-items: center;
     gap: var(--space-3);
     letter-spacing: -0.01em;
+    min-width: 150px;
+    /* Ensure space for logo */
 }
 
 .logo:hover {
@@ -33,12 +34,15 @@
     text-decoration: none;
 }
 
-/* Desktop Navigation */
+/* Centered Navigation */
 .desktopNav {
     display: none;
-    /* Hidden on mobile by default */
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
     align-items: center;
-    gap: var(--space-6);
+    gap: var(--space-8);
+    height: 100%;
 }
 
 .navLink {
@@ -46,9 +50,12 @@
     text-decoration: none;
     font-size: var(--text-sm);
     font-weight: 500;
-    transition: all 0.2s ease;
-    padding: var(--space-2) 0;
+    padding: 0 var(--space-2);
+    height: 100%;
+    display: flex;
+    align-items: center;
     position: relative;
+    transition: color 0.2s ease;
 }
 
 .navLink:hover,
@@ -57,15 +64,26 @@
     text-decoration: none;
 }
 
+/* Subtle Active Indicator */
 .navLink.active::after {
     content: '';
     position: absolute;
-    bottom: -4px;
+    bottom: 0;
     left: 0;
     width: 100%;
-    height: 2px;
+    height: 3px;
     background-color: var(--color-warning);
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-full) var(--radius-full) 0 0;
+}
+
+/* Right Actions */
+.actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    min-width: 150px;
+    /* Balance logo width */
+    justify-content: flex-end;
 }
 
 /* Mobile Menu Button */
@@ -139,5 +157,22 @@
 
     .mobileNav {
         display: none !important;
+    }
+
+    /* Ensure actions are visible on desktop */
+    .actions {
+        display: flex;
+    }
+}
+
+@media (max-width: 1023px) {
+    .actions {
+        /* Hide CTA on mobile header, it's in the mobile menu */
+        display: none;
+    }
+
+    .menuButton {
+        margin-left: auto;
+        /* Push hamburger to right */
     }
 }

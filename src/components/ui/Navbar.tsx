@@ -29,7 +29,7 @@ export const Navbar: React.FC = () => {
                     <span className={styles.logoText}>LexVision</span>
                 </Link>
 
-                {/* Desktop Nav */}
+                {/* Desktop Nav (Centered) */}
                 <div className={styles.desktopNav}>
                     {navLinks.map((link) => (
                         <Link
@@ -40,6 +40,10 @@ export const Navbar: React.FC = () => {
                             {link.name}
                         </Link>
                     ))}
+                </div>
+
+                {/* Right Actions (CTA + Mobile Toggle) */}
+                <div className={styles.actions}>
                     <Link to="/portal">
                         <Button variant="primary" size="md" rightIcon={<ExternalLink size={16} />}>
                             Citizen Portal
@@ -54,27 +58,29 @@ export const Navbar: React.FC = () => {
             </div>
 
             {/* Mobile Nav */}
-            {isMenuOpen && (
-                <div className={styles.mobileNav}>
-                    {navLinks.map((link) => (
-                        <Link
-                            key={link.path}
-                            to={link.path}
-                            className={`${styles.mobileNavLink} ${isActive(link.path) ? styles.active : ''}`}
-                            onClick={() => setIsMenuOpen(false)}
-                        >
-                            {link.name}
-                        </Link>
-                    ))}
-                    <div className={styles.mobileNavFooter}>
-                        <Link to="/portal" onClick={() => setIsMenuOpen(false)} style={{ width: '100%' }}>
-                            <Button variant="primary" fullWidth rightIcon={<ExternalLink size={16} />}>
-                                Citizen Portal
-                            </Button>
-                        </Link>
+            {
+                isMenuOpen && (
+                    <div className={styles.mobileNav}>
+                        {navLinks.map((link) => (
+                            <Link
+                                key={link.path}
+                                to={link.path}
+                                className={`${styles.mobileNavLink} ${isActive(link.path) ? styles.active : ''}`}
+                                onClick={() => setIsMenuOpen(false)}
+                            >
+                                {link.name}
+                            </Link>
+                        ))}
+                        <div className={styles.mobileNavFooter}>
+                            <Link to="/portal" onClick={() => setIsMenuOpen(false)} style={{ width: '100%' }}>
+                                <Button variant="primary" fullWidth rightIcon={<ExternalLink size={16} />}>
+                                    Citizen Portal
+                                </Button>
+                            </Link>
+                        </div>
                     </div>
-                </div>
-            )}
-        </nav>
+                )
+            }
+        </nav >
     );
 };

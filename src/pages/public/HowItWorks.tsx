@@ -5,7 +5,6 @@ import styles from './HowItWorks.module.css';
 
 export const HowItWorks: React.FC = () => {
     return (
-    return (
         <div className="container" style={{ paddingBottom: 'var(--space-16)' }}>
             <h1 className={styles.title}>How LexVision Works</h1>
             <p className={styles.subtitle}>A simple, transparent process to ensure road safety.</p>
