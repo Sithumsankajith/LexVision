@@ -1,13 +1,12 @@
 .portalHome {
-    min-height: calc(100vh - 140px);
-    /* Adjust based on navbar/footer */
     background-color: var(--color-background);
+    padding-bottom: var(--space-16);
 }
 
 .header {
     background-color: var(--color-primary);
     color: white;
-    padding: var(--spacing-xl) 0;
+    padding: var(--space-8) 0;
     text-align: center;
 }
 

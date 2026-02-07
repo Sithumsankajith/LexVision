@@ -58,7 +58,7 @@ export const TrackReport: React.FC = () => {
     };
 
     return (
-        <div className={`container ${styles.trackContainer}`}>
+        <div className="container" style={{ padding: 'var(--space-12) var(--space-4)', maxWidth: '800px' }}>
             <h1 className={styles.title}>Track Your Report</h1>
 
             <Card className={styles.searchCard} padding="lg">

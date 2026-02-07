@@ -10,30 +10,32 @@ export const Home: React.FC = () => {
         <div className={styles.home}>
             {/* Hero Section */}
             <section className={styles.hero}>
-                <div className={`container ${styles.heroContainer}`}>
-                    <div className={styles.heroContent}>
-                        <h1 className={styles.heroTitle}>Making Roads Safer Through Active Citizen Participation</h1>
-                        <p className={styles.heroSubtitle}>
-                            LexVision empowers citizens to report road violations securely and transparently. Join us in creating a safer driving culture.
-                        </p>
-                        <div className={styles.heroActions}>
-                            <Link to="/portal">
-                                <Button size="lg" variant="primary" rightIcon={<ChevronRight />}>
-                                    Open Citizen Portal
-                                </Button>
-                            </Link>
-                            <Link to="/how-it-works">
-                                <Button size="lg" variant="secondary">
-                                    How it Works
-                                </Button>
-                            </Link>
+                <div className="container">
+                    <div className={styles.heroInner}>
+                        <div className={styles.heroContent}>
+                            <h1 className={styles.heroTitle}>Making Roads Safer Through Active Citizen Participation</h1>
+                            <p className={styles.heroSubtitle}>
+                                LexVision empowers citizens to report road violations securely and transparently. Join us in creating a safer driving culture.
+                            </p>
+                            <div className={styles.heroActions}>
+                                <Link to="/portal">
+                                    <Button size="lg" variant="primary" rightIcon={<ChevronRight />}>
+                                        Open Citizen Portal
+                                    </Button>
+                                </Link>
+                                <Link to="/how-it-works">
+                                    <Button size="lg" variant="secondary">
+                                        How it Works
+                                    </Button>
+                                </Link>
+                            </div>
                         </div>
-                    </div>
-                    <div className={styles.heroImage}>
-                        {/* Placeholder for Hero Graphic */}
-                        <div className={styles.heroGraphic}>
-                            <Activity size={120} strokeWidth={1} />
-                            <span>Road Safety Analytics</span>
+                        <div className={styles.heroImage}>
+                            {/* Placeholder for Hero Graphic */}
+                            <div className={styles.heroGraphic}>
+                                <Activity size={120} strokeWidth={1} />
+                                <span>Road Safety Analytics</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -41,18 +43,20 @@ export const Home: React.FC = () => {
 
             {/* Stats Band */}
             <section className={styles.stats}>
-                <div className={`container ${styles.statsContainer}`}>
-                    <div className={styles.statItem}>
-                        <div className={styles.statValue}>98%</div>
-                        <div className={styles.statLabel}>Detection Accuracy</div>
-                    </div>
-                    <div className={styles.statItem}>
-                        <div className={styles.statValue}>&lt; 24h</div>
-                        <div className={styles.statLabel}>Verification Time</div>
-                    </div>
-                    <div className={styles.statItem}>
-                        <div className={styles.statValue}>100%</div>
-                        <div className={styles.statLabel}>Secure Evidence</div>
+                <div className="container">
+                    <div className={styles.statsGrid}>
+                        <div className={styles.statItem}>
+                            <div className={styles.statValue}>98%</div>
+                            <div className={styles.statLabel}>Detection Accuracy</div>
+                        </div>
+                        <div className={styles.statItem}>
+                            <div className={styles.statValue}>&lt; 24h</div>
+                            <div className={styles.statLabel}>Verification Time</div>
+                        </div>
+                        <div className={styles.statItem}>
+                            <div className={styles.statValue}>100%</div>
+                            <div className={styles.statLabel}>Secure Evidence</div>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -129,14 +133,16 @@ export const Home: React.FC = () => {
             {/* CTA */}
             <section className={styles.cta}>
                 <div className="container">
-                    <h2>Ready to make a difference?</h2>
-                    <div className={styles.ctaButtons}>
-                        <Link to="/portal/report">
-                            <Button variant="primary" size="lg">Report a Violation</Button>
-                        </Link>
-                        <Link to="/portal/track">
-                            <Button variant="outline" size="lg">Track Report</Button>
-                        </Link>
+                    <div className={styles.ctaContent}>
+                        <h2>Ready to make a difference?</h2>
+                        <div className={styles.ctaButtons}>
+                            <Link to="/portal/report">
+                                <Button variant="primary" size="lg">Report a Violation</Button>
+                            </Link>
+                            <Link to="/portal/track">
+                                <Button variant="outline" size="lg">Track Report</Button>
+                            </Link>
+                        </div>
                     </div>
                 </div>
             </section>

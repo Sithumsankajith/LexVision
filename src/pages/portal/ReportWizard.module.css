@@ -1,8 +1,7 @@
 .wizardContainer {
-    padding-top: var(--space-8);
-    padding-bottom: var(--space-12);
-    max-width: 800px !important;
-    /* Override generic container for focused task */
+    max-width: 800px;
+    margin: var(--space-8) auto;
+    /* Clean up any old padding/width that conflicts with .container */
 }
 
 .successContainer {

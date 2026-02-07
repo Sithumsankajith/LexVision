@@ -6,10 +6,11 @@ import { Button } from '../../components/ui/Button';
 
 export const Contact: React.FC = () => {
     return (
-        <div className="container" style={{ padding: 'var(--spacing-xl) 0' }}>
-            <h1 style={{ textAlign: 'center', marginBottom: 'var(--spacing-xl)' }}>Contact Us</h1>
+    return (
+        <div className="container" style={{ padding: 'var(--space-12) var(--space-4)' }}>
+            <h1 style={{ textAlign: 'center', marginBottom: 'var(--space-12)' }}>Contact Us</h1>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 'var(--spacing-xl)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 'var(--space-12)' }}>
                 <div>
                     <h2 style={{ marginBottom: 'var(--spacing-lg)' }}>Get in Touch</h2>
                     <p style={{ marginBottom: 'var(--spacing-lg)', color: 'var(--color-text-secondary)' }}>

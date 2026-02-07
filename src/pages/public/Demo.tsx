@@ -4,7 +4,7 @@ import { Card } from '../../components/ui/Card';
 
 export const Demo: React.FC = () => {
     return (
-        <div className="container" style={{ padding: 'var(--spacing-xl) 0' }}>
+        <div className="container" style={{ padding: 'var(--space-12) var(--space-4)' }}>
             <h1 style={{ textAlign: 'center', marginBottom: 'var(--spacing-xl)' }}>Platform Demo</h1>
 
             <section style={{ marginBottom: 'var(--spacing-xxl)' }}>

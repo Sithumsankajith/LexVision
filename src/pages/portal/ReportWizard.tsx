@@ -141,7 +141,7 @@ export const ReportWizard: React.FC = () => {
 
     if (submittedId) {
         return (
-            <div className={`container ${styles.wizardContainer} ${styles.successContainer}`}>
+            <div className={`container ${styles.successContainer}`}>
                 <CheckCircle size={80} className={styles.successIcon} />
                 <h1>Report Submitted Successfully!</h1>
                 <p>Your report has been received and is under review.</p>

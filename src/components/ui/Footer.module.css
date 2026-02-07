@@ -10,6 +10,7 @@
     grid-template-columns: 1fr;
     gap: var(--space-8);
     padding-bottom: var(--space-12);
+    /* Padding-left/right is handled by global .container class composition */
 }
 
 /* Brand Section */
@@ -87,10 +88,8 @@
     flex-direction: column;
     align-items: center;
     gap: var(--space-4);
-    padding-top: 0;
-    /* Override generic container padding inheritance if needed */
-    padding-bottom: 0;
     text-align: center;
+    /* Padding is handled by global .container class composition */
 }
 
 .accessibility a {

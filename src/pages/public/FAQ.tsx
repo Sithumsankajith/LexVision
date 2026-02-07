@@ -26,8 +26,8 @@ const FAQS = [
 
 export const FAQ: React.FC = () => {
     return (
-        <div className="container" style={{ padding: 'var(--spacing-xl) 0', maxWidth: '800px' }}>
-            <h1 style={{ textAlign: 'center', marginBottom: 'var(--spacing-xl)' }}>Frequently Asked Questions</h1>
+        <div className="container" style={{ padding: 'var(--space-12) var(--space-4)', maxWidth: '800px' }}>
+            <h1 style={{ textAlign: 'center', marginBottom: 'var(--space-12)' }}>Frequently Asked Questions</h1>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
                 {FAQS.map((faq, index) => (

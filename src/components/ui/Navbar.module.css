@@ -12,6 +12,9 @@
     justify-content: space-between;
     align-items: center;
     height: 72px;
+    width: 100%;
+    /* Ensure it fills the parent flex item if needed, but max-width comes from global .container */
+    /* Padding is handled by global .container class composition */
 }
 
 .logo {

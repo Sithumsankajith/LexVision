@@ -15,7 +15,7 @@ export const PortalHome: React.FC = () => {
                 </div>
             </header>
 
-            <main className={`container ${styles.main}`}>
+            <main className="container" style={{ marginTop: 'var(--space-8)' }}>
                 <div className={styles.actions}>
                     <Link to="/portal/report" className={styles.actionLink}>
                         <Card className={styles.actionCard} hoverable padding="lg">
