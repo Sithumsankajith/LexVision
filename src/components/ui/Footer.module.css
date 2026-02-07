@@ -5,15 +5,15 @@
     margin-top: auto;
 }
 
+/* Main Footer Layout */
 .container {
     display: grid;
     grid-template-columns: 1fr;
     gap: var(--space-8);
     padding-bottom: var(--space-12);
-    /* Padding-left/right is handled by global .container class composition */
 }
 
-/* Brand Section */
+/* Brand Section (Column 1) */
 .brand {
     display: flex;
     flex-direction: column;
@@ -24,7 +24,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    font-size: var(--text-xl);
+    font-size: var(--text-2xl);
     font-weight: 700;
     color: var(--color-surface);
 }
@@ -37,15 +37,8 @@
     margin: 0;
 }
 
-/* Links Section */
-.links {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    /* Two columns for menu/support on mobile */
-    gap: var(--space-8);
-}
-
-.linkGroup h4 {
+/* Link Columns (Column 2 & 3) */
+.column h4 {
     color: var(--color-surface);
     font-size: var(--text-base);
     margin-bottom: var(--space-4);
@@ -54,7 +47,7 @@
     letter-spacing: 0.05em;
 }
 
-.linkGroup ul {
+.column ul {
     list-style: none;
     padding: 0;
     margin: 0;
@@ -63,14 +56,14 @@
     gap: var(--space-3);
 }
 
-.linkGroup a {
+.column a {
     color: rgba(255, 255, 255, 0.7);
     font-size: var(--text-sm);
     text-decoration: none;
     transition: color 0.2s;
 }
 
-.linkGroup a:hover {
+.column a:hover {
     color: var(--color-surface);
     text-decoration: underline;
 }
@@ -81,6 +74,7 @@
     padding: var(--space-6) 0;
     font-size: var(--text-xs);
     color: rgba(255, 255, 255, 0.5);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .bottomContainer {
@@ -89,7 +83,6 @@
     align-items: center;
     gap: var(--space-4);
     text-align: center;
-    /* Padding is handled by global .container class composition */
 }
 
 .accessibility a {
@@ -102,35 +95,29 @@
     text-decoration: underline;
 }
 
-/* Responsive */
-@media (min-width: 768px) {
+/* Responsive Breakpoints */
+@media (min-width: 640px) {
     .container {
-        grid-template-columns: 1.5fr 2fr;
-        /* Brand takes less space, links take more */
-        align-items: start;
+        /* On tablet, maybe split brand and links? Or keep stacking? 
+           Let's go to 3 cols at desktop, but maybe 2 cols at tablet?
+           User requested: Desktop 3 columns. Mobile stack.
+           Let's standardise tablet to 2 columns (brand full width or side-by-side)
+           For simplicity and "clean" look, let's try a transition.
+        */
+        grid-template-columns: 1fr 1fr;
     }
+}
 
-    .links {
-        grid-template-columns: repeat(3, 1fr);
-        /* Expand links if more groups added in future, currently 2 groups so they will take space */
-        justify-content: end;
+@media (min-width: 1024px) {
+    .container {
+        grid-template-columns: 2fr 1fr 1fr;
+        /* Brand gets more space */
+        gap: var(--space-12);
     }
 
     .bottomContainer {
         flex-direction: row;
         justify-content: space-between;
         text-align: left;
-    }
-}
-
-@media (min-width: 1024px) {
-    .container {
-        grid-template-columns: 1fr 3fr;
-    }
-
-    .links {
-        display: flex;
-        justify-content: flex-end;
-        gap: var(--space-12);
     }
 }

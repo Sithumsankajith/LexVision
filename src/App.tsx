@@ -1,4 +1,4 @@
-import { Suspense } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { PublicLayout } from './layouts/PublicLayout';
 import { Home } from './pages/public/Home';
@@ -10,13 +10,25 @@ import { Contact } from './pages/public/Contact';
 import { PortalHome } from './pages/portal/PortalHome';
 import { ReportWizard } from './pages/portal/ReportWizard';
 import { TrackReport } from './pages/portal/TrackReport';
+import { PageLoader } from './components/ui/PageLoader';
 
-// Simple loading component
-const Loading = () => <div style={{ padding: '20px', textAlign: 'center' }}>Loading...</div>;
+// Simple fallback for Suspense (if used purely for code splitting later)
+const Loading = () => null;
 
 function App() {
+  const [initialLoad, setInitialLoad] = useState(true);
+
+  useEffect(() => {
+    // Simulate initial asset loading / app readiness
+    const timer = setTimeout(() => {
+      setInitialLoad(false);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <Router>
+      <PageLoader isLoading={initialLoad} />
       <Suspense fallback={<Loading />}>
         <Routes>
           {/* Public Website Routes */}

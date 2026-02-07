@@ -52,7 +52,7 @@ export const Contact: React.FC = () => {
                 <Card padding="lg">
                     <h3 style={{ marginBottom: 'var(--spacing-md)' }}>Send Message</h3>
                     <form onSubmit={(e) => e.preventDefault()}>
-                        <div className="form-grid">
+                        <div className="form-grid form-grid--2-col">
                             <Input label="Name" placeholder="Your Name" fullWidth />
                             <Input label="Email" placeholder="Your Email" type="email" fullWidth />
                         </div>

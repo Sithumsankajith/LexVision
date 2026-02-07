@@ -1,5 +1,5 @@
 import React from 'react';
-import { Camera, CheckCircle, Database, Bell, Eye } from 'lucide-react';
+import { Camera, CheckCircle, Database, Eye } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import styles from './HowItWorks.module.css';
 

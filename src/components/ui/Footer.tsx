@@ -17,26 +17,24 @@ export const Footer: React.FC = () => {
                     </p>
                 </div>
 
-                <div className={styles.links}>
-                    <div className={styles.linkGroup}>
-                        <h4>Menu</h4>
-                        <ul>
-                            <li><Link to="/">Home</Link></li>
-                            <li><Link to="/how-it-works">How it Works</Link></li>
-                            <li><Link to="/features">Features</Link></li>
-                            <li><Link to="/portal">Citizen Portal</Link></li>
-                        </ul>
-                    </div>
+                <div className={styles.column}>
+                    <h4>Menu</h4>
+                    <ul>
+                        <li><Link to="/">Home</Link></li>
+                        <li><Link to="/how-it-works">How it Works</Link></li>
+                        <li><Link to="/features">Features</Link></li>
+                        <li><Link to="/portal">Citizen Portal</Link></li>
+                    </ul>
+                </div>
 
-                    <div className={styles.linkGroup}>
-                        <h4>Support</h4>
-                        <ul>
-                            <li><Link to="/faq">FAQ</Link></li>
-                            <li><Link to="/contact">Contact Us</Link></li>
-                            <li><Link to="/privacy">Privacy Policy</Link></li>
-                            <li><Link to="/terms">Terms of Service</Link></li>
-                        </ul>
-                    </div>
+                <div className={styles.column}>
+                    <h4>Support</h4>
+                    <ul>
+                        <li><Link to="/faq">FAQ</Link></li>
+                        <li><Link to="/contact">Contact Us</Link></li>
+                        <li><Link to="/privacy">Privacy Policy</Link></li>
+                        <li><Link to="/terms">Terms of Service</Link></li>
+                    </ul>
                 </div>
             </div>
 
