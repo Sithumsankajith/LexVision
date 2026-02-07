@@ -6,8 +6,10 @@ import { Button } from '../../components/ui/Button';
 
 export const Contact: React.FC = () => {
     return (
-        <div className="container" style={{ padding: 'var(--space-12) var(--space-4)' }}>
-            <h1 style={{ textAlign: 'center', marginBottom: 'var(--space-12)' }}>Contact Us</h1>
+        <div className="container" style={{ paddingBottom: 'var(--space-16)' }}>
+            <header className="page-header">
+                <h1>Contact Us</h1>
+            </header>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 'var(--space-12)' }}>
                 <div>

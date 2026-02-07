@@ -4,8 +4,11 @@ import { Card } from '../../components/ui/Card';
 
 export const Demo: React.FC = () => {
     return (
-        <div className="container" style={{ padding: 'var(--space-12) var(--space-4)' }}>
-            <h1 style={{ textAlign: 'center', marginBottom: 'var(--spacing-xl)' }}>Platform Demo</h1>
+        <div className="container" style={{ paddingBottom: 'var(--space-16)' }}>
+            <header className="page-header">
+                <h1>Platform Demo</h1>
+                <p>Explore the capabilities of the LexVision system.</p>
+            </header>
 
             <section style={{ marginBottom: 'var(--spacing-xxl)' }}>
                 <h2 style={{ textAlign: 'center' }}>Live Monitoring Walkthrough</h2>

@@ -7,12 +7,14 @@ export const Features: React.FC = () => {
     return (
         <div className={styles.pageWrapper}>
             <div className="container">
-                <h1 className={styles.title}>System Features</h1>
-                <p className={styles.subtitle}>Comprehensive violation monitoring for safer roads.</p>
+                <header className="page-header">
+                    <h1>System Features</h1>
+                    <p>Comprehensive violation monitoring for safer roads.</p>
+                </header>
 
                 <section className={styles.section}>
                     <h2>Detected Violations</h2>
-                    <div className={styles.grid}>
+                    <div className="card-grid">
                         <Card className={styles.featureCard} padding="lg">
                             <div className={styles.iconWrapper}><AlertTriangle size={32} /></div>
                             <h3>No Helmet Detection</h3>

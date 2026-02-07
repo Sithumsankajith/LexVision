@@ -6,10 +6,12 @@ import styles from './HowItWorks.module.css';
 export const HowItWorks: React.FC = () => {
     return (
         <div className="container" style={{ paddingBottom: 'var(--space-16)' }}>
-            <h1 className={styles.title}>How LexVision Works</h1>
-            <p className={styles.subtitle}>A simple, transparent process to ensure road safety.</p>
+            <header className="page-header">
+                <h1>How LexVision Works</h1>
+                <p>A simple, transparent process to ensure road safety.</p>
+            </header>
 
-            <div className={styles.steps}>
+            <div className="card-grid">
                 <div className={styles.step}>
                     <div className={styles.stepNumber}>1</div>
                     <Card className={styles.stepCard} padding="lg">
@@ -18,31 +20,20 @@ export const HowItWorks: React.FC = () => {
                         <p>Citizens or automated cameras capture evidence of a traffic violation (image or video).</p>
                     </Card>
                 </div>
-                <div className={styles.connector}></div>
+
                 <div className={styles.step}>
                     <div className={styles.stepNumber}>2</div>
                     <Card className={styles.stepCard} padding="lg">
                         <div className={styles.iconWrapper}><CheckCircle size={32} /></div>
-                        <h3>Verify</h3>
-                        <p>LexVision AI filters the submission, and authorized personnel verify the evidence manually.</p>
+                        <h3>Report</h3>
+                        <p>Evidence is uploaded via the portal with location and timestamp details.</p>
                     </Card>
                 </div>
-                <div className={styles.connector}></div>
+
                 <div className={styles.step}>
                     <div className={styles.stepNumber}>3</div>
                     <Card className={styles.stepCard} padding="lg">
                         <div className={styles.iconWrapper}><Database size={32} /></div>
-                        <h3>Store</h3>
-                        <p>Verified violations are securely stored in the government database with a tamper-proof audit trail.</p>
-                    </Card>
-                </div>
-                <div className={styles.connector}></div>
-                <div className={styles.step}>
-                    <div className={styles.stepNumber}>4</div>
-                    <Card className={styles.stepCard} padding="lg">
-                        <div className={styles.iconWrapper}><Bell size={32} /></div>
-                        <h3>Notify</h3>
-                        <p>The system generates a fine or warning, and the offender is notified via SMS or mail.</p>
                     </Card>
                 </div>
             </div>
