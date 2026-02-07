@@ -1,0 +1,88 @@
+.portalHome {
+    min-height: calc(100vh - 140px);
+    /* Adjust based on navbar/footer */
+    background-color: var(--color-background);
+}
+
+.header {
+    background-color: var(--color-primary);
+    color: white;
+    padding: var(--spacing-xl) 0;
+    text-align: center;
+}
+
+.header h1 {
+    margin-bottom: var(--spacing-sm);
+}
+
+.header p {
+    opacity: 0.9;
+    font-size: 1.125rem;
+}
+
+.main {
+    padding: var(--spacing-xl) var(--spacing-md);
+}
+
+.actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--spacing-lg);
+    margin-bottom: var(--spacing-xl);
+}
+
+.actionLink {
+    text-decoration: none;
+    color: inherit;
+    display: block;
+}
+
+.actionCard {
+    text-align: center;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.icon {
+    color: var(--color-primary);
+    margin-bottom: var(--spacing-md);
+}
+
+.actionCard h2 {
+    font-size: 1.5rem;
+    margin-bottom: var(--spacing-sm);
+}
+
+.actionCard p {
+    color: var(--color-text-secondary);
+    margin-bottom: var(--spacing-lg);
+    flex: 1;
+}
+
+.tipsCard h3 {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    color: var(--color-accent);
+    font-size: 1.125rem;
+    margin-bottom: var(--spacing-md);
+}
+
+.tipsCard ul {
+    padding-left: var(--spacing-lg);
+    color: var(--color-text-secondary);
+}
+
+.tipsCard li {
+    margin-bottom: var(--spacing-xs);
+}
+
+@media (min-width: 768px) {
+    .actions {
+        grid-template-columns: 1fr 1fr;
+    }
+}

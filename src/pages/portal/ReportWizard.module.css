@@ -1,0 +1,114 @@
+.wizardContainer {
+    padding: var(--spacing-xl) 0;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.title {
+    text-align: center;
+    margin-bottom: var(--spacing-xl);
+}
+
+.stepContent {
+    margin-bottom: var(--spacing-xl);
+    min-height: 400px;
+}
+
+.actions {
+    display: flex;
+    justify-content: space-between;
+    margin-top: var(--spacing-xl);
+    border-top: 1px solid var(--color-border);
+    padding-top: var(--spacing-lg);
+}
+
+/* Violation Type Step */
+.violationGrid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--spacing-md);
+}
+
+.violationCard {
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.violationCard.selected {
+    border-color: var(--color-primary);
+    background-color: rgba(11, 58, 102, 0.05);
+}
+
+.violationIcon {
+    color: var(--color-primary);
+    padding: var(--spacing-sm);
+    background-color: rgba(11, 58, 102, 0.1);
+    border-radius: 50%;
+}
+
+/* Evidence Step */
+.uploadArea {
+    border: 2px dashed var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-xl);
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-bottom: var(--spacing-md);
+}
+
+.uploadArea:hover {
+    border-color: var(--color-primary);
+    background-color: rgba(11, 58, 102, 0.02);
+}
+
+.fileList {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.fileItem {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-sm);
+    background-color: var(--color-background);
+    border-radius: var(--radius-sm);
+}
+
+.successContainer {
+    text-align: center;
+    padding: var(--spacing-xl) 0;
+}
+
+.successIcon {
+    color: var(--color-success);
+    margin-bottom: var(--spacing-md);
+}
+
+.trackingBox {
+    background-color: var(--color-background);
+    padding: var(--spacing-lg);
+    border-radius: var(--radius-md);
+    margin: var(--spacing-lg) 0;
+    display: inline-block;
+}
+
+.trackingId {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--color-primary);
+    font-family: monospace;
+    margin-top: var(--spacing-xs);
+}
+
+@media (min-width: 768px) {
+    .violationGrid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
