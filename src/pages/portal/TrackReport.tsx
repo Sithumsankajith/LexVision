@@ -62,7 +62,7 @@ export const TrackReport: React.FC = () => {
             <h1 className={styles.title}>Track Your Report</h1>
 
             <Card className={styles.searchCard} padding="lg">
-                <form onSubmit={handleSearch} className={styles.searchForm}>
+                <form onSubmit={handleSearch} className="form-grid form-grid--2-col" style={{ alignItems: 'end' }}>
                     <Input
                         label="Tracking ID"
                         placeholder="e.g. LEX-2026-ABCD"
@@ -75,6 +75,7 @@ export const TrackReport: React.FC = () => {
                         variant="primary"
                         isLoading={loading}
                         leftIcon={<Search size={16} />}
+                        fullWidth
                     >
                         Track Report
                     </Button>

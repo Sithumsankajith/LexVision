@@ -52,23 +52,20 @@ export const Contact: React.FC = () => {
                 <Card padding="lg">
                     <h3 style={{ marginBottom: 'var(--spacing-md)' }}>Send Message</h3>
                     <form onSubmit={(e) => e.preventDefault()}>
-                        <Input label="Name" placeholder="Your Name" fullWidth />
-                        <Input label="Email" placeholder="Your Email" type="email" fullWidth />
-                        <div style={{ marginBottom: 'var(--spacing-md)' }}>
-                            <label style={{ fontWeight: 500, marginBottom: '4px', display: 'block', fontSize: '0.875rem' }}>Message</label>
+                        <div className="form-grid">
+                            <Input label="Name" placeholder="Your Name" fullWidth />
+                            <Input label="Email" placeholder="Your Email" type="email" fullWidth />
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">Message</label>
                             <textarea
-                                style={{
-                                    width: '100%',
-                                    padding: '8px',
-                                    borderRadius: '4px',
-                                    border: '1px solid var(--color-border)',
-                                    minHeight: '120px',
-                                    fontFamily: 'inherit'
-                                }}
+                                className="form-textarea"
                                 placeholder="How can we help?"
                             ></textarea>
                         </div>
-                        <Button variant="primary" fullWidth>Send Message</Button>
+                        <div className="form-actions">
+                            <Button variant="primary" fullWidth>Send Message</Button>
+                        </div>
                     </form>
                 </Card>
             </div>

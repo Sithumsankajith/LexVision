@@ -197,7 +197,7 @@ export const ReportWizard: React.FC = () => {
             <div className={styles.stepContent}>
                 {/* Step 1: Violation Type */}
                 {currentStep === 1 && (
-                    <div className={styles.violationGrid}>
+                    <div className="card-grid">
                         {[
                             { id: 'helmet' as ViolationType, label: 'No Helmet', icon: <Radio size={24} /> },
                             { id: 'red-light' as ViolationType, label: 'Red Light Violation', icon: <X size={24} /> },
@@ -221,8 +221,8 @@ export const ReportWizard: React.FC = () => {
 
                 {/* Step 2: Location & Time */}
                 {currentStep === 2 && (
-                    <div className={styles.formGrid}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div className="form-grid">
+                        <div className="form-grid form-grid--2-col">
                             <Input
                                 id="date-input"
                                 label="Date of Incident"
@@ -312,8 +312,8 @@ export const ReportWizard: React.FC = () => {
 
                 {/* Step 4: Vehicle & Notes */}
                 {currentStep === 4 && (
-                    <div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div className="form-grid">
+                        <div className="form-grid form-grid--2-col">
                             <Input
                                 label="Vehicle Number Plate (Optional)"
                                 placeholder="e.g. WP CAA-1234"
@@ -336,28 +336,21 @@ export const ReportWizard: React.FC = () => {
                             />
                         </div>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', marginBottom: '16px' }}>
-                            <label style={{ fontWeight: 500, marginBottom: '8px', fontSize: '0.875rem' }}>Additional Description (Optional)</label>
+                        <div className="form-group">
+                            <label className="form-label">Additional Description (Optional)</label>
                             <textarea
-                                className={styles.textarea}
+                                className="form-textarea"
                                 rows={4}
                                 placeholder="Describe the incident..."
                                 value={formData.description}
                                 onChange={e => setFormData({ ...formData, description: e.target.value })}
-                                style={{
-                                    padding: '8px',
-                                    borderRadius: '4px',
-                                    border: '1px solid var(--color-border)',
-                                    fontFamily: 'inherit',
-                                    resize: 'vertical'
-                                }}
                             />
                         </div>
                     </div>
                 )}
             </div>
 
-            <div className={styles.actions}>
+            <div className="form-actions form-actions--spread">
                 <Button
                     variant="secondary"
                     onClick={handleBack}
