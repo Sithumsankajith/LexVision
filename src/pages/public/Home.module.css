@@ -4,10 +4,71 @@
 }
 
 /* Hero Section */
+/* Hero Section */
 .hero {
-    background-color: var(--color-surface);
+    position: relative;
     background-color: var(--color-background);
-    /* Standard header padding is handled by .page-header now */
+    /* Ensure height for video to cover */
+    min-height: 600px;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+}
+
+.videoBackground {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    overflow: hidden;
+}
+
+.heroVideo {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0.6;
+    /* Slight transparency for better text contrast if needed */
+}
+
+.heroOverlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(to bottom,
+            rgba(10, 10, 10, 0.7) 0%,
+            rgba(10, 10, 10, 0.4) 50%,
+            var(--color-background) 100%);
+    z-index: 1;
+}
+
+.heroContainer {
+    position: relative;
+    z-index: 2;
+    /* Content above video */
+    width: 100%;
+}
+
+/* Hide video on small screens or reduced motion */
+@media (max-width: 768px),
+(prefers-reduced-motion: reduce) {
+    .heroVideo {
+        display: none;
+    }
+
+    .heroOverlay {
+        background: radial-gradient(circle at center, rgba(30, 41, 59, 0.5) 0%, var(--color-background) 100%);
+    }
+
+    .hero {
+        min-height: auto;
+        padding-top: var(--space-16);
+        padding-bottom: var(--space-16);
+    }
 }
 
 .heroInner {
