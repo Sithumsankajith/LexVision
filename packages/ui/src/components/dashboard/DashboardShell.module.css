@@ -1,0 +1,34 @@
+.shell {
+    display: flex;
+    min-height: 100vh;
+    background-color: var(--color-bg-secondary);
+}
+
+.main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    margin-left: 280px;
+    /* Sidebar width */
+    transition: margin-left 0.3s ease;
+}
+
+.content {
+    flex: 1;
+    padding: var(--space-8);
+    max-width: 1400px;
+    /* Standard container width */
+    margin: 0 auto;
+    width: 100%;
+}
+
+@media (max-width: 1024px) {
+    .main {
+        margin-left: 0;
+    }
+
+    .content {
+        padding: var(--space-4);
+    }
+}

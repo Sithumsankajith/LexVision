@@ -1,19 +1,24 @@
 import React, { useState } from 'react';
 import {
-    FileText,
     Video,
-    Clock,
-    ArrowRight
+    FileText,
+    ArrowRight,
+    Clock
 } from 'lucide-react';
 import { Button } from '@lexvision/ui';
-import styles from './Dashboard.module.css';
+import {
+    KpiCard,
+    Panel,
+    DataTable,
+    Badge
+} from '@lexvision/ui';
 
 // Mock Data
 const KPIS = [
-    { label: 'Assigned Cases', value: '12', sub: '4 New today', type: 'assigned' },
-    { label: 'High Priority', value: '3', sub: 'Requires immediate action', type: 'priority' },
-    { label: 'Pending Review', value: '8', sub: 'Avg wait: 2h 15m', type: 'pending' },
-    { label: 'Resolved Today', value: '24', sub: 'Personal best: 30', type: 'resolved' },
+    { label: 'Assigned Cases', value: '12', sub: '4 New today', type: 'assigned', color: 'primary' },
+    { label: 'High Priority', value: '3', sub: 'Requires immediate action', type: 'priority', color: 'error' },
+    { label: 'Pending Review', value: '8', sub: 'Avg wait: 2h 15m', type: 'pending', color: 'warning' },
+    { label: 'Resolved Today', value: '24', sub: 'Personal best: 30', type: 'resolved', color: 'success' },
 ];
 
 const AI_QUEUE = [
@@ -36,96 +41,99 @@ export const Dashboard: React.FC = () => {
     const currentQueue = activeTab === 'ai' ? AI_QUEUE : CITIZEN_QUEUE;
 
     return (
-        <div className={styles.dashboardGrid}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
 
             {/* KPI Cards */}
-            <section className={styles.kpiGrid}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-6)' }}>
                 {KPIS.map((kpi, index) => (
-                    <div key={index} className={`${styles.kpiCard} ${kpi.type === 'assigned' ? styles.kpiAssigned :
-                        kpi.type === 'priority' ? styles.kpiPriority :
-                            kpi.type === 'pending' ? styles.kpiPending :
-                                styles.kpiResolved
-                        }`}>
-                        <div className={styles.kpiLabel}>{kpi.label}</div>
-                        <div className={styles.kpiValue}>{kpi.value}</div>
-                        <div className={styles.kpiSubtext}>{kpi.sub}</div>
-                    </div>
+                    <KpiCard
+                        key={index}
+                        label={kpi.label}
+                        value={kpi.value}
+                        trend={kpi.sub}
+                        trendDirection="neutral"
+                        color={kpi.color as any}
+                    />
                 ))}
-            </section>
+            </div>
 
             {/* My Queue Section */}
-            <section className={styles.queueSection}>
-                <div className={styles.tabHeader}>
+            <Panel>
+                <div style={{ display: 'flex', borderBottom: '1px solid var(--color-border)', marginBottom: 'var(--space-4)' }}>
                     <div
-                        className={`${styles.tab} ${activeTab === 'ai' ? styles.activeTab : ''}`}
+                        style={{
+                            padding: 'var(--space-3) var(--space-6)',
+                            cursor: 'pointer',
+                            borderBottom: activeTab === 'ai' ? '2px solid var(--color-primary)' : 'none',
+                            color: activeTab === 'ai' ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                            fontWeight: '600',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 'var(--space-2)'
+                        }}
                         onClick={() => setActiveTab('ai')}
                     >
                         <Video size={18} />
                         AI Detections
-                        <span style={{ backgroundColor: 'var(--color-primary)', color: '#fff', padding: '0 6px', borderRadius: '10px', fontSize: '0.75rem', marginLeft: '4px' }}>5</span>
+                        <span style={{ backgroundColor: 'var(--color-primary)', color: '#fff', padding: '0 6px', borderRadius: '10px', fontSize: '0.75rem' }}>5</span>
                     </div>
                     <div
-                        className={`${styles.tab} ${activeTab === 'citizen' ? styles.activeTab : ''}`}
+                        style={{
+                            padding: 'var(--space-3) var(--space-6)',
+                            cursor: 'pointer',
+                            borderBottom: activeTab === 'citizen' ? '2px solid var(--color-primary)' : 'none',
+                            color: activeTab === 'citizen' ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                            fontWeight: '600',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 'var(--space-2)'
+                        }}
                         onClick={() => setActiveTab('citizen')}
                     >
                         <FileText size={18} />
                         Citizen Reports
-                        <span style={{ backgroundColor: 'var(--color-bg-tertiary)', color: 'var(--color-text)', padding: '0 6px', borderRadius: '10px', fontSize: '0.75rem', marginLeft: '4px' }}>3</span>
+                        <span style={{ backgroundColor: 'var(--color-bg-tertiary)', color: 'var(--color-text)', padding: '0 6px', borderRadius: '10px', fontSize: '0.75rem' }}>3</span>
                     </div>
-                    <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', paddingRight: '16px' }}>
+                    <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
                         <Button variant="ghost" size="sm">View Full Queue <ArrowRight size={16} style={{ marginLeft: '4px' }} /></Button>
                     </div>
                 </div>
 
-                <div style={{ overflowX: 'auto' }}>
-                    <table className={styles.queueTable}>
-                        <thead>
-                            <tr>
-                                <th>Case ID</th>
-                                <th>Violation Type</th>
-                                <th>Location</th>
-                                <th>Time</th>
-                                <th>Priority</th>
-                                {activeTab === 'ai' ? <th>Confidence</th> : <th>Evidence</th>}
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {currentQueue.map((item) => (
-                                <tr key={item.id}>
-                                    <td style={{ fontFamily: 'monospace', fontWeight: '500' }}>{item.id}</td>
-                                    <td>{item.type}</td>
-                                    <td>{item.location}</td>
-                                    <td style={{ color: 'var(--color-text-secondary)' }}><Clock size={14} style={{ verticalAlign: 'text-bottom', marginRight: '4px' }} />{item.time}</td>
-                                    <td>
-                                        <span className={`${styles.priorityBadge} ${item.priority === 'High' ? styles.priorityHigh :
-                                            item.priority === 'Medium' ? styles.priorityMedium :
-                                                styles.priorityLow
-                                            }`}>
-                                            {item.priority}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        {'confidence' in item ? (
-                                            <span style={{
-                                                color: parseInt(item.confidence) > 90 ? 'var(--color-success)' : 'var(--color-warning)',
-                                                fontWeight: '600'
-                                            }}>
-                                                {item.confidence}
-                                            </span>
-                                        ) : (
-                                            <span>{item.evidence}</span>
-                                        )}
-                                    </td>
-                                    <td>
-                                        <Button size="sm" variant="secondary">Review</Button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            </section>
+                <DataTable headers={['Case ID', 'Violation Type', 'Location', 'Time', 'Priority', activeTab === 'ai' ? 'Confidence' : 'Evidence', 'Action']}>
+                    {currentQueue.map((item) => (
+                        <tr key={item.id}>
+                            <td style={{ fontFamily: 'monospace', fontWeight: '500' }}>{item.id}</td>
+                            <td>{item.type}</td>
+                            <td>{item.location}</td>
+                            <td style={{ color: 'var(--color-text-secondary)' }}><Clock size={14} style={{ verticalAlign: 'text-bottom', marginRight: '4px' }} />{item.time}</td>
+                            <td>
+                                <Badge variant={
+                                    item.priority === 'High' ? 'error' :
+                                        item.priority === 'Medium' ? 'warning' :
+                                            'info'
+                                }>
+                                    {item.priority}
+                                </Badge>
+                            </td>
+                            <td>
+                                {'confidence' in item ? (
+                                    <span style={{
+                                        color: parseInt(item.confidence) > 90 ? 'var(--color-success)' : 'var(--color-warning)',
+                                        fontWeight: '600'
+                                    }}>
+                                        {item.confidence}
+                                    </span>
+                                ) : (
+                                    <span>{item.evidence}</span>
+                                )}
+                            </td>
+                            <td>
+                                <Button size="sm" variant="secondary">Review</Button>
+                            </td>
+                        </tr>
+                    ))}
+                </DataTable>
+            </Panel>
 
         </div>
     );

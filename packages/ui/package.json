@@ -9,7 +9,8 @@
         "./*": "./src/*"
     },
     "scripts": {
-        "lint": "eslint ."
+        "lint": "eslint .",
+        "build": "tsc"
     },
     "peerDependencies": {
         "react": "^19.0.0",
