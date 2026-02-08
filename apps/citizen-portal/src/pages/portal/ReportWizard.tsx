@@ -1,13 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Camera, MapPin, Radio, Upload, X, CheckCircle, FileText, ArrowRight, ArrowLeft } from 'lucide-react';
-import { Stepper } from '../../components/ui/Stepper';
-import { Button } from '../../components/ui/Button';
-import { Card } from '../../components/ui/Card';
-import { Input } from '../../components/ui/Input';
-import { Select } from '../../components/ui/Select';
-import { mockDb } from '../../lib/mockDb';
-import type { ViolationType } from '../../lib/types';
+import { Stepper, Button, Card, Input, Select } from '@lexvision/ui';
+import { mockDb } from '@lexvision/api-client';
+import type { ViolationType } from '@lexvision/types';
 import styles from './ReportWizard.module.css';
 
 const STEPS = [

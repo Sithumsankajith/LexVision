@@ -14,6 +14,15 @@ importers:
 
   apps/citizen-portal:
     dependencies:
+      '@lexvision/api-client':
+        specifier: workspace:*
+        version: link:../../packages/api-client
+      '@lexvision/types':
+        specifier: workspace:*
+        version: link:../../packages/types
+      '@lexvision/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       lucide-react:
         specifier: ^0.563.0
         version: 0.563.0(react@19.2.4)
@@ -63,6 +72,44 @@ importers:
       vite:
         specifier: ^7.2.4
         version: 7.3.1(@types/node@24.10.12)
+
+  packages/api-client:
+    dependencies:
+      '@lexvision/types':
+        specifier: workspace:*
+        version: link:../types
+    devDependencies:
+      typescript:
+        specifier: ^5.2.2
+        version: 5.9.3
+
+  packages/types:
+    devDependencies:
+      typescript:
+        specifier: ^5.2.2
+        version: 5.9.3
+
+  packages/ui:
+    dependencies:
+      react:
+        specifier: ^19.0.0
+        version: 19.2.4
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.4(react@19.2.4)
+      react-router-dom:
+        specifier: ^7.0.0
+        version: 7.13.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.13
+      '@types/react-dom':
+        specifier: ^19.0.0
+        version: 19.2.3(@types/react@19.2.13)
+      typescript:
+        specifier: ^5.2.2
+        version: 5.9.3
 
 packages:
 

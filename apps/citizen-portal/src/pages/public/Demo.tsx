@@ -1,6 +1,6 @@
 import React from 'react';
 import { PlayCircle, Image } from 'lucide-react';
-import { Card } from '../../components/ui/Card';
+import { Card } from '@lexvision/ui';
 
 export const Demo: React.FC = () => {
     return (

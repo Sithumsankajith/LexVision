@@ -1,6 +1,6 @@
 import React from 'react';
 import { Camera, CheckCircle, Database, Eye } from 'lucide-react';
-import { Card } from '../../components/ui/Card';
+import { Card } from '@lexvision/ui';
 import styles from './HowItWorks.module.css';
 
 export const HowItWorks: React.FC = () => {

@@ -10,7 +10,7 @@ import { Contact } from './pages/public/Contact';
 import { PortalHome } from './pages/portal/PortalHome';
 import { ReportWizard } from './pages/portal/ReportWizard';
 import { TrackReport } from './pages/portal/TrackReport';
-import { PageLoader } from './components/ui/PageLoader';
+import { PageLoader } from '@lexvision/ui';
 
 // Simple fallback for Suspense (if used purely for code splitting later)
 const Loading = () => null;

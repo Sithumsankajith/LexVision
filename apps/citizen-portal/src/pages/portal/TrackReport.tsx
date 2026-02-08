@@ -1,11 +1,8 @@
 import React, { useState } from 'react';
 import { Search, AlertCircle, MapPin, Video } from 'lucide-react';
-import { Card } from '../../components/ui/Card';
-import { Input } from '../../components/ui/Input';
-import { Button } from '../../components/ui/Button';
-import { Stepper } from '../../components/ui/Stepper';
-import { mockDb } from '../../lib/mockDb';
-import type { Report, ReportStatus } from '../../lib/types';
+import { Card, Input, Button, Stepper } from '@lexvision/ui';
+import { mockDb } from '@lexvision/api-client';
+import type { Report, ReportStatus } from '@lexvision/types';
 import styles from './TrackReport.module.css';
 
 const STATUS_STEPS = [

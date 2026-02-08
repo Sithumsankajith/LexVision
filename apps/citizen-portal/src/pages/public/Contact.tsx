@@ -1,8 +1,6 @@
 import React from 'react';
 import { Mail, Phone, MapPin } from 'lucide-react';
-import { Card } from '../../components/ui/Card';
-import { Input } from '../../components/ui/Input';
-import { Button } from '../../components/ui/Button';
+import { Card, Input, Button } from '@lexvision/ui';
 
 export const Contact: React.FC = () => {
     return (

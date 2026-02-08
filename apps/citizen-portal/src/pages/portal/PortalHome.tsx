@@ -1,8 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { PlusCircle, Search, Info } from 'lucide-react';
-import { Card } from '../../components/ui/Card';
-import { Button } from '../../components/ui/Button';
+import { Card, Button } from '@lexvision/ui';
 import styles from './PortalHome.module.css';
 
 export const PortalHome: React.FC = () => {

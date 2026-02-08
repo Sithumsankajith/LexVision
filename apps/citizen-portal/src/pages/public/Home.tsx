@@ -1,8 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Eye, ChevronRight, AlertTriangle, FileText } from 'lucide-react';
-import { Button } from '../../components/ui/Button';
-import { Card } from '../../components/ui/Card';
+import { Button, Card } from '@lexvision/ui';
 import styles from './Home.module.css';
 
 export const Home: React.FC = () => {

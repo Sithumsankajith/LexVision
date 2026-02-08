@@ -1,6 +1,6 @@
 import React from 'react';
 import { Shield, Eye, AlertTriangle, FileText, Lock } from 'lucide-react';
-import { Card } from '../../components/ui/Card';
+import { Card } from '@lexvision/ui';
 import styles from './Features.module.css';
 
 export const Features: React.FC = () => {

@@ -1,4 +1,4 @@
-import type { Report } from './types';
+import type { Report } from '@lexvision/types';
 
 // In-memory storage
 let reports: Report[] = [];
