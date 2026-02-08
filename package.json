@@ -4,7 +4,11 @@
     "scripts": {
         "dev": "pnpm --filter citizen-portal dev",
         "dev:citizen": "pnpm --filter citizen-portal dev",
-        "build:citizen": "pnpm --filter citizen-portal build"
+        "dev:admin": "pnpm --filter admin-dashboard dev",
+        "dev:police": "pnpm --filter police-dashboard dev",
+        "build:citizen": "pnpm --filter citizen-portal build",
+        "build:admin": "pnpm --filter admin-dashboard build",
+        "build:police": "pnpm --filter police-dashboard build"
     },
     "devDependencies": {
         "pnpm": "^10.29.1"
