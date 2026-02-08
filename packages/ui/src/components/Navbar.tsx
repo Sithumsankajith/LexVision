@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, Shield, ExternalLink } from 'lucide-react';
+import { Menu, X, ExternalLink } from 'lucide-react';
 import { Button } from './Button';
 import styles from './Navbar.module.css';
 
@@ -25,7 +25,7 @@ export const Navbar: React.FC = () => {
         <nav className={styles.navbar}>
             <div className={`container ${styles.container}`}>
                 <Link to="/" className={styles.logo}>
-                    <Shield className={styles.logoIcon} size={32} />
+                    <img src="/images/lexvision.png" alt="LexVision Logo" className={styles.logoIcon} style={{ height: '40px', width: 'auto' }} />
                     <span className={styles.logoText}>LexVision</span>
                 </Link>
 

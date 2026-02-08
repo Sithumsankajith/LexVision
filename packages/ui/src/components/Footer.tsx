@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Shield } from 'lucide-react';
+
 import styles from './Footer.module.css';
 
 export const Footer: React.FC = () => {
@@ -9,7 +9,7 @@ export const Footer: React.FC = () => {
             <div className={`container ${styles.container}`}>
                 <div className={styles.brand}>
                     <div className={styles.logo}>
-                        <Shield size={24} />
+                        <img src="/images/lexvision.png" alt="LexVision Logo" style={{ height: '32px', width: 'auto' }} />
                         <span>LexVision</span>
                     </div>
                     <p className={styles.tagline}>

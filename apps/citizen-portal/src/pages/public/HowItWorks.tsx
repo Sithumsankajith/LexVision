@@ -34,6 +34,8 @@ export const HowItWorks: React.FC = () => {
                     <div className={styles.stepNumber}>3</div>
                     <Card className={styles.stepCard} padding="lg">
                         <div className={styles.iconWrapper}><Database size={32} /></div>
+                        <h3>Verify & Action</h3>
+                        <p>Authorities review the submitted evidence, verify the violation, and take appropriate action.</p>
                     </Card>
                 </div>
             </div>

@@ -8,42 +8,29 @@ export const Home: React.FC = () => {
     return (
         <div className={styles.home}>
             {/* Hero Section */}
+            {/* Hero Section */}
             <section className={styles.hero}>
-                <div className={styles.videoBackground}>
-                    <video
-                        className={styles.heroVideo}
-                        autoPlay
-                        loop
-                        muted
-                        playsInline
-                        poster="/images/hero-violation.png"
-                    >
-                        <source src="/media/hero-bg.mp4" type="video/mp4" />
-                        {/* Fallback for when video is missing or loading */}
-                        <img src="/images/hero-violation.png" alt="Traffic surveillance view" className={styles.heroFallbackImage} />
-                    </video>
-                    <div className={styles.heroOverlay}></div>
-                </div>
-
                 <div className={`container ${styles.heroContainer}`}>
-                    <header className="page-header">
-                        <h1 className={styles.heroTitle}>Making Roads Safer Through Active Citizen Participation</h1>
-                        <p className={styles.heroSubtitle}>
-                            LexVision empowers citizens to report road violations securely and transparently. Join us in creating a safer driving culture.
-                        </p>
-                        <div className={styles.heroActions}>
-                            <Link to="/portal">
-                                <Button size="lg" variant="primary" rightIcon={<ChevronRight />}>
-                                    Open Citizen Portal
-                                </Button>
-                            </Link>
-                            <Link to="/how-it-works">
-                                <Button size="lg" variant="secondary">
-                                    How it Works
-                                </Button>
-                            </Link>
-                        </div>
-                    </header>
+                    <div className={styles.heroContent}>
+                        <header className="page-header">
+                            <h1 className={styles.heroTitle}>Making Roads Safer Through Active Citizen Participation</h1>
+                            <p className={styles.heroSubtitle}>
+                                LexVision empowers citizens to report road violation and transparently. Join in creating a safer driving culture.
+                            </p>
+                            <div className={styles.heroActions}>
+                                <Link to="/portal">
+                                    <Button size="lg" variant="primary" rightIcon={<ChevronRight />}>
+                                        Open Citizen Portal
+                                    </Button>
+                                </Link>
+                                <Link to="/how-it-works">
+                                    <Button size="lg" variant="secondary">
+                                        How It Works
+                                    </Button>
+                                </Link>
+                            </div>
+                        </header>
+                    </div>
                 </div>
             </section>
 

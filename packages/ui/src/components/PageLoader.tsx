@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Shield } from 'lucide-react';
+
 import styles from './PageLoader.module.css';
 
 interface PageLoaderProps {
@@ -27,9 +27,8 @@ export const PageLoader: React.FC<PageLoaderProps> = ({ isLoading }) => {
         >
             <div className={styles.loaderContent}>
                 <div className={styles.logo}>
-                    <Shield size={64} strokeWidth={1.5} />
+                    <img src="/images/blue-lexvision.png" alt="Loading..." style={{ height: '80px', width: 'auto' }} />
                 </div>
-                <div className={styles.text}>LexVision</div>
             </div>
         </div>
     );
