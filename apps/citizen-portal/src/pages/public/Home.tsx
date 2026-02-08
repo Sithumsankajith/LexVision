@@ -13,19 +13,19 @@ export const Home: React.FC = () => {
                 <div className={`container ${styles.heroContainer}`}>
                     <div className={styles.heroContent}>
                         <header className="page-header">
-                            <h1 className={styles.heroTitle}>Making Roads Safer Through Active Citizen Participation</h1>
+                            <h1 className={styles.heroTitle}>Making Sri Lankan Roads Safer for Everyone</h1>
                             <p className={styles.heroSubtitle}>
-                                LexVision empowers citizens to report road violation and transparently. Join in creating a safer driving culture.
+                                Know the traffic rules that keep us safe. Report dangerous violations easily and help build a responsible community.
                             </p>
                             <div className={styles.heroActions}>
                                 <Link to="/portal">
                                     <Button size="lg" variant="primary" rightIcon={<ChevronRight />}>
-                                        Open Citizen Portal
+                                        Report a Road Violation
                                     </Button>
                                 </Link>
                                 <Link to="/how-it-works">
                                     <Button size="lg" variant="secondary">
-                                        How It Works
+                                        Learn Traffic Rules
                                     </Button>
                                 </Link>
                             </div>
@@ -34,97 +34,79 @@ export const Home: React.FC = () => {
                 </div>
             </section>
 
-            {/* Stats Band */}
+            {/* Why Road Safety Matters */}
             <section className={styles.stats}>
                 <div className="container">
                     <div className={styles.statsGrid}>
                         <div className={styles.statItem}>
-                            <div className={styles.statValue}>98%</div>
-                            <div className={styles.statLabel}>Detection Accuracy</div>
+                            <div className={styles.statValue}>Safety</div>
+                            <div className={styles.statLabel}>Protecting Families</div>
                         </div>
                         <div className={styles.statItem}>
-                            <div className={styles.statValue}>&lt; 24h</div>
-                            <div className={styles.statLabel}>Verification Time</div>
+                            <div className={styles.statValue}>Trust</div>
+                            <div className={styles.statLabel}>Fair & Transparent</div>
                         </div>
                         <div className={styles.statItem}>
-                            <div className={styles.statValue}>100%</div>
-                            <div className={styles.statLabel}>Secure Evidence</div>
+                            <div className={styles.statValue}>Community</div>
+                            <div className={styles.statLabel}>Safer Together</div>
                         </div>
                     </div>
                 </div>
             </section>
 
-            {/* Problem Section */}
+            {/* Problem Section -> Why It Matters */}
             <section className={styles.problem}>
                 <div className="container">
                     <header className={styles.sectionHeader}>
-                        <h2>The Problem</h2>
-                        <p>Traffic violations are the leading cause of road accidents.</p>
+                        <h2>Why Road Safety Matters</h2>
+                        <p>Every traffic rule exists to protect a life.</p>
                     </header>
                     <div className="card-grid">
                         <Card className={styles.problemCard} padding="lg">
                             <div className={styles.problemIcon}><AlertTriangle size={48} /></div>
-                            <h3>Rising Accidents</h3>
-                            <p>Over 3,000 fatal accidents occur annually due to reckless driving and negligence.</p>
+                            <h3>Protecting Loved Ones</h3>
+                            <p>When we follow the law, we ensure our children and families return home safely.</p>
                         </Card>
                         <Card className={styles.problemCard} padding="lg">
                             <div className={styles.problemIcon}><Eye size={48} /></div>
-                            <h3>Lack of Surveillance</h3>
-                            <p>Current manpower is insufficient to monitor all roads effectively 24/7.</p>
+                            <h3>Community Responsibility</h3>
+                            <p>Road safety is a shared responsibility. Your actions helps prevent accidents.</p>
                         </Card>
                         <Card className={styles.problemCard} padding="lg">
                             <div className={styles.problemIcon}><FileText size={48} /></div>
-                            <h3>Manual Reporting</h3>
-                            <p>Existing reporting mechanisms are slow, cumbersome, and often ignored.</p>
+                            <h3>Fairness Law</h3>
+                            <p>We believe in a system where rules are respectful, clear, and fair for everyone.</p>
                         </Card>
                     </div>
                 </div>
             </section>
 
-            {/* Features Section */}
+            {/* Features Section -> Common Violations */}
             <section className={styles.features}>
                 <div className="container">
                     <header className={styles.sectionHeader}>
-                        <h2>Key Features</h2>
-                        <p>Advanced AI-powered detection for modern traffic management.</p>
+                        <h2>Common Road Violations</h2>
+                        <p>Understanding the rules is the first step to safety.</p>
                     </header>
                     <div className="card-grid">
                         <Link to="/features" className={styles.featureLink}>
                             <Card className={styles.featureCard} hoverable padding="lg">
-                                <h3>Helmet Detection</h3>
-                                <p>Automatically identifies riders without helmets.</p>
+                                <h3>Riding Without a Helmet</h3>
+                                <p>Helmets are your only defense against severe head injuries.</p>
                             </Card>
                         </Link>
                         <Link to="/features" className={styles.featureLink}>
                             <Card className={styles.featureCard} hoverable padding="lg">
-                                <h3>Red Light Violation</h3>
-                                <p>Detects vehicles crossing red signals.</p>
+                                <h3>Red Light Violations</h3>
+                                <p>Stopping at red lights prevents severe intersection collisions.</p>
                             </Card>
                         </Link>
                         <Link to="/features" className={styles.featureLink}>
                             <Card className={styles.featureCard} hoverable padding="lg">
-                                <h3>License Plate OCR</h3>
-                                <p>Extracts vehicle numbers for identification.</p>
+                                <h3>White Line Crossing</h3>
+                                <p>Lane discipline prevents dangerous head-on accidents.</p>
                             </Card>
                         </Link>
-                    </div>
-                </div>
-            </section>
-
-            {/* Architecture Preview */}
-            <section className={styles.architecture}>
-                <div className="container">
-                    <div className={styles.sectionHeader}>
-                        <h2>How It Works</h2>
-                    </div>
-                    <div className={styles.architectureDiagram}>
-                        <div className={styles.archStep}>Detect</div>
-                        <div className={styles.archArrow}>→</div>
-                        <div className={styles.archStep}>Verify</div>
-                        <div className={styles.archArrow}>→</div>
-                        <div className={styles.archStep}>Store</div>
-                        <div className={styles.archArrow}>→</div>
-                        <div className={styles.archStep}>Review</div>
                     </div>
                 </div>
             </section>
@@ -133,10 +115,13 @@ export const Home: React.FC = () => {
             <section className={styles.cta}>
                 <div className="container">
                     <div className={styles.ctaContent}>
-                        <h2>Ready to make a difference?</h2>
+                        <h2>Be a Part of the Solution</h2>
+                        <p style={{ marginBottom: '2rem', maxWidth: '600px', marginInline: 'auto' }}>
+                            Road safety starts with you. Whether you drive, ride, or walk, your actions matter.
+                        </p>
                         <div className={styles.ctaButtons}>
                             <Link to="/portal/report">
-                                <Button variant="primary" size="lg">Report a Violation</Button>
+                                <Button variant="primary" size="lg">Submit a Report</Button>
                             </Link>
                             <Link to="/portal/track">
                                 <Button variant="outline" size="lg">Track Report</Button>

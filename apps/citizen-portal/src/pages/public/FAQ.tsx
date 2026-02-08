@@ -3,24 +3,24 @@ import { Card } from '@lexvision/ui';
 
 const FAQS = [
     {
-        q: "What can I report via LexVision?",
-        a: "You can report violations such as riding without a helmet, red light violations, and white line crossings. More types will be added soon."
+        q: "Can I report anonymously?",
+        a: "Yes, you can submit reports without revealing your identity publicly. Your safety and privacy are our top priority."
     },
     {
-        q: "What evidence is accepted?",
-        a: "Clear photos or videos showing the violation and the vehicle's license plate. Timestamped footage is preferred."
+        q: "Will my identity be revealed to the offender?",
+        a: "No, your identity is strictly protected and only visible to authorized law enforcement officials if absolutely necessary for legal processing."
     },
     {
-        q: "How long does the review process take?",
-        a: "Our goal is to verify all reports within 24 hours. You can track the status using your Report Tracking ID."
+        q: "Will I get into trouble for reporting?",
+        a: "No, reporting dangerous behavior is a responsible civic act. However, we discourage submitting clearly false or malicious evidence."
     },
     {
-        q: "Can I submit anonymously?",
-        a: "Yes, you can submit reports without providing personal details. However, providing contact info helps if we need more evidence."
+        q: "What if the report is incorrect?",
+        a: "Our authorities review every single report manually. If the evidence is unclear, ambiguous, or incorrect, no action will be taken against anyone."
     },
     {
-        q: "How is my data used?",
-        a: "Your data is used solely for traffic violation verification and is securely stored. See our Privacy Policy for more details."
+        q: "Does this platform issue fines automatically?",
+        a: "No. LexVision is a reporting tool, not a judge. A trained police officer reviews every submission before any fine or legal action is issued."
     }
 ];
 

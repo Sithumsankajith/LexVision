@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, Eye, AlertTriangle, FileText, Lock } from 'lucide-react';
+import { Shield, AlertTriangle, Lock, Heart, CheckCircle } from 'lucide-react';
 import { Card } from '@lexvision/ui';
 import styles from './Features.module.css';
 
@@ -8,58 +8,43 @@ export const Features: React.FC = () => {
         <div className={styles.pageWrapper}>
             <div className="container">
                 <header className="page-header">
-                    <h1>System Features</h1>
-                    <p>Comprehensive violation monitoring for safer roads.</p>
+                    <h1>What LexVision Does for You</h1>
+                    <p>We help build a safer community through education and transparent reporting.</p>
                 </header>
 
                 <section className={styles.section}>
-                    <h2>Detected Violations</h2>
+                    <h2>Benefits for Citizens</h2>
                     <div className="card-grid">
                         <Card className={styles.featureCard} padding="lg">
+                            <div className={styles.iconWrapper}><Heart size={32} /></div>
+                            <h3>Simple Education</h3>
+                            <p>We explain complex traffic laws in plain language so everyone can understand their responsibilities on the road.</p>
+                        </Card>
+
+                        <Card className={styles.featureCard} padding="lg">
                             <div className={styles.iconWrapper}><AlertTriangle size={32} /></div>
-                            <h3>No Helmet Detection</h3>
-                            <p>Identifies motorcycle riders and passengers without protective headgear using advanced computer vision.</p>
-                            <div className={styles.detailList}>
-                                <span>• Rider & Pillion detection</span>
-                                <span>• High-accuracy classification</span>
-                                <span>• Works in various lighting conditions</span>
-                            </div>
+                            <h3>Safe Reporting</h3>
+                            <p>Our platform allows you to report dangerous driving behavior safely and securely, without confrontation.</p>
                         </Card>
 
                         <Card className={styles.featureCard} padding="lg">
-                            <div className={styles.iconWrapper}><Eye size={32} /></div>
-                            <h3>Red Light Violation</h3>
-                            <p>Detects vehicles crossing the stop line when the traffic signal is red.</p>
-                            <div className={styles.detailList}>
-                                <span>• Integration with traffic signal timing</span>
-                                <span>• Captures vehicle trajectory</span>
-                                <span>• Distinguishes between stop & go</span>
-                            </div>
-                        </Card>
-
-                        <Card className={styles.featureCard} padding="lg">
-                            <div className={styles.iconWrapper}><FileText size={32} /></div>
-                            <h3>White Line Crossing</h3>
-                            <p>Monitors lane discipline and illegal overtaking across solid white lines.</p>
-                            <div className={styles.detailList}>
-                                <span>• Lane marking detection</span>
-                                <span>• Overtaking manoeuvre analysis</span>
-                                <span>• Continuous monitoring</span>
-                            </div>
+                            <div className={styles.iconWrapper}><CheckCircle size={32} /></div>
+                            <h3>Fair Review</h3>
+                            <p>Every report is manually reviewed by authorized personnel to ensure fairness. No automated fines are issued.</p>
                         </Card>
                     </div>
                 </section>
 
                 <section className={styles.section}>
-                    <h2>Evidence & Privacy</h2>
+                    <h2>Your Privacy & Trust</h2>
                     <div className={styles.privacyContent}>
                         <div className={styles.privacyText}>
-                            <h3><Lock size={20} style={{ verticalAlign: 'bottom' }} /> Secure Data Handling</h3>
-                            <p>LexVision is designed with privacy at its core. All captured evidence is encrypted and accessible only to authorized law enforcement personnel.</p>
+                            <h3><Lock size={20} style={{ verticalAlign: 'bottom' }} /> Protecting Your Identity</h3>
+                            <p>Your safety and privacy are our priority. LexVision is designed to protect you.</p>
                             <ul>
-                                <li><strong>Data Encryption:</strong> All images and videos are encrypted at rest and in transit.</li>
-                                <li><strong>Access Control:</strong> Strict role-based access control (RBAC) ensures data security.</li>
-                                <li><strong>Retention Policy:</strong> Evidence is automatically deleted after the statutory period unless required for legal proceedings.</li>
+                                <li><strong>Anonymous Reporting:</strong> You can choose to submit reports without revealing your name publicly.</li>
+                                <li><strong>Secure Data:</strong> Your information is kept private and is never shared with the public or the offender.</li>
+                                <li><strong>Ethical Use:</strong> This platform is a tool for community safety, not for surveillance.</li>
                             </ul>
                         </div>
                         <div className={styles.privacyVisual}>

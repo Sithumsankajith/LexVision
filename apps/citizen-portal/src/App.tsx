@@ -1,5 +1,5 @@
 import { Suspense, useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import { PublicLayout } from './layouts/PublicLayout';
 import { Home } from '@/pages/public/Home';
 import { HowItWorks } from '@/pages/public/HowItWorks';
@@ -15,20 +15,25 @@ import { PageLoader } from '@lexvision/ui';
 // Simple fallback for Suspense (if used purely for code splitting later)
 const Loading = () => null;
 
-function App() {
-  const [initialLoad, setInitialLoad] = useState(true);
+function AppContent() {
+  const [loading, setLoading] = useState(true);
+  const location = useLocation();
 
   useEffect(() => {
-    // Simulate initial asset loading / app readiness
+    // Show loader on every location change
+    setLoading(true);
+
+    // Hide after a reasonable duration to show animation
     const timer = setTimeout(() => {
-      setInitialLoad(false);
-    }, 1000);
+      setLoading(false);
+    }, 800);
+
     return () => clearTimeout(timer);
-  }, []);
+  }, [location.pathname]);
 
   return (
-    <Router>
-      <PageLoader isLoading={initialLoad} />
+    <>
+      <PageLoader isLoading={loading} />
       <Suspense fallback={<Loading />}>
         <Routes>
           {/* Public Website Routes */}
@@ -42,7 +47,6 @@ function App() {
           </Route>
 
           {/* Citizen Portal Routes */}
-          {/* Reusing PublicLayout for now, but could be separate */}
           <Route path="/portal" element={<PublicLayout />}>
             <Route index element={<PortalHome />} />
             <Route path="report" element={<ReportWizard />} />
@@ -50,6 +54,14 @@ function App() {
           </Route>
         </Routes>
       </Suspense>
+    </>
+  );
+}
+
+function App() {
+  return (
+    <Router>
+      <AppContent />
     </Router>
   );
 }

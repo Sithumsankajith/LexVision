@@ -10,7 +10,9 @@ export const PageLoader: React.FC<PageLoaderProps> = ({ isLoading }) => {
     const [shouldRender, setShouldRender] = useState(true);
 
     useEffect(() => {
-        if (!isLoading) {
+        if (isLoading) {
+            setShouldRender(true);
+        } else {
             const timer = setTimeout(() => {
                 setShouldRender(false);
             }, 500); // Match CSS transition duration
