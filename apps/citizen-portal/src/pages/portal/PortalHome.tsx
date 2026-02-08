@@ -2,7 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { PlusCircle, Search, Info } from 'lucide-react';
 import { Card, Button } from '@lexvision/ui';
-import styles from './PortalHome.module.css';
+import styles from '@/pages/portal/PortalHome.module.css';
 
 export const PortalHome: React.FC = () => {
     return (

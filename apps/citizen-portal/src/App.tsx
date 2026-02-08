@@ -1,15 +1,15 @@
 import { Suspense, useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { PublicLayout } from './layouts/PublicLayout';
-import { Home } from './pages/public/Home';
-import { HowItWorks } from './pages/public/HowItWorks';
-import { Features } from './pages/public/Features';
-import { Demo } from './pages/public/Demo';
-import { FAQ } from './pages/public/FAQ';
-import { Contact } from './pages/public/Contact';
-import { PortalHome } from './pages/portal/PortalHome';
-import { ReportWizard } from './pages/portal/ReportWizard';
-import { TrackReport } from './pages/portal/TrackReport';
+import { Home } from '@/pages/public/Home';
+import { HowItWorks } from '@/pages/public/HowItWorks';
+import { Features } from '@/pages/public/Features';
+import { Demo } from '@/pages/public/Demo';
+import { FAQ } from '@/pages/public/FAQ';
+import { Contact } from '@/pages/public/Contact';
+import { PortalHome } from '@/pages/portal/PortalHome';
+import { ReportWizard } from '@/pages/portal/ReportWizard';
+import { TrackReport } from '@/pages/portal/TrackReport';
 import { PageLoader } from '@lexvision/ui';
 
 // Simple fallback for Suspense (if used purely for code splitting later)

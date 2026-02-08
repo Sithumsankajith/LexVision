@@ -3,7 +3,7 @@ import { Search, AlertCircle, MapPin, Video } from 'lucide-react';
 import { Card, Input, Button, Stepper } from '@lexvision/ui';
 import { mockDb } from '@lexvision/api-client';
 import type { Report, ReportStatus } from '@lexvision/types';
-import styles from './TrackReport.module.css';
+import styles from '@/pages/portal/TrackReport.module.css';
 
 const STATUS_STEPS = [
     { id: 1, label: 'Submitted' },

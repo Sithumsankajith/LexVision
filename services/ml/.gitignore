@@ -1,0 +1,15 @@
+# ML Ignore Rules
+datasets/*
+!datasets/README.md
+
+# Ignore large model files
+models/*.pt
+models/*.pth
+models/*.h5
+models/*.onnx
+models/*.pb
+
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/

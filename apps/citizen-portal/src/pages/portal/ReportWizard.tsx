@@ -4,7 +4,7 @@ import { Camera, MapPin, Radio, Upload, X, CheckCircle, FileText, ArrowRight, Ar
 import { Stepper, Button, Card, Input, Select } from '@lexvision/ui';
 import { mockDb } from '@lexvision/api-client';
 import type { ViolationType } from '@lexvision/types';
-import styles from './ReportWizard.module.css';
+import styles from '@/pages/portal/ReportWizard.module.css';
 
 const STEPS = [
     { id: 1, label: 'Violation Type' },
