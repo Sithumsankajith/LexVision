@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     Video,
     FileText,
     ArrowRight,
-    Clock
+    Clock,
+    AlertTriangle,
+    CheckCircle
 } from 'lucide-react';
 import { Button } from '@lexvision/ui';
 import {
@@ -15,10 +18,10 @@ import {
 
 // Mock Data
 const KPIS = [
-    { label: 'Assigned Cases', value: '12', sub: '4 New today', type: 'assigned', color: 'primary' },
-    { label: 'High Priority', value: '3', sub: 'Requires immediate action', type: 'priority', color: 'error' },
-    { label: 'Pending Review', value: '8', sub: 'Avg wait: 2h 15m', type: 'pending', color: 'warning' },
-    { label: 'Resolved Today', value: '24', sub: 'Personal best: 30', type: 'resolved', color: 'success' },
+    { label: 'Assigned Cases', value: '12', sub: '4 New today', color: 'primary', icon: <FileText size={20} color="#3b82f6" /> },
+    { label: 'High Priority', value: '3', sub: 'Action required', color: 'error', icon: <AlertTriangle size={20} color="#ef4444" /> },
+    { label: 'Pending Review', value: '8', sub: 'Avg wait: 2h', color: 'warning', icon: <Clock size={20} color="#f59e0b" /> },
+    { label: 'Resolved Today', value: '24', sub: 'Personal best', color: 'success', icon: <CheckCircle size={20} color="#10b981" /> },
 ];
 
 const AI_QUEUE = [
@@ -40,10 +43,40 @@ export const Dashboard: React.FC = () => {
 
     const currentQueue = activeTab === 'ai' ? AI_QUEUE : CITIZEN_QUEUE;
 
+    const navigate = useNavigate();
+
+    const TabButton = ({ active, onClick, icon: Icon, label, count }: any) => (
+        <div
+            onClick={onClick}
+            style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 12px',
+                cursor: 'pointer',
+                borderBottom: active ? `2px solid var(--color-primary)` : '2px solid transparent',
+                color: active ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                fontWeight: 600,
+                fontSize: '0.9rem',
+                transition: 'all 0.2s'
+            }}
+        >
+            <Icon size={18} />
+            {label}
+            <span style={{
+                backgroundColor: active ? 'var(--color-primary)' : 'var(--color-bg-tertiary)',
+                color: active ? '#fff' : 'var(--color-text)',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                fontSize: '0.75rem'
+            }}>{count}</span>
+        </div>
+    );
+
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
 
-            {/* KPI Cards */}
+            {/* Row 1: KPI Cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-6)' }}>
                 {KPIS.map((kpi, index) => (
                     <KpiCard
@@ -53,66 +86,63 @@ export const Dashboard: React.FC = () => {
                         trend={kpi.sub}
                         trendDirection="neutral"
                         color={kpi.color as any}
+                        icon={kpi.icon}
                     />
                 ))}
             </div>
 
-            {/* My Queue Section */}
-            <Panel>
-                <div style={{ display: 'flex', borderBottom: '1px solid var(--color-border)', marginBottom: 'var(--space-4)' }}>
-                    <div
-                        style={{
-                            padding: 'var(--space-3) var(--space-6)',
-                            cursor: 'pointer',
-                            borderBottom: activeTab === 'ai' ? '2px solid var(--color-primary)' : 'none',
-                            color: activeTab === 'ai' ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-                            fontWeight: '600',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 'var(--space-2)'
-                        }}
-                        onClick={() => setActiveTab('ai')}
-                    >
-                        <Video size={18} />
-                        AI Detections
-                        <span style={{ backgroundColor: 'var(--color-primary)', color: '#fff', padding: '0 6px', borderRadius: '10px', fontSize: '0.75rem' }}>5</span>
+            {/* Row 2: Queue Panel with Tabs */}
+            <Panel
+                noPadding
+                title={
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                        <TabButton
+                            active={activeTab === 'ai'}
+                            onClick={() => setActiveTab('ai')}
+                            icon={Video}
+                            label="AI Detections"
+                            count="5"
+                        />
+                        <TabButton
+                            active={activeTab === 'citizen'}
+                            onClick={() => setActiveTab('citizen')}
+                            icon={FileText}
+                            label="Citizen Reports"
+                            count="3"
+                        />
                     </div>
-                    <div
-                        style={{
-                            padding: 'var(--space-3) var(--space-6)',
-                            cursor: 'pointer',
-                            borderBottom: activeTab === 'citizen' ? '2px solid var(--color-primary)' : 'none',
-                            color: activeTab === 'citizen' ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-                            fontWeight: '600',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 'var(--space-2)'
-                        }}
-                        onClick={() => setActiveTab('citizen')}
-                    >
-                        <FileText size={18} />
-                        Citizen Reports
-                        <span style={{ backgroundColor: 'var(--color-bg-tertiary)', color: 'var(--color-text)', padding: '0 6px', borderRadius: '10px', fontSize: '0.75rem' }}>3</span>
-                    </div>
-                    <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
-                        <Button variant="ghost" size="sm">View Full Queue <ArrowRight size={16} style={{ marginLeft: '4px' }} /></Button>
-                    </div>
-                </div>
-
-                <DataTable headers={['Case ID', 'Violation Type', 'Location', 'Time', 'Priority', activeTab === 'ai' ? 'Confidence' : 'Evidence', 'Action']}>
+                }
+                action={
+                    <Button variant="ghost" size="sm" onClick={() => navigate('/queue')}>
+                        View Full Queue <ArrowRight size={16} style={{ marginLeft: '4px' }} />
+                    </Button>
+                }
+            >
+                <DataTable headers={[
+                    'Case ID',
+                    'Type',
+                    'Location',
+                    'Time',
+                    'Priority',
+                    activeTab === 'ai' ? 'Confidence' : 'Evidence',
+                    'Action'
+                ]}>
                     {currentQueue.map((item) => (
                         <tr key={item.id}>
                             <td style={{ fontFamily: 'monospace', fontWeight: '500' }}>{item.id}</td>
                             <td>{item.type}</td>
                             <td>{item.location}</td>
-                            <td style={{ color: 'var(--color-text-secondary)' }}><Clock size={14} style={{ verticalAlign: 'text-bottom', marginRight: '4px' }} />{item.time}</td>
+                            <td style={{ color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>
+                                <Clock size={14} style={{ verticalAlign: 'text-bottom', marginRight: '4px' }} />
+                                {item.time}
+                            </td>
                             <td>
                                 <Badge variant={
                                     item.priority === 'High' ? 'error' :
                                         item.priority === 'Medium' ? 'warning' :
                                             'info'
                                 }>
-                                    {item.priority}
+                                    {item.priority.toUpperCase()}
                                 </Badge>
                             </td>
                             <td>
@@ -124,7 +154,10 @@ export const Dashboard: React.FC = () => {
                                         {item.confidence}
                                     </span>
                                 ) : (
-                                    <span>{item.evidence}</span>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        {item.evidence === 'Video' ? <Video size={14} /> : <FileText size={14} />}
+                                        {item.evidence}
+                                    </span>
                                 )}
                             </td>
                             <td>

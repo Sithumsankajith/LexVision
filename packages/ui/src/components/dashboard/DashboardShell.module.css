@@ -1,7 +1,7 @@
 .shell {
     display: flex;
     min-height: 100vh;
-    background-color: var(--color-bg-secondary);
+    background-color: var(--color-background);
 }
 
 .main {

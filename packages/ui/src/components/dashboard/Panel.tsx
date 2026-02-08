@@ -2,8 +2,8 @@ import React from 'react';
 import type { ReactNode } from 'react';
 import styles from './Panel.module.css';
 
-interface PanelProps extends React.HTMLAttributes<HTMLDivElement> {
-    title?: string;
+interface PanelProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'title'> {
+    title?: ReactNode;
     action?: ReactNode;
     children: ReactNode;
     noPadding?: boolean;

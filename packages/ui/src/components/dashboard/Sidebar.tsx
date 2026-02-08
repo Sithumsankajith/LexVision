@@ -23,13 +23,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ logo, children, footer, isOpen
     );
 };
 
-interface SidebarItemProps {
+interface SidebarItemProps extends React.HTMLAttributes<HTMLElement> {
     icon?: ReactNode;
     label: string;
     isActive?: boolean;
     onClick?: () => void;
-    to?: string; // Optional for wrapping with NavLink
-    as?: React.ElementType; // To allow passing NavLink or other components
+    to?: string;
+    as?: React.ElementType;
+    [key: string]: any; // Allow other props like 'end' for NavLink
 }
 
 export const SidebarItem: React.FC<SidebarItemProps> = ({ icon, label, isActive, onClick, as: Component = 'button', ...props }) => {

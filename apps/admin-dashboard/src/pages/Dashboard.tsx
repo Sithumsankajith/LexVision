@@ -1,13 +1,10 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
     Users,
     AlertCircle,
     CheckCircle,
     XCircle,
-    MoreHorizontal,
-    TrendingUp,
-    TrendingDown,
-    Minus
+    MoreHorizontal
 } from 'lucide-react';
 import { Button } from '@lexvision/ui';
 import {
