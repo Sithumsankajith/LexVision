@@ -1,0 +1,168 @@
+.detailsContainer {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: var(--space-6);
+    height: calc(100vh - 140px);
+    /* Adjust based on topbar/padding */
+}
+
+.evidenceColumn {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    height: 100%;
+}
+
+.evidenceViewer {
+    flex: 1;
+    background-color: #000;
+    border-radius: var(--radius-lg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.evidencePlaceholder {
+    color: var(--color-text-inverse);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-4);
+}
+
+.metadataCard {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-5);
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-4);
+}
+
+.metaItem {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.metaLabel {
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+.metaValue {
+    font-weight: 600;
+    color: var(--color-text);
+}
+
+.actionColumn {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    height: 100%;
+}
+
+.actionPanel {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-6);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+    flex: 1;
+}
+
+.actionHeader {
+    border-bottom: 1px solid var(--color-border);
+    padding-bottom: var(--space-4);
+}
+
+.actionTitle {
+    margin: 0;
+    font-size: 1.125rem;
+    font-weight: 600;
+}
+
+.timeline {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    margin-top: var(--space-2);
+}
+
+.timelineItem {
+    display: flex;
+    gap: var(--space-3);
+    font-size: 0.875rem;
+}
+
+.timelineDot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: var(--color-border);
+    margin-top: 6px;
+    position: relative;
+}
+
+.timelineDot::after {
+    content: '';
+    position: absolute;
+    top: 10px;
+    left: 4px;
+    /* Center with 10px width */
+    width: 2px;
+    height: 100%;
+    /* Ideally dynamic, simplified for CSS */
+    background-color: var(--color-border);
+    min-height: 20px;
+}
+
+.timelineItem:last-child .timelineDot::after {
+    display: none;
+}
+
+.timelineContent {
+    flex: 1;
+}
+
+.timelineTime {
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+}
+
+.actionButtons {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.notesArea {
+    width: 100%;
+    padding: var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-bg-secondary);
+    min-height: 100px;
+    resize: vertical;
+    font-family: inherit;
+}
+
+@media (max-width: 1024px) {
+    .detailsContainer {
+        grid-template-columns: 1fr;
+        height: auto;
+    }
+
+    .evidenceViewer {
+        height: 400px;
+    }
+}
