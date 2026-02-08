@@ -1,0 +1,148 @@
+.layout {
+    display: flex;
+    min-height: 100vh;
+    background-color: var(--color-bg-secondary);
+}
+
+.sidebar {
+    width: 280px;
+    background-color: var(--color-surface);
+    border-right: 1px solid var(--color-border);
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    height: 100vh;
+    transition: transform 0.3s ease;
+    z-index: 50;
+}
+
+.sidebarHeader {
+    height: 64px;
+    display: flex;
+    align-items: center;
+    padding: 0 var(--space-6);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.logo {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--color-primary);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.nav {
+    flex: 1;
+    padding: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.navItem {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    border-radius: var(--radius-md);
+    transition: all 0.2s;
+    font-weight: 500;
+}
+
+.navItem:hover {
+    background-color: var(--color-bg-secondary);
+    color: var(--color-text);
+}
+
+.navItem.active {
+    background-color: var(--color-primary-light);
+    color: var(--color-primary);
+}
+
+.userSection {
+    padding: var(--space-4);
+    border-top: 1px solid var(--color-border);
+}
+
+.mainContent {
+    flex: 1;
+    margin-left: 280px;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.topbar {
+    height: 64px;
+    background-color: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+    display: flex;
+    align-items: center;
+    padding: 0 var(--space-8);
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    gap: var(--space-4);
+}
+
+.mobileToggle {
+    display: none;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--color-text);
+}
+
+.pageTitle {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: 0;
+    color: var(--color-text);
+}
+
+.searchBar {
+    margin-left: auto;
+    width: 300px;
+}
+
+.contentArea {
+    padding: var(--space-8);
+    flex: 1;
+    overflow-y: auto;
+}
+
+@media (max-width: 1024px) {
+    .sidebar {
+        transform: translateX(-100%);
+    }
+
+    .sidebar.open {
+        transform: translateX(0);
+        box-shadow: var(--shadow-xl);
+    }
+
+    .mainContent {
+        margin-left: 0;
+    }
+
+    .mobileToggle {
+        display: block;
+    }
+
+    .searchBar {
+        display: none;
+        /* Hide on small screens for simplicity */
+    }
+
+    .topbar {
+        padding: 0 var(--space-4);
+    }
+
+    .contentArea {
+        padding: var(--space-4);
+    }
+}
