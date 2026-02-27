@@ -24,6 +24,10 @@ export const Queue: React.FC = () => {
             setLoading(false);
         };
         fetchReports();
+
+        // Poll for real-time updates
+        const interval = setInterval(fetchReports, 3000);
+        return () => clearInterval(interval);
     }, []);
 
     return (

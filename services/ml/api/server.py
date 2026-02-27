@@ -19,6 +19,9 @@ def patched_load(*args, **kwargs):
     return original_load(*args, **kwargs)
 torch.load = patched_load
 
+import sqlite3
+import json
+
 app = FastAPI(title="LexVision ML Inference API")
 
 # Allow CORS for frontend integration
@@ -30,34 +33,67 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# === IN-MEMORY DATABASE FOR DEMO ===
-mock_db = []
+base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
-def seed_db():
-    if len(mock_db) > 0: return
-    for i in range(5):
-        now = datetime.utcnow()
-        mock_db.append({
-            "id": str(uuid.uuid4()),
-            "trackingId": f"LEX-2026-{1000 + i}",
-            "citizen": {"email": f"citizen{i}@example.com"},
-            "violationType": 'red-light' if i % 3 == 0 else ('helmet' if i % 3 == 1 else 'white-line'),
-            "datetime": now.isoformat() + "Z",
-            "location": {
-                "lat": 6.9271, "lng": 79.8612,
-                "address": 'Galle Rd, Col 03' if i % 2 == 0 else 'Union Place, Col 02',
-                "city": 'Colombo'
-            },
-            "evidence": [{
-                "id": f"ev-{i}", "type": 'image', "url": 'https://via.placeholder.com/600x400', "name": f"capture_{i}.jpg", "size": 102400
-            }],
-            "vehicle": {},
-            "status": 'submitted' if i < 2 else ('under-review' if i < 4 else 'verified'),
-            "createdAt": (now - timedelta(days=i)).isoformat() + "Z",
-            "updatedAt": (now - timedelta(hours=i)).isoformat() + "Z"
-        })
+# === SQLITE DATABASE FOR DEMO ===
+DB_FILE = os.path.join(base_dir, "db.sqlite3")
 
-seed_db()
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS reports (
+            id TEXT PRIMARY KEY,
+            trackingId TEXT,
+            status TEXT,
+            createdAt TEXT,
+            updatedAt TEXT,
+            data TEXT
+        )
+    ''')
+    conn.commit()
+
+    # Check if empty to seed
+    c.execute("SELECT count(*) FROM reports")
+    if c.fetchone()[0] == 0:
+        for i in range(5):
+            now = datetime.utcnow()
+            rid = str(uuid.uuid4())
+            tracking_id = f"LEX-2026-{1000 + i}"
+            status = 'submitted' if i < 2 else ('under-review' if i < 4 else 'verified')
+            created_at = (now - timedelta(days=i)).isoformat() + "Z"
+            updated_at = (now - timedelta(hours=i)).isoformat() + "Z"
+            
+            report_data = {
+                "id": rid,
+                "trackingId": tracking_id,
+                "citizen": {"email": f"citizen{i}@example.com"},
+                "violationType": 'red-light' if i % 3 == 0 else ('helmet' if i % 3 == 1 else 'white-line'),
+                "datetime": now.isoformat() + "Z",
+                "location": {
+                    "lat": 6.9271, "lng": 79.8612,
+                    "address": 'Galle Rd, Col 03' if i % 2 == 0 else 'Union Place, Col 02',
+                    "city": 'Colombo'
+                },
+                "evidence": [{
+                    "id": f"ev-{i}", "type": 'image', "url": 'https://via.placeholder.com/600x400', "name": f"capture_{i}.jpg", "size": 102400
+                }],
+                "vehicle": {},
+                "status": status,
+                "createdAt": created_at,
+                "updatedAt": updated_at
+            }
+            c.execute("INSERT INTO reports VALUES (?, ?, ?, ?, ?, ?)", 
+                      (rid, tracking_id, status, created_at, updated_at, json.dumps(report_data)))
+        conn.commit()
+    conn.close()
+
+init_db()
+
+def get_db_connection():
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 class ReportUpdate(BaseModel):
     status: str
@@ -65,14 +101,19 @@ class ReportUpdate(BaseModel):
 
 @app.get("/api/reports")
 def get_reports():
-    return mock_db
+    conn = get_db_connection()
+    reports = conn.execute("SELECT data FROM reports").fetchall()
+    conn.close()
+    return [json.loads(r['data']) for r in reports]
 
 @app.get("/api/reports/{identifier}")
 def get_report(identifier: str):
-    for r in mock_db:
-        if r["id"] == identifier or r["trackingId"] == identifier:
-            return r
-    raise HTTPException(status_code=404, detail="Report not found")
+    conn = get_db_connection()
+    row = conn.execute("SELECT data FROM reports WHERE id = ? OR trackingId = ?", (identifier, identifier)).fetchone()
+    conn.close()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return json.loads(row['data'])
 
 @app.post("/api/reports")
 def create_report(report: dict):
@@ -81,22 +122,36 @@ def create_report(report: dict):
     report["status"] = "submitted"
     report["createdAt"] = datetime.utcnow().isoformat() + "Z"
     report["updatedAt"] = report["createdAt"]
-    mock_db.append(report)
+    
+    conn = get_db_connection()
+    conn.execute("INSERT INTO reports VALUES (?, ?, ?, ?, ?, ?)", 
+                 (report["id"], report["trackingId"], report["status"], report["createdAt"], report["updatedAt"], json.dumps(report)))
+    conn.commit()
+    conn.close()
     return report
 
 @app.put("/api/reports/{report_id}/status")
 def update_report_status(report_id: str, update: ReportUpdate):
-    for r in mock_db:
-        if r["id"] == report_id:
-            r["status"] = update.status
-            r["updatedAt"] = datetime.utcnow().isoformat() + "Z"
-            if update.notes:
-                r["notes"] = f"{r.get('notes', '')}\n{update.notes}".strip()
-            return r
-    raise HTTPException(status_code=404, detail="Report not found")
+    conn = get_db_connection()
+    row = conn.execute("SELECT data FROM reports WHERE id = ?", (report_id,)).fetchone()
+    if row is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Report not found")
+        
+    report = json.loads(row['data'])
+    report["status"] = update.status
+    report["updatedAt"] = datetime.utcnow().isoformat() + "Z"
+    if update.notes:
+        report["notes"] = f"{report.get('notes', '')}\n{update.notes}".strip()
+        
+    conn.execute("UPDATE reports SET status = ?, updatedAt = ?, data = ? WHERE id = ?",
+                 (report["status"], report["updatedAt"], json.dumps(report), report_id))
+    conn.commit()
+    conn.close()
+    return report
 
 # === ML MODELS ===
-base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
 models_dir = os.path.join(base_dir, "models")
 temp_dir = os.path.join(base_dir, "temp")
 os.makedirs(temp_dir, exist_ok=True)
