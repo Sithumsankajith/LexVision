@@ -14,6 +14,13 @@ This directory contains all machine learning related code and artifacts for the 
 
 ## Getting Started
 
+### Prerequisites
+Install the required dependencies using pip:
+```bash
+pip install -r requirements.txt
+```
+
+### Workflow
 1. Place your datasets in `datasets/`.
 2. Use scripts in `training/` to train your models.
 3. Save trained models to `models/`.
