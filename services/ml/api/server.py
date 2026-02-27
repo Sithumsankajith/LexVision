@@ -2,9 +2,11 @@ import os
 import shutil
 import uuid
 import torch
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
+from pydantic import BaseModel
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from datetime import datetime, timedelta
 from ultralytics import YOLO
 
 # Fix for torch 2.6+ security restriction on loading custom classes
@@ -28,7 +30,72 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load Models
+# === IN-MEMORY DATABASE FOR DEMO ===
+mock_db = []
+
+def seed_db():
+    if len(mock_db) > 0: return
+    for i in range(5):
+        now = datetime.utcnow()
+        mock_db.append({
+            "id": str(uuid.uuid4()),
+            "trackingId": f"LEX-2026-{1000 + i}",
+            "citizen": {"email": f"citizen{i}@example.com"},
+            "violationType": 'red-light' if i % 3 == 0 else ('helmet' if i % 3 == 1 else 'white-line'),
+            "datetime": now.isoformat() + "Z",
+            "location": {
+                "lat": 6.9271, "lng": 79.8612,
+                "address": 'Galle Rd, Col 03' if i % 2 == 0 else 'Union Place, Col 02',
+                "city": 'Colombo'
+            },
+            "evidence": [{
+                "id": f"ev-{i}", "type": 'image', "url": 'https://via.placeholder.com/600x400', "name": f"capture_{i}.jpg", "size": 102400
+            }],
+            "vehicle": {},
+            "status": 'submitted' if i < 2 else ('under-review' if i < 4 else 'verified'),
+            "createdAt": (now - timedelta(days=i)).isoformat() + "Z",
+            "updatedAt": (now - timedelta(hours=i)).isoformat() + "Z"
+        })
+
+seed_db()
+
+class ReportUpdate(BaseModel):
+    status: str
+    notes: Optional[str] = None
+
+@app.get("/api/reports")
+def get_reports():
+    return mock_db
+
+@app.get("/api/reports/{identifier}")
+def get_report(identifier: str):
+    for r in mock_db:
+        if r["id"] == identifier or r["trackingId"] == identifier:
+            return r
+    raise HTTPException(status_code=404, detail="Report not found")
+
+@app.post("/api/reports")
+def create_report(report: dict):
+    report["id"] = str(uuid.uuid4())
+    report["trackingId"] = f"LEX-{datetime.now().year}-{str(uuid.uuid4())[:4].upper()}"
+    report["status"] = "submitted"
+    report["createdAt"] = datetime.utcnow().isoformat() + "Z"
+    report["updatedAt"] = report["createdAt"]
+    mock_db.append(report)
+    return report
+
+@app.put("/api/reports/{report_id}/status")
+def update_report_status(report_id: str, update: ReportUpdate):
+    for r in mock_db:
+        if r["id"] == report_id:
+            r["status"] = update.status
+            r["updatedAt"] = datetime.utcnow().isoformat() + "Z"
+            if update.notes:
+                r["notes"] = f"{r.get('notes', '')}\n{update.notes}".strip()
+            return r
+    raise HTTPException(status_code=404, detail="Report not found")
+
+# === ML MODELS ===
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 models_dir = os.path.join(base_dir, "models")
 temp_dir = os.path.join(base_dir, "temp")
