@@ -13,15 +13,10 @@ import {
     DataTable,
     Badge
 } from '@lexvision/ui';
+import { mockDb } from '@lexvision/api-client';
+import type { Report } from '@lexvision/types';
 
-// Mock Data
-// ... same mock data as before ...
-const KPIS = [
-    { label: 'Total Reports', value: '1,234', trend: '+12%', isUp: true, icon: <Users size={20} color="#3b82f6" />, color: 'primary' },
-    { label: 'Pending Review', value: '56', trend: '-5%', isUp: false, icon: <AlertCircle size={20} color="#f59e0b" />, color: 'warning' },
-    { label: 'Verified', value: '892', trend: '+8%', isUp: true, icon: <CheckCircle size={20} color="#10b981" />, color: 'success' },
-    { label: 'Rejected', value: '286', trend: '+2%', isUp: false, icon: <XCircle size={20} color="#ef4444" />, color: 'error' },
-];
+// KPIs generated dynamically below.
 
 const RECENT_ACTIVITY = [
     { time: '10:42 AM', action: 'Officer Silva verified Report #LEX-982' },
@@ -31,21 +26,39 @@ const RECENT_ACTIVITY = [
     { time: 'Yesterday', action: 'Weekly summary report generated' },
 ];
 
-const RECENT_REPORTS = [
-    { id: 'LEX-2026-A1', type: 'Red Light', date: '2026-02-08', status: 'new', location: 'Duplication Rd, Col 03' },
-    { id: 'LEX-2026-A2', type: 'No Helmet', date: '2026-02-08', status: 'review', location: 'Galle Rd, Col 04' },
-    { id: 'LEX-2026-B5', type: 'Parking', date: '2026-02-07', status: 'approved', location: 'Union Place, Col 02' },
-    { id: 'LEX-2026-C3', type: 'Lane Line', date: '2026-02-07', status: 'rejected', location: 'Baseline Rd, Col 09' },
-    { id: 'LEX-2026-D9', type: 'No Helmet', date: '2026-02-07', status: 'approved', location: 'Havelock Rd, Col 05' },
-];
-
 export const Dashboard: React.FC = () => {
+    const [reports, setReports] = React.useState<Report[]>([]);
+
+    React.useEffect(() => {
+        const fetchReports = async () => {
+            const data = await mockDb.getAllReports();
+            setReports(data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+        };
+        fetchReports();
+
+        const interval = setInterval(fetchReports, 3000);
+        return () => clearInterval(interval);
+    }, []);
+
+    // Calculate dynamic KPIs
+    const totalReports = reports.length;
+    const pendingReview = reports.filter(r => r.status === 'under-review').length;
+    const verified = reports.filter(r => r.status === 'verified').length;
+    const rejected = reports.filter(r => r.status === 'rejected').length;
+
+    const dynamicKPIs = [
+        { label: 'Total Reports', value: totalReports.toString(), trend: 'Live Data', isUp: true, icon: <Users size={20} color="#3b82f6" />, color: 'primary' },
+        { label: 'Pending Review', value: pendingReview.toString(), trend: 'Live Data', isUp: false, icon: <AlertCircle size={20} color="#f59e0b" />, color: 'warning' },
+        { label: 'Verified', value: verified.toString(), trend: 'Live Data', isUp: true, icon: <CheckCircle size={20} color="#10b981" />, color: 'success' },
+        { label: 'Rejected', value: rejected.toString(), trend: 'Live Data', isUp: false, icon: <XCircle size={20} color="#ef4444" />, color: 'error' },
+    ];
+
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
 
             {/* KPI Cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-6)' }}>
-                {KPIS.map((kpi, index) => (
+                {dynamicKPIs.map((kpi, index) => (
                     <KpiCard
                         key={index}
                         label={kpi.label}
@@ -103,17 +116,17 @@ export const Dashboard: React.FC = () => {
                 noPadding
             >
                 <DataTable headers={['Tracking ID', 'Violation Type', 'Date', 'Location', 'Status', 'Action']}>
-                    {RECENT_REPORTS.map((report) => (
+                    {reports.slice(0, 10).map((report) => (
                         <tr key={report.id}>
-                            <td style={{ fontFamily: 'monospace' }}>{report.id}</td>
-                            <td>{report.type}</td>
-                            <td>{report.date}</td>
-                            <td>{report.location}</td>
+                            <td style={{ fontFamily: 'monospace' }}>{report.trackingId}</td>
+                            <td>{report.violationType.replace('-', ' ')}</td>
+                            <td>{new Date(report.datetime).toLocaleDateString()}</td>
+                            <td>{report.location.address || report.location.city}</td>
                             <td>
                                 <Badge variant={
-                                    report.status === 'new' ? 'info' :
-                                        report.status === 'review' ? 'warning' :
-                                            report.status === 'approved' ? 'success' :
+                                    report.status === 'submitted' ? 'info' :
+                                        report.status === 'under-review' ? 'warning' :
+                                            report.status === 'verified' ? 'success' :
                                                 'error'
                                 }>
                                     {report.status.replace('-', ' ')}
@@ -124,6 +137,11 @@ export const Dashboard: React.FC = () => {
                             </td>
                         </tr>
                     ))}
+                    {reports.length === 0 && (
+                        <tr>
+                            <td colSpan={6} style={{ textAlign: 'center', padding: '2rem' }}>No recent reports.</td>
+                        </tr>
+                    )}
                 </DataTable>
             </Panel>
 

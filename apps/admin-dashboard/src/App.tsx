@@ -1,6 +1,9 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
+import { Reports } from './pages/Reports';
+import { Users } from './pages/Users';
+import { Settings } from './pages/Settings';
 import { DashboardLayout } from './layouts/DashboardLayout';
 
 function App() {
@@ -11,6 +14,9 @@ function App() {
                 <Route path="/login" element={<Login />} />
                 <Route path="/dashboard" element={<DashboardLayout />}>
                     <Route index element={<Dashboard />} />
+                    <Route path="reports" element={<Reports />} />
+                    <Route path="users" element={<Users />} />
+                    <Route path="settings" element={<Settings />} />
                 </Route>
             </Routes>
         </Router>

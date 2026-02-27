@@ -22,10 +22,10 @@ export const DashboardLayout: React.FC = () => {
     const location = useLocation();
 
     const getPageTitle = () => {
-        if (location.pathname === '/') return 'Officer Dashboard';
-        if (location.pathname.startsWith('/queue')) return 'Violation Queue';
-        if (location.pathname.startsWith('/history')) return 'Case History';
-        if (location.pathname.startsWith('/settings')) return 'Settings';
+        if (location.pathname === '/dashboard') return 'Officer Dashboard';
+        if (location.pathname.startsWith('/dashboard/queue')) return 'Violation Queue';
+        if (location.pathname.startsWith('/dashboard/history')) return 'Case History';
+        if (location.pathname.startsWith('/dashboard/settings')) return 'Settings';
         return 'Police Portal';
     };
 
@@ -52,26 +52,26 @@ export const DashboardLayout: React.FC = () => {
         >
             <SidebarItem
                 as={NavLink}
-                to="/"
+                to="/dashboard"
                 icon={<LayoutDashboard size={20} />}
                 label="Dashboard"
                 end
             />
             <SidebarItem
                 as={NavLink}
-                to="/queue"
+                to="/dashboard/queue"
                 icon={<List size={20} />}
                 label="My Queue"
             />
             <SidebarItem
                 as={NavLink}
-                to="/history"
+                to="/dashboard/history"
                 icon={<History size={20} />}
                 label="History"
             />
             <SidebarItem
                 as={NavLink}
-                to="/settings"
+                to="/dashboard/settings"
                 icon={<Settings size={20} />}
                 label="Settings"
             />

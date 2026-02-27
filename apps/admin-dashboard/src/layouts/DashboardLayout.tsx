@@ -22,13 +22,11 @@ export const DashboardLayout: React.FC = () => {
     const location = useLocation();
 
     const getPageTitle = () => {
-        switch (location.pathname) {
-            case '/': return 'Dashboard';
-            case '/reports': return 'Reports Management';
-            case '/users': return 'User Management';
-            case '/settings': return 'Settings';
-            default: return 'Admin Portal';
-        }
+        if (location.pathname === '/dashboard') return 'Dashboard';
+        if (location.pathname.startsWith('/dashboard/reports')) return 'Reports Management';
+        if (location.pathname.startsWith('/dashboard/users')) return 'User Management';
+        if (location.pathname.startsWith('/dashboard/settings')) return 'Settings';
+        return 'Admin Portal';
     };
 
     const sidebar = (
@@ -48,26 +46,26 @@ export const DashboardLayout: React.FC = () => {
         >
             <SidebarItem
                 as={NavLink}
-                to="/"
+                to="/dashboard"
                 icon={<LayoutDashboard size={20} />}
                 label="Dashboard"
                 end
             />
             <SidebarItem
                 as={NavLink}
-                to="/reports"
+                to="/dashboard/reports"
                 icon={<FileText size={20} />}
                 label="Reports"
             />
             <SidebarItem
                 as={NavLink}
-                to="/users"
+                to="/dashboard/users"
                 icon={<Users size={20} />}
                 label="Users"
             />
             <SidebarItem
                 as={NavLink}
-                to="/settings"
+                to="/dashboard/settings"
                 icon={<Settings size={20} />}
                 label="Settings"
             />

@@ -170,6 +170,14 @@ except Exception as e:
     helmet_model = None
     anpr_model = None
 
+@app.get("/")
+def read_root():
+    return {
+        "service": "LexVision ML API",
+        "status": "online",
+        "endpoints": ["/api/reports", "/predict", "/health", "/docs"]
+    }
+
 @app.get("/health")
 def health_check():
     return {"status": "ok", "models_loaded": helmet_model is not None and anpr_model is not None}

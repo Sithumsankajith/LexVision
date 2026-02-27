@@ -15,35 +15,53 @@ import {
     DataTable,
     Badge
 } from '@lexvision/ui';
+import { mockDb } from '@lexvision/api-client';
+import type { Report } from '@lexvision/types';
 
-// Mock Data
-const KPIS = [
-    { label: 'Assigned Cases', value: '12', sub: '4 New today', color: 'primary', icon: <FileText size={20} color="#3b82f6" /> },
-    { label: 'High Priority', value: '3', sub: 'Action required', color: 'error', icon: <AlertTriangle size={20} color="#ef4444" /> },
-    { label: 'Pending Review', value: '8', sub: 'Avg wait: 2h', color: 'warning', icon: <Clock size={20} color="#f59e0b" /> },
-    { label: 'Resolved Today', value: '24', sub: 'Personal best', color: 'success', icon: <CheckCircle size={20} color="#10b981" /> },
-];
-
-const AI_QUEUE = [
-    { id: 'AI-2026-992', type: 'Red Light', time: '10 min ago', location: 'Galle Rd / Bambalapitiya', confidence: '98%', priority: 'High' },
-    { id: 'AI-2026-991', type: 'No Helmet', time: '25 min ago', location: 'Duplication Rd / Col 03', confidence: '92%', priority: 'Medium' },
-    { id: 'AI-2026-988', type: 'Lane Line', time: '42 min ago', location: 'Baseline Rd / Borella', confidence: '85%', priority: 'Low' },
-    { id: 'AI-2026-985', type: 'Illegal Turn', time: '1h ago', location: 'Havelock Rd / Col 05', confidence: '96%', priority: 'High' },
-    { id: 'AI-2026-982', type: 'No Helmet', time: '1h 20m ago', location: 'High Level Rd / Nugegoda', confidence: '99%', priority: 'Medium' },
-];
-
-const CITIZEN_QUEUE = [
-    { id: 'REP-2026-455', type: 'Reckless Driving', time: '5 min ago', location: 'Marine Drive', evidence: 'Video', priority: 'High' },
-    { id: 'REP-2026-452', type: 'Parking', time: '30 min ago', location: 'Union Place', evidence: 'Image', priority: 'Low' },
-    { id: 'REP-2026-449', type: 'Obstructing', time: '2h ago', location: 'Town Hall', evidence: 'Image', priority: 'Medium' },
-];
-
+// KPIs generated dynamically below
 export const Dashboard: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'ai' | 'citizen'>('ai');
-
-    const currentQueue = activeTab === 'ai' ? AI_QUEUE : CITIZEN_QUEUE;
-
+    const [reports, setReports] = useState<Report[]>([]);
+    const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
+
+    React.useEffect(() => {
+        const fetchReports = async () => {
+            const data = await mockDb.getAllReports();
+            setReports(data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+            setLoading(false);
+        };
+        fetchReports();
+
+        const interval = setInterval(fetchReports, 3000);
+        return () => clearInterval(interval);
+    }, []);
+
+    // Filter reports for the Dashboard (only those needing attention)
+    const activeReports = reports.filter(r => r.status === 'submitted' || r.status === 'under-review');
+
+    // Split into AI and Citizen queues
+    const aiQueue = activeReports.filter(r => r.aiAnalysis?.detectedViolationType);
+    const citizenQueue = activeReports.filter(r => !r.aiAnalysis?.detectedViolationType);
+
+    const currentQueue = activeTab === 'ai' ? aiQueue : citizenQueue;
+
+    // Calculate dynamic KPIs
+    const resolvedToday = reports.filter(r =>
+        (r.status === 'verified' || r.status === 'rejected') &&
+        new Date(r.updatedAt).toDateString() === new Date().toDateString()
+    ).length;
+
+    const assignedCases = activeReports.length;
+    const highPriority = activeReports.filter(r => r.violationType === 'red-light').length;
+    const pendingReview = activeReports.filter(r => r.status === 'under-review').length;
+
+    const dynamicKPIs = [
+        { label: 'Assigned Cases', value: assignedCases.toString(), sub: 'Active Queue', color: 'primary', icon: <FileText size={20} color="#3b82f6" /> },
+        { label: 'High Priority', value: highPriority.toString(), sub: 'Action required', color: 'error', icon: <AlertTriangle size={20} color="#ef4444" /> },
+        { label: 'Pending Review', value: pendingReview.toString(), sub: 'In Progress', color: 'warning', icon: <Clock size={20} color="#f59e0b" /> },
+        { label: 'Resolved Today', value: resolvedToday.toString(), sub: 'Shift total', color: 'success', icon: <CheckCircle size={20} color="#10b981" /> },
+    ];
 
     const TabButton = ({ active, onClick, icon: Icon, label, count }: any) => (
         <div
@@ -78,7 +96,7 @@ export const Dashboard: React.FC = () => {
 
             {/* Row 1: KPI Cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-6)' }}>
-                {KPIS.map((kpi, index) => (
+                {dynamicKPIs.map((kpi, index) => (
                     <KpiCard
                         key={index}
                         label={kpi.label}
@@ -101,14 +119,14 @@ export const Dashboard: React.FC = () => {
                             onClick={() => setActiveTab('ai')}
                             icon={Video}
                             label="AI Detections"
-                            count="5"
+                            count={aiQueue.length.toString()}
                         />
                         <TabButton
                             active={activeTab === 'citizen'}
                             onClick={() => setActiveTab('citizen')}
                             icon={FileText}
                             label="Citizen Reports"
-                            count="3"
+                            count={citizenQueue.length.toString()}
                         />
                     </div>
                 }
@@ -127,44 +145,47 @@ export const Dashboard: React.FC = () => {
                     activeTab === 'ai' ? 'Confidence' : 'Evidence',
                     'Action'
                 ]}>
-                    {currentQueue.map((item) => (
+                    {currentQueue.slice(0, 10).map((item) => (
                         <tr key={item.id}>
-                            <td style={{ fontFamily: 'monospace', fontWeight: '500' }}>{item.id}</td>
-                            <td>{item.type}</td>
-                            <td>{item.location}</td>
+                            <td style={{ fontFamily: 'monospace', fontWeight: '500' }}>{item.trackingId}</td>
+                            <td>{item.violationType.replace('-', ' ')}</td>
+                            <td>{item.location.address || item.location.city}</td>
                             <td style={{ color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>
                                 <Clock size={14} style={{ verticalAlign: 'text-bottom', marginRight: '4px' }} />
-                                {item.time}
+                                {new Date(item.datetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </td>
                             <td>
                                 <Badge variant={
-                                    item.priority === 'High' ? 'error' :
-                                        item.priority === 'Medium' ? 'warning' :
+                                    (item.violationType === 'red-light') ? 'error' :
+                                        item.violationType === 'helmet' ? 'warning' :
                                             'info'
                                 }>
-                                    {item.priority.toUpperCase()}
+                                    {(item.violationType === 'red-light') ? 'HIGH' :
+                                        item.violationType === 'helmet' ? 'MEDIUM' : 'LOW'}
                                 </Badge>
                             </td>
                             <td>
-                                {'confidence' in item ? (
-                                    <span style={{
-                                        color: parseInt(item.confidence) > 90 ? 'var(--color-success)' : 'var(--color-warning)',
-                                        fontWeight: '600'
-                                    }}>
-                                        {item.confidence}
+                                {activeTab === 'ai' ? (
+                                    <span style={{ color: 'var(--color-success)', fontWeight: '600' }}>
+                                        High
                                     </span>
                                 ) : (
                                     <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                        {item.evidence === 'Video' ? <Video size={14} /> : <FileText size={14} />}
-                                        {item.evidence}
+                                        {item.evidence && item.evidence[0]?.type === 'video' ? <Video size={14} /> : <FileText size={14} />}
+                                        Media
                                     </span>
                                 )}
                             </td>
                             <td>
-                                <Button size="sm" variant="secondary">Review</Button>
+                                <Button size="sm" variant="secondary" onClick={() => navigate(`/queue/${item.id}`)}>Review</Button>
                             </td>
                         </tr>
                     ))}
+                    {currentQueue.length === 0 && !loading && (
+                        <tr>
+                            <td colSpan={7} style={{ textAlign: 'center', padding: '2rem' }}>Queue is empty.</td>
+                        </tr>
+                    )}
                 </DataTable>
             </Panel>
 

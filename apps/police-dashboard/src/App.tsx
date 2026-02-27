@@ -3,6 +3,8 @@ import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { Queue } from './pages/Queue';
 import { ViolationDetails } from './pages/ViolationDetails';
+import { History } from './pages/History';
+import { Settings } from './pages/Settings';
 import { DashboardLayout } from './layouts/DashboardLayout';
 
 function App() {
@@ -14,7 +16,9 @@ function App() {
                 <Route path="/dashboard" element={<DashboardLayout />}>
                     <Route index element={<Dashboard />} />
                     <Route path="queue" element={<Queue />} />
-                    <Route path="violations/:id" element={<ViolationDetails />} />
+                    <Route path="queue/:id" element={<ViolationDetails />} />
+                    <Route path="history" element={<History />} />
+                    <Route path="settings" element={<Settings />} />
                 </Route>
             </Routes>
         </Router>
