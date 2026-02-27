@@ -1,7 +1,14 @@
+import argparse
 import os
 from ultralytics import YOLO
 
 def main():
+    parser = argparse.ArgumentParser(description="Train YOLOv8 for ANPR")
+    parser.add_argument("--epochs", type=int, default=50, help="Number of epochs to train for")
+    parser.add_argument("--imgsz", type=int, default=640, help="Image size for training")
+    parser.add_argument("--device", type=str, default="", help="Device to run training on (e.g., cpu, cuda:0)")
+    args = parser.parse_args()
+
     # Define paths
     base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     data_yaml = os.path.join(base_dir, "datasets", "NumberPlate", "Automatic Plate Number Recognition.v4i.yolov8", "data.yaml")
@@ -11,19 +18,20 @@ def main():
     os.makedirs(models_dir, exist_ok=True)
     
     print(f"Starting ANPR Training with data configuration: {data_yaml}")
+    print(f"Parameters: epochs={args.epochs}, imgsz={args.imgsz}, device={args.device if args.device else 'auto'}")
     
     # Load a pretrained YOLOv8 model (Nano version for fast training/inference)
     model = YOLO("yolov8n.pt")
     
     # Train the model
-    # Note: Adjust epochs and imgsz according to your hardware capabilities
     results = model.train(
         data=data_yaml,
-        epochs=50,       # Number of epochs to train for
-        imgsz=640,       # Image size for training
-        project=models_dir, # Where to save the results
-        name="anpr_v1",     # Name of the current training run
-        exist_ok=True    # Overwrite if exists
+        epochs=args.epochs,
+        imgsz=args.imgsz,
+        project=models_dir, 
+        name="anpr_v1",     
+        exist_ok=True,
+        device=args.device if args.device else None
     )
     
     print(f"Training completed. Model saved to {os.path.join(models_dir, 'anpr_v1')}")

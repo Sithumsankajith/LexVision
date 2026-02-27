@@ -12,6 +12,11 @@ Scripts and notebooks for training machine learning models.
 
 ### Usage
 ```bash
+# Basic usage (defaults to 50 epochs, 640 imgsz)
 python train_helmet.py
 python train_anpr.py
+
+# Advanced usage
+python train_helmet.py --epochs 100 --imgsz 640 --device 0
+python train_anpr.py --epochs 100 --imgsz 640 --device cpu
 ```
