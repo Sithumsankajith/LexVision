@@ -7,3 +7,7 @@ pandas
 matplotlib
 PyYAML
 tqdm
+fastapi
+uvicorn
+python-multipart
+pydantic

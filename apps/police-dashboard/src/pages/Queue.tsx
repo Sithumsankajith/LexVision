@@ -1,25 +1,31 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     Filter,
     Calendar,
-    Video,
-    FileText
+    FileText,
+    BrainCircuit
 } from 'lucide-react';
 import { Button, Input, Select } from '@lexvision/ui';
 import { Panel, DataTable, Badge } from '@lexvision/ui';
-
-// Mock Data for Full Queue
-const FULL_QUEUE = Array.from({ length: 10 }).map((_, i) => ({
-    id: `CASE-2026-${1000 + i}`,
-    type: i % 3 === 0 ? 'Red Light' : i % 3 === 1 ? 'No Helmet' : 'Illegal Parking',
-    source: i % 2 === 0 ? 'AI' : 'Citizen',
-    location: i % 2 === 0 ? 'Galle Rd, Col 03' : 'Union Place, Col 02',
-    timestamp: '2026-02-08 10:30 AM',
-    status: i < 3 ? 'new' : i < 6 ? 'review' : 'resolved',
-    priority: i % 4 === 0 ? 'High' : i % 4 === 1 ? 'Medium' : 'Low',
-}));
+import { mockDb } from '@lexvision/api-client';
+import type { Report } from '@lexvision/types';
 
 export const Queue: React.FC = () => {
+    const [reports, setReports] = useState<Report[]>([]);
+    const [loading, setLoading] = useState(true);
+    const navigate = useNavigate();
+
+    useEffect(() => {
+        const fetchReports = async () => {
+            const data = await mockDb.getAllReports();
+            // Sort by newest first
+            setReports(data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+            setLoading(false);
+        };
+        fetchReports();
+    }, []);
+
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -40,19 +46,10 @@ export const Queue: React.FC = () => {
                         onChange={() => { }}
                         options={[
                             { value: 'all', label: 'All Status' },
-                            { value: 'new', label: 'New' },
-                            { value: 'review', label: 'Under Review' },
-                            { value: 'resolved', label: 'Resolved' }
-                        ]}
-                        style={{ width: '140px' }}
-                    />
-                    <Select
-                        value="all"
-                        onChange={() => { }}
-                        options={[
-                            { value: 'all', label: 'All Types' },
-                            { value: 'ai', label: 'AI Detection' },
-                            { value: 'citizen', label: 'Citizen Report' }
+                            { value: 'submitted', label: 'New' },
+                            { value: 'under-review', label: 'Under Review' },
+                            { value: 'verified', label: 'Verified' },
+                            { value: 'rejected', label: 'Rejected' }
                         ]}
                         style={{ width: '140px' }}
                     />
@@ -63,46 +60,51 @@ export const Queue: React.FC = () => {
 
             {/* Queue Table */}
             <Panel
-                title="All Cases (104)"
-                action={<div style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>Showing 1-10 of 104</div>}
+                title={`All Cases (${reports.length})`}
+                action={<div style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>{loading ? 'Loading...' : `Showing 1-${reports.length} of ${reports.length}`}</div>}
                 noPadding
             >
-                <DataTable headers={['Case ID', 'Source', 'Violation Type', 'Location', 'Timestamp', 'Status', 'Priority', 'Action']}>
-                    {FULL_QUEUE.map((item) => (
+                <DataTable headers={['Case ID', 'Source', 'Violation Type', 'Location', 'Timestamp', 'Status', 'Action']}>
+                    {reports.map((item) => (
                         <tr key={item.id}>
-                            <td style={{ fontFamily: 'monospace', fontWeight: '600' }}>{item.id}</td>
+                            <td style={{ fontFamily: 'monospace', fontWeight: '600' }}>{item.trackingId}</td>
                             <td>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    {item.source === 'AI' ? <Video size={16} color="var(--color-primary)" /> : <FileText size={16} color="var(--color-info)" />}
-                                    {item.source}
+                                    {item.aiAnalysis?.detectedViolationType ? (
+                                        <Badge variant="warning"><BrainCircuit size={12} style={{ marginRight: 4 }} /> AI Analyzed</Badge>
+                                    ) : (
+                                        <><FileText size={16} color="var(--color-info)" /> Citizen</>
+                                    )}
                                 </div>
                             </td>
-                            <td>{item.type}</td>
-                            <td>{item.location}</td>
-                            <td>{item.timestamp}</td>
+                            <td>
+                                {item.violationType.replace('-', ' ')}
+                                {item.aiAnalysis?.detectedViolationType && (
+                                    <div style={{ fontSize: '0.7rem', color: 'var(--color-primary)' }}>AI: {item.aiAnalysis.detectedViolationType.replace('-', ' ')}</div>
+                                )}
+                            </td>
+                            <td>{item.location.address || item.location.city}</td>
+                            <td>{new Date(item.datetime).toLocaleString()}</td>
                             <td>
                                 <Badge variant={
-                                    item.status === 'new' ? 'info' :
-                                        item.status === 'review' ? 'warning' :
-                                            'success'
+                                    item.status === 'submitted' ? 'info' :
+                                        item.status === 'under-review' ? 'warning' :
+                                            item.status === 'rejected' ? 'error' :
+                                                'success'
                                 }>
-                                    {item.status}
+                                    {item.status.replace('-', ' ')}
                                 </Badge>
                             </td>
                             <td>
-                                <Badge variant={
-                                    item.priority === 'High' ? 'error' :
-                                        item.priority === 'Medium' ? 'warning' :
-                                            'info'
-                                }>
-                                    {item.priority}
-                                </Badge>
-                            </td>
-                            <td>
-                                <Button size="sm" variant="secondary">Review</Button>
+                                <Button size="sm" variant="secondary" onClick={() => navigate(`/queue/${item.id}`)}>Review</Button>
                             </td>
                         </tr>
                     ))}
+                    {reports.length === 0 && !loading && (
+                        <tr>
+                            <td colSpan={7} style={{ textAlign: 'center', padding: '2rem' }}>No cases found.</td>
+                        </tr>
+                    )}
                 </DataTable>
             </Panel>
         </div>

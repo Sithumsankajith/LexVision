@@ -88,6 +88,37 @@ export const ReportWizard: React.FC = () => {
     const submitReport = async () => {
         setIsSubmitting(true);
         try {
+            // 1. Run ML Inference on the first evidence file if it's an image
+            let aiAnalysis = undefined;
+            if (formData.evidenceFiles.length > 0) {
+                const firstFile = formData.evidenceFiles[0];
+                if (firstFile.type.startsWith('image/')) {
+                    try {
+                        const fd = new FormData();
+                        fd.append('file', firstFile);
+
+                        // Call local FastAPI server
+                        const mlRes = await fetch('http://localhost:8000/predict', {
+                            method: 'POST',
+                            body: fd
+                        });
+
+                        if (mlRes.ok) {
+                            const mlData = await mlRes.json();
+                            if (mlData.success) {
+                                aiAnalysis = {
+                                    detectedViolationType: mlData.detectedViolationType,
+                                    detectedPlate: mlData.detectedPlate
+                                };
+                            }
+                        }
+                    } catch (mlErr) {
+                        console.warn('ML Inference server not reachable or failed', mlErr);
+                    }
+                }
+            }
+
+            // 2. Save report to mock DB
             const report = await mockDb.createReport({
                 violationType: formData.violationType as ViolationType,
                 datetime: `${formData.date}T${formData.time}`,
@@ -103,14 +134,14 @@ export const ReportWizard: React.FC = () => {
                     url: URL.createObjectURL(f), // Mock URL
                     name: f.name,
                     size: f.size,
-                    file: f
                 })),
                 vehicle: {
                     plate: formData.vehiclePlate,
                     type: formData.vehicleType,
                     notes: formData.description,
                 },
-                citizen: {} // Anonymous by default for wizard
+                citizen: {}, // Anonymous by default for wizard
+                aiAnalysis: aiAnalysis
             });
             setSubmittedId(report.trackingId);
         } catch (error) {

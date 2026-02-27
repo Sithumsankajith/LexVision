@@ -43,6 +43,11 @@ export interface Report {
   createdAt: string;
   updatedAt: string;
   notes?: string;
+  aiAnalysis?: {
+    detectedViolationType?: string | null;
+    detectedPlate?: string | null;
+    confidence?: number;
+  };
 }
 
 export interface ViolationStats {
