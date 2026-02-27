@@ -1,11 +1,21 @@
 import os
 import shutil
 import uuid
+import torch
 from typing import Dict, Any
-
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from ultralytics import YOLO
+
+# Fix for torch 2.6+ security restriction on loading custom classes
+# We monkeypatch torch.load to default weights_only=False because YOLOv8 models
+# contain various custom architecture classes that are blocked by default.
+original_load = torch.load
+def patched_load(*args, **kwargs):
+    if 'weights_only' not in kwargs:
+        kwargs['weights_only'] = False
+    return original_load(*args, **kwargs)
+torch.load = patched_load
 
 app = FastAPI(title="LexVision ML Inference API")
 
