@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
     LayoutDashboard,
     List,
@@ -16,10 +16,17 @@ import {
     SidebarItem,
     Topbar
 } from '@lexvision/ui';
+import { auth } from '@lexvision/api-client';
 
 export const DashboardLayout: React.FC = () => {
     const [isMobileOpen, setIsMobileOpen] = useState(false);
     const location = useLocation();
+    const navigate = useNavigate();
+
+    const handleLogout = () => {
+        auth.logout();
+        navigate('/login');
+    };
 
     const getPageTitle = () => {
         if (location.pathname === '/dashboard') return 'Officer Dashboard';
@@ -44,7 +51,7 @@ export const DashboardLayout: React.FC = () => {
                         <div style={{ fontWeight: '600' }}>Officer Perera</div>
                         <div style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>Traffic Div - Col 03</div>
                     </div>
-                    <Button variant="outline" fullWidth leftIcon={<LogOut size={16} />}>
+                    <Button variant="outline" fullWidth leftIcon={<LogOut size={16} />} onClick={handleLogout}>
                         End Shift
                     </Button>
                 </div>

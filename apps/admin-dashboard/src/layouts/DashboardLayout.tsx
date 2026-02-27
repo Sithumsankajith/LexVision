@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
     LayoutDashboard,
     FileText,
@@ -16,10 +16,17 @@ import {
     SidebarItem,
     Topbar
 } from '@lexvision/ui';
+import { auth } from '@lexvision/api-client';
 
 export const DashboardLayout: React.FC = () => {
     const [isMobileOpen, setIsMobileOpen] = useState(false);
     const location = useLocation();
+    const navigate = useNavigate();
+
+    const handleLogout = () => {
+        auth.logout();
+        navigate('/login');
+    };
 
     const getPageTitle = () => {
         if (location.pathname === '/dashboard') return 'Dashboard';
@@ -39,7 +46,7 @@ export const DashboardLayout: React.FC = () => {
                 </>
             }
             footer={
-                <Button variant="outline" fullWidth leftIcon={<LogOut size={16} />}>
+                <Button variant="outline" fullWidth leftIcon={<LogOut size={16} />} onClick={handleLogout}>
                     Sign Out
                 </Button>
             }
