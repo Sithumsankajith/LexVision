@@ -74,10 +74,9 @@ export const Queue: React.FC = () => {
                             <td style={{ fontFamily: 'monospace', fontWeight: '600' }}>{item.trackingId}</td>
                             <td>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    {item.aiAnalysis?.detectedViolationType ? (
+                                    <FileText size={16} color="var(--color-text-secondary)" /> Citizen
+                                    {item.aiAnalysis?.detectedViolationType && (
                                         <Badge variant="warning"><BrainCircuit size={12} style={{ marginRight: 4 }} /> AI Analyzed</Badge>
-                                    ) : (
-                                        <><FileText size={16} color="var(--color-info)" /> Citizen</>
                                     )}
                                 </div>
                             </td>

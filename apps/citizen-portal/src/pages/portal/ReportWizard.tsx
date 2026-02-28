@@ -13,6 +13,15 @@ const STEPS = [
     { id: 4, label: 'Vehicle Info' },
 ];
 
+const getBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = error => reject(error);
+    });
+};
+
 export const ReportWizard: React.FC = () => {
     const [currentStep, setCurrentStep] = useState(1);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -118,6 +127,17 @@ export const ReportWizard: React.FC = () => {
                 }
             }
 
+            // Convert files to base64 so they can be saved and viewed across browsers
+            const evidencePayload = await Promise.all(
+                formData.evidenceFiles.map(async (f, i) => ({
+                    id: `ev-${i}`,
+                    type: f.type.startsWith('video') ? ('video' as const) : ('image' as const),
+                    url: await getBase64(f), // Use base64 instead of transient blob URL
+                    name: f.name,
+                    size: f.size,
+                }))
+            );
+
             // 2. Save report to mock DB
             const report = await mockDb.createReport({
                 violationType: formData.violationType as ViolationType,
@@ -128,13 +148,7 @@ export const ReportWizard: React.FC = () => {
                     address: formData.location,
                     city: formData.city,
                 },
-                evidence: formData.evidenceFiles.map((f, i) => ({
-                    id: `ev-${i}`,
-                    type: f.type.startsWith('video') ? 'video' : 'image',
-                    url: URL.createObjectURL(f), // Mock URL
-                    name: f.name,
-                    size: f.size,
-                })),
+                evidence: evidencePayload,
                 vehicle: {
                     plate: formData.vehiclePlate,
                     type: formData.vehicleType,

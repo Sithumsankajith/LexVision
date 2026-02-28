@@ -115,11 +115,19 @@ export const Dashboard: React.FC = () => {
                 action={<Button size="sm" variant="outline">View All</Button>}
                 noPadding
             >
-                <DataTable headers={['Tracking ID', 'Violation Type', 'Date', 'Location', 'Status', 'Action']}>
+                <DataTable headers={['Tracking ID', 'Violation Type', 'AI Confidence', 'Date', 'Location', 'Status', 'Action']}>
                     {reports.slice(0, 10).map((report) => (
                         <tr key={report.id}>
                             <td style={{ fontFamily: 'monospace' }}>{report.trackingId}</td>
                             <td>{report.violationType.replace('-', ' ')}</td>
+                            <td>
+                                <span style={{
+                                    color: report.aiAnalysis?.confidence ? (report.aiAnalysis.confidence > 0.8 ? 'var(--color-success)' : 'var(--color-warning)') : 'var(--color-text-secondary)',
+                                    fontWeight: '600'
+                                }}>
+                                    {report.aiAnalysis?.confidence ? `${(report.aiAnalysis.confidence * 100).toFixed(0)}%` : 'N/A'}
+                                </span>
+                            </td>
                             <td>{new Date(report.datetime).toLocaleDateString()}</td>
                             <td>{report.location.address || report.location.city}</td>
                             <td>
@@ -139,7 +147,7 @@ export const Dashboard: React.FC = () => {
                     ))}
                     {reports.length === 0 && (
                         <tr>
-                            <td colSpan={6} style={{ textAlign: 'center', padding: '2rem' }}>No recent reports.</td>
+                            <td colSpan={7} style={{ textAlign: 'center', padding: '2rem' }}>No recent reports.</td>
                         </tr>
                     )}
                 </DataTable>

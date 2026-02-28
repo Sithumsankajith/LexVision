@@ -81,7 +81,12 @@ def init_db():
                 "vehicle": {},
                 "status": status,
                 "createdAt": created_at,
-                "updatedAt": updated_at
+                "updatedAt": updated_at,
+                "aiAnalysis": {
+                    "detectedViolationType": 'red-light' if i % 3 == 0 else ('helmet' if i % 3 == 1 else 'white-line'),
+                    "detectedPlate": f"WP ABC-{1000 + i * 11}" if i % 2 == 0 else None,
+                    "confidence": 0.85 + (i * 0.02)
+                }
             }
             c.execute("INSERT INTO reports VALUES (?, ?, ?, ?, ?, ?)", 
                       (rid, tracking_id, status, created_at, updated_at, json.dumps(report_data)))
@@ -213,14 +218,15 @@ async def predict_evidence(file: UploadFile = File(...)):
         if not detected_violation and len(helmet_boxes) > 0:
              detected_violation = "potential_helmet_violation" # Placeholder based on just finding *something*
              
-        # 2. Run ANPR
-        anpr_results = anpr_model.predict(source=temp_path, save=False, conf=0.25)
+        # 2. Run ANPR only if a violation is detected
         detected_plate = None
-        anpr_boxes = anpr_results[0].boxes
-        
-        # Note: Actual OCR is complex. We simulate reading the plate here if a box is found
-        if anpr_boxes is not None and len(anpr_boxes) > 0:
-            detected_plate = "WP CAA-1234" # Mock read from bounding box
+        if detected_violation:
+            anpr_results = anpr_model.predict(source=temp_path, save=False, conf=0.25)
+            anpr_boxes = anpr_results[0].boxes
+            
+            # Note: Actual OCR is complex. We simulate reading the plate here if a box is found
+            if anpr_boxes is not None and len(anpr_boxes) > 0:
+                detected_plate = "WP CAA-1234" # Mock read from bounding box
 
         return {
             "success": True,

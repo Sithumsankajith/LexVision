@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-    Video,
     FileText,
     ArrowRight,
     Clock,
@@ -20,7 +19,6 @@ import type { Report } from '@lexvision/types';
 
 // KPIs generated dynamically below
 export const Dashboard: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<'ai' | 'citizen'>('ai');
     const [reports, setReports] = useState<Report[]>([]);
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
@@ -40,11 +38,8 @@ export const Dashboard: React.FC = () => {
     // Filter reports for the Dashboard (only those needing attention)
     const activeReports = reports.filter(r => r.status === 'submitted' || r.status === 'under-review');
 
-    // Split into AI and Citizen queues
-    const aiQueue = activeReports.filter(r => r.aiAnalysis?.detectedViolationType);
-    const citizenQueue = activeReports.filter(r => !r.aiAnalysis?.detectedViolationType);
-
-    const currentQueue = activeTab === 'ai' ? aiQueue : citizenQueue;
+    // All active reports are part of the unified queue
+    const currentQueue = activeReports;
 
     // Calculate dynamic KPIs
     const resolvedToday = reports.filter(r =>
@@ -63,33 +58,7 @@ export const Dashboard: React.FC = () => {
         { label: 'Resolved Today', value: resolvedToday.toString(), sub: 'Shift total', color: 'success', icon: <CheckCircle size={20} color="#10b981" /> },
     ];
 
-    const TabButton = ({ active, onClick, icon: Icon, label, count }: any) => (
-        <div
-            onClick={onClick}
-            style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '8px 12px',
-                cursor: 'pointer',
-                borderBottom: active ? `2px solid var(--color-primary)` : '2px solid transparent',
-                color: active ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-                fontWeight: 600,
-                fontSize: '0.9rem',
-                transition: 'all 0.2s'
-            }}
-        >
-            <Icon size={18} />
-            {label}
-            <span style={{
-                backgroundColor: active ? 'var(--color-primary)' : 'var(--color-bg-tertiary)',
-                color: active ? '#fff' : 'var(--color-text)',
-                padding: '2px 8px',
-                borderRadius: '12px',
-                fontSize: '0.75rem'
-            }}>{count}</span>
-        </div>
-    );
+
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
@@ -112,24 +81,7 @@ export const Dashboard: React.FC = () => {
             {/* Row 2: Queue Panel with Tabs */}
             <Panel
                 noPadding
-                title={
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                        <TabButton
-                            active={activeTab === 'ai'}
-                            onClick={() => setActiveTab('ai')}
-                            icon={Video}
-                            label="AI Detections"
-                            count={aiQueue.length.toString()}
-                        />
-                        <TabButton
-                            active={activeTab === 'citizen'}
-                            onClick={() => setActiveTab('citizen')}
-                            icon={FileText}
-                            label="Citizen Reports"
-                            count={citizenQueue.length.toString()}
-                        />
-                    </div>
-                }
+                title={<div style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>Citizen Submissions (<span style={{ color: 'var(--color-primary)' }}>{currentQueue.length}</span>)</div>}
                 action={
                     <Button variant="ghost" size="sm" onClick={() => navigate('/queue')}>
                         View Full Queue <ArrowRight size={16} style={{ marginLeft: '4px' }} />
@@ -142,7 +94,7 @@ export const Dashboard: React.FC = () => {
                     'Location',
                     'Time',
                     'Priority',
-                    activeTab === 'ai' ? 'Confidence' : 'Evidence',
+                    'AI Confidence',
                     'Action'
                 ]}>
                     {currentQueue.slice(0, 10).map((item) => (
@@ -165,19 +117,12 @@ export const Dashboard: React.FC = () => {
                                 </Badge>
                             </td>
                             <td>
-                                {activeTab === 'ai' ? (
-                                    <span style={{
-                                        color: item.aiAnalysis?.confidence ? (item.aiAnalysis.confidence > 0.8 ? 'var(--color-success)' : 'var(--color-warning)') : 'var(--color-success)',
-                                        fontWeight: '600'
-                                    }}>
-                                        {item.aiAnalysis?.confidence ? `${(item.aiAnalysis.confidence * 100).toFixed(0)}%` : 'High'}
-                                    </span>
-                                ) : (
-                                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                        {item.evidence && item.evidence[0]?.type === 'video' ? <Video size={14} /> : <FileText size={14} />}
-                                        Media
-                                    </span>
-                                )}
+                                <span style={{
+                                    color: item.aiAnalysis?.confidence ? (item.aiAnalysis.confidence > 0.8 ? 'var(--color-success)' : 'var(--color-warning)') : 'var(--color-text-secondary)',
+                                    fontWeight: '600'
+                                }}>
+                                    {item.aiAnalysis?.confidence ? `${(item.aiAnalysis.confidence * 100).toFixed(0)}%` : 'N/A'}
+                                </span>
                             </td>
                             <td>
                                 <Button size="sm" variant="secondary" onClick={() => navigate(`/dashboard/queue/${item.id}`)}>Review</Button>
