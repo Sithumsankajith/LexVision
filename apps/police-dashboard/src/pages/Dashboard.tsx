@@ -166,8 +166,11 @@ export const Dashboard: React.FC = () => {
                             </td>
                             <td>
                                 {activeTab === 'ai' ? (
-                                    <span style={{ color: 'var(--color-success)', fontWeight: '600' }}>
-                                        High
+                                    <span style={{
+                                        color: item.aiAnalysis?.confidence ? (item.aiAnalysis.confidence > 0.8 ? 'var(--color-success)' : 'var(--color-warning)') : 'var(--color-success)',
+                                        fontWeight: '600'
+                                    }}>
+                                        {item.aiAnalysis?.confidence ? `${(item.aiAnalysis.confidence * 100).toFixed(0)}%` : 'High'}
                                     </span>
                                 ) : (
                                     <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -177,7 +180,7 @@ export const Dashboard: React.FC = () => {
                                 )}
                             </td>
                             <td>
-                                <Button size="sm" variant="secondary" onClick={() => navigate(`/queue/${item.id}`)}>Review</Button>
+                                <Button size="sm" variant="secondary" onClick={() => navigate(`/dashboard/queue/${item.id}`)}>Review</Button>
                             </td>
                         </tr>
                     ))}

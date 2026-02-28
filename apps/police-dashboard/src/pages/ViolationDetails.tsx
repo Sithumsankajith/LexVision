@@ -10,7 +10,8 @@ import {
     XCircle,
     PlayCircle,
     BrainCircuit,
-    Image as ImageIcon
+    Image as ImageIcon,
+    FileText
 } from 'lucide-react';
 import { Button } from '@lexvision/ui';
 import { Panel, Badge } from '@lexvision/ui';
@@ -67,6 +68,17 @@ export const ViolationDetails: React.FC = () => {
                 }>
                     {report.status.toUpperCase()}
                 </Badge>
+                <div style={{ marginLeft: 'auto' }}>
+                    {report.aiAnalysis?.detectedViolationType ? (
+                        <Badge variant="warning">
+                            <BrainCircuit size={14} style={{ marginRight: '4px' }} /> AI ANALYZED
+                        </Badge>
+                    ) : (
+                        <Badge variant="info">
+                            <FileText size={14} style={{ marginRight: '4px' }} /> CITIZEN REPORT
+                        </Badge>
+                    )}
+                </div>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 'var(--space-6)', minHeight: 'calc(100vh - 140px)' }}>

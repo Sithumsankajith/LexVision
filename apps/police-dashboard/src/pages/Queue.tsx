@@ -100,7 +100,7 @@ export const Queue: React.FC = () => {
                                 </Badge>
                             </td>
                             <td>
-                                <Button size="sm" variant="secondary" onClick={() => navigate(`/queue/${item.id}`)}>Review</Button>
+                                <Button size="sm" variant="secondary" onClick={() => navigate(`/dashboard/queue/${item.id}`)}>Review</Button>
                             </td>
                         </tr>
                     ))}
