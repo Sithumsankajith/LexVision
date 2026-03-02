@@ -1,5 +1,5 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import List
@@ -11,7 +11,7 @@ from ..dependencies import get_current_active_user, get_citizen, get_police, log
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 @router.post("/", response_model=schemas.ReportResponse)
-def create_report(report_data: schemas.ReportCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_citizen)):
+def create_report(report_data: schemas.ReportCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: models.User = Depends(get_citizen)):
     new_report = models.Report(
         tracking_id=f"LEX-{datetime.now().year}-{str(uuid.uuid4())[:8].upper()}",
         user_id=current_user.id,
@@ -42,7 +42,7 @@ def create_report(report_data: schemas.ReportCreate, db: Session = Depends(get_d
 
     # Trigger Async inference task (implemented in worker)
     from ..tasks import submit_inference_task
-    submit_inference_task(new_report.id)
+    submit_inference_task(new_report.id, background_tasks)
 
     # Audit log
     log_audit_action(db, current_user.id, "REPORT_SUBMISSION", "Report", new_report.id)

@@ -14,68 +14,98 @@ const getHeaders = () => {
     return headers;
 };
 
+const mapReportToFrontend = (b: any): Report => ({
+    id: b.id,
+    trackingId: b.tracking_id || b.id,
+    citizen: { email: 'citizen@lexvision.gov' }, // Placeholder as backend doesn't embed user email
+    violationType: b.violation_type as any,
+    datetime: b.datetime,
+    location: {
+        lat: b.location_lat,
+        lng: b.location_lng,
+        address: b.location_address,
+        city: b.location_city
+    },
+    evidence: b.evidence || [],
+    vehicle: { plate: b.vehicle_plate }, // Optional mappings if added later
+    status: b.status === 'SUBMITTED' ? 'submitted' :
+        b.status === 'VALIDATED' ? 'verified' :
+            b.status === 'REJECTED' ? 'rejected' : 'under-review',
+    createdAt: b.created_at,
+    updatedAt: b.updated_at || b.created_at
+});
+
 export const mockDb = {
     createReport: async (reportData: Omit<Report, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'trackingId'>): Promise<Report> => {
-        const response = await fetch(`${API_BASE_URL}/reports`, {
+        const payload = {
+            violation_type: reportData.violationType,
+            datetime: reportData.datetime,
+            location_lat: reportData.location.lat,
+            location_lng: reportData.location.lng,
+            location_address: reportData.location.address,
+            location_city: reportData.location.city,
+            evidence: reportData.evidence.map((e: any) => ({
+                id: e.id,
+                type: e.type,
+                url: e.url,
+                name: e.name,
+                size: e.size
+            }))
+        };
+        const response = await fetch(`${API_BASE_URL}/reports/`, {
             method: 'POST',
             headers: getHeaders(),
-            body: JSON.stringify(reportData),
+            body: JSON.stringify(payload),
         });
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
             throw new Error(errorData.detail || 'Failed to create report');
         }
-        return response.json();
+        const data = await response.json();
+        return mapReportToFrontend(data);
     },
 
     getReportByTrackingId: async (trackingId: string): Promise<Report | null> => {
         try {
-            const response = await fetch(`${API_BASE_URL}/reports/${trackingId}`, {
-                headers: getHeaders()
-            });
+            const response = await fetch(`${API_BASE_URL}/reports/${trackingId}`, { headers: getHeaders() });
             if (!response.ok) return null;
-            return response.json();
-        } catch {
-            return null;
-        }
+            const data = await response.json();
+            return mapReportToFrontend(data);
+        } catch { return null; }
     },
 
     getReportById: async (id: string): Promise<Report | null> => {
         try {
-            const response = await fetch(`${API_BASE_URL}/reports/${id}`, {
-                headers: getHeaders()
-            });
+            const response = await fetch(`${API_BASE_URL}/reports/${id}`, { headers: getHeaders() });
             if (!response.ok) return null;
-            return response.json();
-        } catch {
-            return null;
-        }
+            const data = await response.json();
+            return mapReportToFrontend(data);
+        } catch { return null; }
     },
 
     getAllReports: async (): Promise<Report[]> => {
         try {
-            const response = await fetch(`${API_BASE_URL}/reports`, {
-                headers: getHeaders()
-            });
+            const response = await fetch(`${API_BASE_URL}/reports/`, { headers: getHeaders() });
             if (!response.ok) return [];
-            return response.json();
-        } catch {
-            return [];
-        }
+            const data = await response.json();
+            return data.map(mapReportToFrontend);
+        } catch { return []; }
     },
 
     updateReportStatus: async (id: string, status: Report['status'], notes?: string): Promise<Report | null> => {
         try {
+            const backendStatus = status === 'verified' ? 'VALIDATED' :
+                status === 'rejected' ? 'REJECTED' :
+                    status === 'under-review' ? 'UNDER_REVIEW' : 'SUBMITTED';
             const response = await fetch(`${API_BASE_URL}/reports/${id}/status`, {
                 method: 'PUT',
                 headers: getHeaders(),
-                body: JSON.stringify({ status, notes }),
+                body: JSON.stringify({ status: backendStatus, notes }),
             });
             if (!response.ok) return null;
-            return response.json();
-        } catch {
-            return null;
-        }
+            const data = await response.json();
+            return mapReportToFrontend(data);
+        } catch { return null; }
     },
 
     // --- User & Reward Methods ---
@@ -92,7 +122,8 @@ export const mockDb = {
             headers: getHeaders()
         });
         if (!response.ok) return [];
-        return response.json();
+        const data = await response.json();
+        return data.map(mapReportToFrontend);
     },
 
     listRewards: async () => {
