@@ -13,6 +13,7 @@ class UserResponse(BaseModel):
     id: str
     email: str
     role: RoleEnum
+    reward_points: float
     created_at: datetime
     class Config:
         from_attributes = True
@@ -80,6 +81,29 @@ class TicketResponse(BaseModel):
     fine_amount: float
     class Config:
         from_attributes = True
+
+# --- Reward Schemas ---
+class RewardResponse(BaseModel):
+    id: str
+    title: str
+    description: str
+    points_cost: float
+    image_url: Optional[str]
+    class Config:
+        from_attributes = True
+
+class UserRewardResponse(BaseModel):
+    id: str
+    reward: RewardResponse
+    claimed_at: datetime
+    class Config:
+        from_attributes = True
+
+class ProfileResponse(BaseModel):
+    user: UserResponse
+    reports_count: int
+    validated_reports_count: int
+    claimed_rewards: List[UserRewardResponse]
 
 # --- Inference Log Schemas ---
 class InferenceLogResponse(BaseModel):

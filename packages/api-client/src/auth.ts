@@ -1,51 +1,71 @@
 const SESSION_KEY = 'lexvision_user_session';
+const API_BASE_URL = 'http://localhost:8000/api';
 
 export interface UserSession {
     id: string;
-    role: 'admin' | 'police';
-    displayName: string;
+    role: 'ADMIN' | 'POLICE' | 'CITIZEN';
+    email: string;
     token: string;
 }
 
 export const auth = {
     /**
-     * Simulates an API login call.
-     * In a real app, this would send credentials to the backend.
+     * Authenticates a user with the backend API.
      */
-    login: async (identifier: string, isPolice: boolean): Promise<UserSession> => {
-        // Simulate network delay
-        await new Promise(resolve => setTimeout(resolve, 600));
+    login: async (email: string, password: string): Promise<UserSession> => {
+        const formData = new URLSearchParams();
+        formData.append('username', email);
+        formData.append('password', password);
 
-        if (!identifier || identifier.trim() === '') {
-            throw new Error('Identifier cannot be empty.');
+        const response = await fetch(`${API_BASE_URL}/auth/login`, {
+            method: 'POST',
+            body: formData,
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || 'Invalid email or password.');
         }
 
-        let session: UserSession;
+        const data = await response.json();
 
-        if (isPolice) {
-            if (!identifier.toUpperCase().startsWith('P-')) {
-                throw new Error('Invalid police badge number. Format: P-XXXXX');
-            }
-            session = {
-                id: identifier.toUpperCase(),
-                role: 'police',
-                displayName: `Officer ${identifier.substring(2)}`,
-                token: 'mock-jwt-token-police-xxx'
-            };
-        } else {
-            if (!identifier.includes('@lexvision.lk')) {
-                throw new Error('Invalid admin email. Must be @lexvision.lk domain.');
-            }
-            session = {
-                id: 'ADM-01',
-                role: 'admin',
-                displayName: identifier.split('@')[0],
-                token: 'mock-jwt-token-admin-xxx'
-            };
+        // Fetch user profile to get role and ID
+        const profileRes = await fetch(`${API_BASE_URL}/users/me`, {
+            headers: { 'Authorization': `Bearer ${data.access_token}` }
+        });
+
+        if (!profileRes.ok) {
+            throw new Error('Failed to retrieve user profile after login.');
         }
+
+        const profileData = await profileRes.json();
+        const user = profileData.user;
+
+        const session: UserSession = {
+            id: user.id,
+            role: user.role,
+            email: user.email,
+            token: data.access_token
+        };
 
         localStorage.setItem(SESSION_KEY, JSON.stringify(session));
         return session;
+    },
+
+    /**
+     * Registers a new user with the backend API.
+     */
+    register: async (email: string, password: string): Promise<void> => {
+        const response = await fetch(`${API_BASE_URL}/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || 'Registration failed. Email might already be in use.');
+        }
     },
 
     /**

@@ -1,6 +1,6 @@
 import uuid
 import datetime
-from sqlalchemy import Column, String, Float, DateTime, ForeignKey, Text, JSON, Enum
+from sqlalchemy import Column, String, Float, DateTime, ForeignKey, Text, JSON, Enum, func
 from sqlalchemy.orm import relationship
 from .database import Base
 import enum
@@ -23,7 +23,11 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
     role = Column(Enum(RoleEnum), default=RoleEnum.CITIZEN)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    reward_points = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=func.now())
+
+    reports = relationship("Report", back_populates="user")
+    claimed_rewards = relationship("UserReward", back_populates="user")
 
 class Report(Base):
     __tablename__ = "reports"
@@ -37,10 +41,10 @@ class Report(Base):
     location_address = Column(String)
     location_city = Column(String)
     status = Column(Enum(StatusEnum), default=StatusEnum.SUBMITTED, index=True) # status index
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
-    user = relationship("User")
+    user = relationship("User", back_populates="reports")
     evidence = relationship("Evidence", back_populates="report")
     inference_log = relationship("InferenceLog", back_populates="report", uselist=False)
     ticket = relationship("TrafficTicket", back_populates="report", uselist=False)
@@ -53,7 +57,7 @@ class Evidence(Base):
     url = Column(String)
     name = Column(String)
     size = Column(Float)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=func.now())
 
     report = relationship("Report", back_populates="evidence")
 
@@ -67,7 +71,7 @@ class InferenceLog(Base):
     ocr_text = Column(String, index=True) # plate_text index
     ocr_confidence = Column(Float)
     inference_latency = Column(Float)
-    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    timestamp = Column(DateTime, default=func.now())
 
     report = relationship("Report", back_populates="inference_log")
 
@@ -76,13 +80,31 @@ class TrafficTicket(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     report_id = Column(String, ForeignKey("reports.id"), unique=True)
     officer_id = Column(String, ForeignKey("users.id"), index=True) # officer_id index
-    issued_at = Column(DateTime, default=datetime.datetime.utcnow)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow) # created_at timestamp
+    issued_at = Column(DateTime, default=func.now())
+    created_at = Column(DateTime, default=func.now()) # created_at timestamp
     penal_code = Column(String)
     fine_amount = Column(Float)
 
     report = relationship("Report", back_populates="ticket")
     officer = relationship("User")
+
+class Reward(Base):
+    __tablename__ = "rewards"
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    title = Column(String)
+    description = Column(Text)
+    points_cost = Column(Float)
+    image_url = Column(String, nullable=True)
+
+class UserReward(Base):
+    __tablename__ = "user_rewards"
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, ForeignKey("users.id"))
+    reward_id = Column(String, ForeignKey("rewards.id"))
+    claimed_at = Column(DateTime, default=func.now())
+
+    user = relationship("User", back_populates="claimed_rewards")
+    reward = relationship("Reward")
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
@@ -92,4 +114,5 @@ class AuditLog(Base):
     target_type = Column(String, nullable=True)
     target_id = Column(String, nullable=True)
     details = Column(JSON)
-    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    timestamp = Column(DateTime, default=func.now())
+

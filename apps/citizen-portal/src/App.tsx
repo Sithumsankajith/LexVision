@@ -7,9 +7,13 @@ import { Features } from '@/pages/public/Features';
 import { Demo } from '@/pages/public/Demo';
 import { FAQ } from '@/pages/public/FAQ';
 import { Contact } from '@/pages/public/Contact';
+import { Login } from '@/pages/public/Login';
+import { Register } from '@/pages/public/Register';
 import { PortalHome } from '@/pages/portal/PortalHome';
 import { ReportWizard } from '@/pages/portal/ReportWizard';
 import { TrackReport } from '@/pages/portal/TrackReport';
+import { Profile } from '@/pages/portal/Profile';
+import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { PageLoader } from '@lexvision/ui';
 
 // Simple fallback for Suspense (if used purely for code splitting later)
@@ -44,13 +48,24 @@ function AppContent() {
             <Route path="demo" element={<Demo />} />
             <Route path="faq" element={<FAQ />} />
             <Route path="contact" element={<Contact />} />
+            <Route path="login" element={<Login />} />
+            <Route path="register" element={<Register />} />
           </Route>
 
           {/* Citizen Portal Routes */}
           <Route path="/portal" element={<PublicLayout />}>
             <Route index element={<PortalHome />} />
-            <Route path="report" element={<ReportWizard />} />
+            <Route path="report" element={
+              <ProtectedRoute>
+                <ReportWizard />
+              </ProtectedRoute>
+            } />
             <Route path="track" element={<TrackReport />} />
+            <Route path="profile" element={
+              <ProtectedRoute>
+                <Profile />
+              </ProtectedRoute>
+            } />
           </Route>
         </Routes>
       </Suspense>

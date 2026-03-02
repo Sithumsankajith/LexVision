@@ -1,10 +1,18 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, ExternalLink } from 'lucide-react';
+import { Menu, X, ExternalLink, User, LogOut } from 'lucide-react';
 import { Button } from './Button';
 import styles from './Navbar.module.css';
 
-export const Navbar: React.FC = () => {
+export interface NavbarProps {
+    user?: {
+        email: string;
+        reward_points?: number;
+    } | null;
+    onLogout?: () => void;
+}
+
+export const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const location = useLocation();
 
@@ -44,8 +52,25 @@ export const Navbar: React.FC = () => {
 
                 {/* Right Actions (CTA + Mobile Toggle) */}
                 <div className={styles.actions}>
+                    {user ? (
+                        <div className={styles.userActions}>
+                            <Link to="/portal/profile" className={styles.profileLink}>
+                                <User size={18} />
+                                <span>{user.email.split('@')[0]}</span>
+                            </Link>
+                            <Button variant="ghost" size="sm" onClick={onLogout} title="Logout">
+                                <LogOut size={18} />
+                            </Button>
+                        </div>
+                    ) : (
+                        <Link to="/login">
+                            <Button variant="outline" size="sm" style={{ color: 'white', borderColor: 'white' }}>
+                                Login
+                            </Button>
+                        </Link>
+                    )}
                     <Link to="/portal">
-                        <Button variant="primary" size="md" rightIcon={<ExternalLink size={16} />}>
+                        <Button variant="secondary" size="md" rightIcon={<ExternalLink size={16} />}>
                             Citizen Portal
                         </Button>
                     </Link>
@@ -72,8 +97,24 @@ export const Navbar: React.FC = () => {
                             </Link>
                         ))}
                         <div className={styles.mobileNavFooter}>
+                            {user ? (
+                                <>
+                                    <Link to="/portal/profile" className={styles.mobileNavLink} onClick={() => setIsMenuOpen(false)}>
+                                        Profile ({user.email})
+                                    </Link>
+                                    <button className={styles.mobileNavLink} onClick={() => { onLogout?.(); setIsMenuOpen(false); }} style={{ background: 'none', border: 'none', textAlign: 'left', width: '100%', color: 'var(--color-error)' }}>
+                                        Logout
+                                    </button>
+                                </>
+                            ) : (
+                                <Link to="/login" onClick={() => setIsMenuOpen(false)} style={{ width: '100%', display: 'block', marginBottom: '8px' }}>
+                                    <Button variant="outline" fullWidth style={{ color: 'white', borderColor: 'white' }}>
+                                        Login
+                                    </Button>
+                                </Link>
+                            )}
                             <Link to="/portal" onClick={() => setIsMenuOpen(false)} style={{ width: '100%' }}>
-                                <Button variant="primary" fullWidth rightIcon={<ExternalLink size={16} />}>
+                                <Button variant="secondary" fullWidth rightIcon={<ExternalLink size={16} />}>
                                     Citizen Portal
                                 </Button>
                             </Link>

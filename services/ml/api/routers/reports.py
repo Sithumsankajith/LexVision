@@ -76,6 +76,10 @@ def update_report_status(report_id: str, update: schemas.ReportStatusUpdate, db:
         raise HTTPException(status_code=400, detail=f"Invalid transition from {report.status} to {update.status}")
     
     report.status = update.status
+    if update.status == models.StatusEnum.VALIDATED:
+        # Award points to the citizen who reported it
+        report.user.reward_points += 50.0
+    
     db.commit()
     db.refresh(report)
 

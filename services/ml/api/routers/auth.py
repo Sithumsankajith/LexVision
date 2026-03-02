@@ -6,17 +6,15 @@ from datetime import timedelta
 from .. import models, schemas
 from ..database import get_db
 from ..dependencies import create_access_token, get_current_user, log_audit_action
-from passlib.context import CryptContext
+import bcrypt
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
+    return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
 
 def get_password_hash(password):
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 @router.post("/register", response_model=schemas.UserResponse)
 def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):

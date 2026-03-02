@@ -13,7 +13,8 @@ python-multipart
 pydantic
 sqlalchemy
 psycopg2-binary
-passlib[bcrypt]
+passlib
+bcrypt==4.0.1
 python-jose[cryptography]
 redis
 rq

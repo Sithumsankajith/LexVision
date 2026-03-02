@@ -1,0 +1,213 @@
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-8);
+    background: linear-gradient(135deg, var(--color-primary) 0%, #1e40af 100%);
+    padding: var(--space-8);
+    border-radius: var(--radius-lg);
+    color: white;
+}
+
+.userInfo {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+}
+
+.avatar {
+    width: 64px;
+    height: 64px;
+    background-color: rgba(255, 255, 255, 0.2);
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.userInfo h1 {
+    font-size: 1.5rem;
+    margin: 0;
+    text-transform: capitalize;
+}
+
+.userInfo p {
+    margin: 0;
+    opacity: 0.8;
+    font-size: 0.875rem;
+}
+
+.pointsBadge {
+    background-color: rgba(255, 255, 255, 0.2);
+    padding: var(--space-3) var(--space-6);
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-weight: 600;
+    backdrop-filter: blur(4px);
+}
+
+.statsGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--space-4);
+    margin-bottom: var(--space-8);
+}
+
+.statCard {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+}
+
+.statIcon {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.statValue {
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.statLabel {
+    color: var(--color-text-secondary);
+    font-size: 0.875rem;
+}
+
+.mainContent {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: var(--space-8);
+}
+
+.sectionHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-4);
+}
+
+.sectionHeader h2 {
+    font-size: 1.25rem;
+}
+
+.reportList {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.reportItem {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: transform 0.2s, box-shadow 0.2s;
+    cursor: pointer;
+}
+
+.reportItem:hover {
+    transform: translateX(4px);
+    box-shadow: var(--shadow-md);
+}
+
+.reportMain {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.reportType {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.reportType h3 {
+    font-size: 1rem;
+    margin: 0;
+    text-transform: capitalize;
+}
+
+.reportMeta {
+    display: flex;
+    gap: var(--space-4);
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+}
+
+.reportMeta span {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+}
+
+.emptyState {
+    text-align: center;
+    padding: var(--space-12) var(--space-8);
+    color: var(--color-text-secondary);
+}
+
+.emptyState p {
+    margin: var(--space-4) 0 var(--space-6);
+}
+
+.rewardList {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+.rewardCard {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+.rewardInfo h3 {
+    font-size: 1rem;
+    margin-bottom: var(--space-1);
+}
+
+.rewardInfo p {
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+    margin-bottom: var(--space-3);
+}
+
+.costBadge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    background-color: #fff7ed;
+    color: #9a3412;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.loading,
+.error {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 400px;
+    color: var(--color-text-secondary);
+}
+
+@media (max-width: 992px) {
+    .mainContent {
+        grid-template-columns: 1fr;
+    }
+
+    .rightCol {
+        order: -1;
+    }
+}
