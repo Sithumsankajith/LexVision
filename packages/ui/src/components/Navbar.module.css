@@ -49,12 +49,12 @@
 /* Centered Navigation */
 .desktopNav {
     display: none;
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
+    flex: 1;
+    justify-content: center;
     align-items: center;
-    gap: var(--space-8);
+    gap: var(--space-4);
     height: 100%;
+    margin: 0 var(--space-4);
 }
 
 .navLink {
