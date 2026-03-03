@@ -2,7 +2,7 @@ import React from 'react';
 import styles from './Button.module.css';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-    variant?: 'primary' | 'secondary' | 'ghost' | 'outline' | 'danger';
+    variant?: 'primary' | 'secondary' | 'ghost' | 'outline' | 'danger' | 'whiteGhost' | 'whiteOutline';
     size?: 'sm' | 'md' | 'lg';
     isLoading?: boolean;
     leftIcon?: React.ReactNode;
@@ -22,8 +22,8 @@ export const Button: React.FC<ButtonProps> = ({
     disabled,
     ...props
 }) => {
-    const widthClass = fullWidth ? 'btn-full' : '';
-    const loadingClass = isLoading ? 'btn-loading' : '';
+    const widthClass = fullWidth ? styles.full : '';
+    const loadingClass = isLoading ? styles.loading : '';
 
     return (
         <button

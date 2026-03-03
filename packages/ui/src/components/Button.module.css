@@ -68,13 +68,29 @@
     background-color: rgba(11, 58, 102, 0.05);
 }
 
-.ghost {
-    background-color: transparent;
-    color: var(--color-primary);
-}
-
 .ghost:hover:not(:disabled) {
     background-color: rgba(11, 58, 102, 0.08);
+}
+
+.whiteGhost {
+    background-color: transparent;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.whiteGhost:hover:not(:disabled) {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: white;
+}
+
+.whiteOutline {
+    background-color: transparent;
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.whiteOutline:hover:not(:disabled) {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-color: white;
 }
 
 .danger {

@@ -45,3 +45,11 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({ icon, label, isActive,
         </Component>
     );
 };
+
+export const SidebarFooterName: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+    <div className={styles.footerName}>{children}</div>
+);
+
+export const SidebarFooterRole: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+    <div className={styles.footerRole}>{children}</div>
+);

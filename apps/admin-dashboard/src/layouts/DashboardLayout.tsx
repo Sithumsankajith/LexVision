@@ -46,7 +46,7 @@ export const DashboardLayout: React.FC = () => {
                 </>
             }
             footer={
-                <Button variant="outline" fullWidth leftIcon={<LogOut size={16} />} onClick={handleLogout}>
+                <Button variant="whiteOutline" fullWidth leftIcon={<LogOut size={16} />} onClick={handleLogout}>
                     Sign Out
                 </Button>
             }

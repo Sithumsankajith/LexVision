@@ -14,6 +14,8 @@ import {
     DashboardShell,
     Sidebar,
     SidebarItem,
+    SidebarFooterName,
+    SidebarFooterRole,
     Topbar
 } from '@lexvision/ui';
 import { auth } from '@lexvision/api-client';
@@ -46,12 +48,12 @@ export const DashboardLayout: React.FC = () => {
                 </>
             }
             footer={
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <div style={{ padding: '0 8px' }}>
-                        <div style={{ fontWeight: '600' }}>Officer Perera</div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>Traffic Div - Col 03</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                    <div>
+                        <SidebarFooterName>Officer Perera</SidebarFooterName>
+                        <SidebarFooterRole>Traffic Div - Col 03</SidebarFooterRole>
                     </div>
-                    <Button variant="outline" fullWidth leftIcon={<LogOut size={16} />} onClick={handleLogout}>
+                    <Button variant="whiteOutline" fullWidth leftIcon={<LogOut size={16} />} onClick={handleLogout}>
                         End Shift
                     </Button>
                 </div>
