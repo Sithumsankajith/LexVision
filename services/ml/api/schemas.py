@@ -9,12 +9,20 @@ class UserCreate(BaseModel):
     password: str
     role: RoleEnum = RoleEnum.CITIZEN
 
-class UserResponse(BaseModel):
+class UserResponseAdmin(BaseModel):
     id: str
     email: str
     role: RoleEnum
     reward_points: float
     created_at: datetime
+    class Config:
+        from_attributes = True
+
+class UserResponse(BaseModel):
+    id: str
+    email: str
+    role: RoleEnum
+    reward_points: float
     class Config:
         from_attributes = True
 

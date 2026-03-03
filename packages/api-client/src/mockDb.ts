@@ -153,5 +153,65 @@ export const mockDb = {
 
     seed: () => {
         // Seeding is now handled directly by the Python backend on startup.
+    },
+
+    // --- Admin Endpoints ---
+    adminGetUsers: async () => {
+        const response = await fetch(`${API_BASE_URL}/users`, { headers: getHeaders() });
+        if (!response.ok) return [];
+        return response.json();
+    },
+
+    adminCreateUser: async (user: any) => {
+        const response = await fetch(`${API_BASE_URL}/users`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify(user)
+        });
+        if (!response.ok) throw new Error('Failed to create user');
+        return response.json();
+    },
+
+    adminGetAuditLogs: async () => {
+        const response = await fetch(`${API_BASE_URL}/admin/audit-logs`, { headers: getHeaders() });
+        if (!response.ok) return [];
+        return response.json();
+    },
+
+    adminGetViolationTypes: async () => {
+        const response = await fetch(`${API_BASE_URL}/admin/analytics/violation-types`, { headers: getHeaders() });
+        if (!response.ok) return [];
+        return response.json();
+    },
+
+    adminGetStatusRatio: async () => {
+        const response = await fetch(`${API_BASE_URL}/admin/analytics/status-ratio`, { headers: getHeaders() });
+        if (!response.ok) return { total: 0, validated: 0, rejected: 0, ratio_validated: 0, ratio_rejected: 0 };
+        return response.json();
+    },
+
+    adminUpdateAiThreshold: async (threshold: number) => {
+        const response = await fetch(`${API_BASE_URL}/admin/configuration/ai-threshold?threshold=${threshold}`, {
+            method: 'POST',
+            headers: getHeaders()
+        });
+        if (!response.ok) throw new Error('Failed to update threshold');
+        return response.json();
+    },
+
+    adminExportReportsCsv: async () => {
+        const response = await fetch(`${API_BASE_URL}/admin/export/reports`, {
+            headers: getHeaders()
+        });
+        if (!response.ok) throw new Error('Failed to export CSV');
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `lexvision-reports-${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
     }
 };

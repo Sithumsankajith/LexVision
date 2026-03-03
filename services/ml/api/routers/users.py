@@ -57,3 +57,34 @@ def claim_reward(reward_id: str, db: Session = Depends(get_db), current_user: mo
     log_audit_action(db, current_user.id, "REWARD_CLAIM", "Reward", reward.id, details={"cost": reward.points_cost})
     
     return user_reward
+
+from ..dependencies import get_admin
+from .auth import get_password_hash
+
+@router.get("", response_model=List[schemas.UserResponseAdmin])
+@router.get("/", include_in_schema=False)
+def get_all_users(db: Session = Depends(get_db), current_user: models.User = Depends(get_admin)):
+    users = db.query(models.User).order_by(models.User.created_at.desc()).all()
+    return users
+
+@router.post("", response_model=schemas.UserResponseAdmin)
+@router.post("/", include_in_schema=False)
+def create_user(user_in: schemas.UserCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_admin)):
+    # Check if user already exists
+    existing_user = db.query(models.User).filter(models.User.email == user_in.email).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+        
+    hashed_password = get_password_hash(user_in.password)
+    new_user = models.User(
+        email=user_in.email,
+        hashed_password=hashed_password,
+        role=user_in.role
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    
+    log_audit_action(db, current_user.id, "USER_CREATED", "User", new_user.id, details={"role": new_user.role})
+    
+    return new_user

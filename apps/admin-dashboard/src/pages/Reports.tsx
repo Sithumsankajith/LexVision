@@ -27,7 +27,19 @@ export const Reports: React.FC = () => {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 'bold' }}>All Reports</h1>
-                <Button leftIcon={<Download size={16} />}>Export CSV</Button>
+                <Button
+                    leftIcon={<Download size={16} />}
+                    onClick={async () => {
+                        try {
+                            await mockDb.adminExportReportsCsv();
+                        } catch (e) {
+                            console.error('Export failed', e);
+                            alert('Failed to export CSV');
+                        }
+                    }}
+                >
+                    Export CSV
+                </Button>
             </div>
 
             <Panel noPadding style={{ padding: 'var(--space-4)', display: 'flex', gap: 'var(--space-4)', alignItems: 'center', flexWrap: 'wrap' }}>
