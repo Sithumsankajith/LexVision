@@ -27,12 +27,17 @@ const mapReportToFrontend = (b: any): Report => ({
         city: b.location_city
     },
     evidence: b.evidence || [],
-    vehicle: { plate: b.vehicle_plate }, // Optional mappings if added later
+    vehicle: { plate: b.inference_log?.ocr_text || b.vehicle_plate },
     status: b.status === 'SUBMITTED' ? 'submitted' :
         b.status === 'VALIDATED' ? 'verified' :
             b.status === 'REJECTED' ? 'rejected' : 'under-review',
     createdAt: b.created_at,
-    updatedAt: b.updated_at || b.created_at
+    updatedAt: b.updated_at || b.created_at,
+    aiAnalysis: b.inference_log ? {
+        detectedViolationType: b.violation_type,
+        detectedPlate: b.inference_log.ocr_text,
+        confidence: b.inference_log.confidence
+    } : undefined
 });
 
 export const mockDb = {
@@ -52,7 +57,7 @@ export const mockDb = {
                 size: e.size
             }))
         };
-        const response = await fetch(`${API_BASE_URL}/reports/`, {
+        const response = await fetch(`${API_BASE_URL}/reports`, {
             method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify(payload),
@@ -67,7 +72,7 @@ export const mockDb = {
 
     getReportByTrackingId: async (trackingId: string): Promise<Report | null> => {
         try {
-            const response = await fetch(`${API_BASE_URL}/reports/${trackingId}`, { headers: getHeaders() });
+            const response = await fetch(`${API_BASE_URL}/reports/tracking/${trackingId}`);
             if (!response.ok) return null;
             const data = await response.json();
             return mapReportToFrontend(data);
@@ -85,7 +90,7 @@ export const mockDb = {
 
     getAllReports: async (): Promise<Report[]> => {
         try {
-            const response = await fetch(`${API_BASE_URL}/reports/`, { headers: getHeaders() });
+            const response = await fetch(`${API_BASE_URL}/reports`, { headers: getHeaders() });
             if (!response.ok) return [];
             const data = await response.json();
             return data.map(mapReportToFrontend);

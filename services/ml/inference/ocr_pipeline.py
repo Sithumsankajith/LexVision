@@ -1,102 +1,102 @@
 import cv2
 import numpy as np
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Lazy-load EasyOCR reader to avoid import overhead on every request
+_reader = None
+
+def _get_reader():
+    global _reader
+    if _reader is None:
+        import easyocr
+        logger.info("Initializing EasyOCR reader (first load)...")
+        _reader = easyocr.Reader(['en'], gpu=False, verbose=False)
+        logger.info("EasyOCR reader ready.")
+    return _reader
+
 
 class OCRPipeline:
     def __init__(self):
-        # In a real environment, you'd configure tesseract paths here if needed
         pass
 
     def correct_skew(self, image):
-        # Convert image to grayscale if it's not
+        """Deskew the image using minimum area rectangle."""
         if len(image.shape) == 3:
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         else:
             gray = image
-            
-        # Threshold the image, setting all foreground pixels to 255 and background to 0
+
         thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
-        
-        # Grab the (x, y) coordinates of all pixel values that are greater than zero
         coords = np.column_stack(np.where(thresh > 0))
-        
-        # Compute the bounding box of the coordinates and then extract the angle of rotation
+
+        if len(coords) < 5:
+            return image
+
         angle = cv2.minAreaRect(coords)[-1]
-        
-        # The `cv2.minAreaRect` function returns values in the range [-90, 0)
         if angle < -45:
             angle = -(90 + angle)
         else:
             angle = -angle
-            
-        # Rotate the image to deskew it
+
         (h, w) = image.shape[:2]
         center = (w // 2, h // 2)
         M = cv2.getRotationMatrix2D(center, angle, 1.0)
         rotated = cv2.warpAffine(image, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
-        
         return rotated
 
-    def preprocess_image(self, image_path: str):
+    def preprocess_image(self, image):
         """
-        Applies a sequence of academic-standard image preprocessing techniques 
-        to maximize OCR accuracy.
+        Applies preprocessing techniques to maximize OCR accuracy.
+        Accepts either a file path (str) or a numpy array.
         """
-        # Read the image
-        img = cv2.imread(image_path)
-        if img is None:
-            raise FileNotFoundError(f"Could not load image at {image_path}")
+        if isinstance(image, str):
+            img = cv2.imread(image)
+            if img is None:
+                raise FileNotFoundError(f"Could not load image at {image}")
+        else:
+            img = image
 
-        # 1. Deskew Correction
-        deskewed_img = self.correct_skew(img)
+        # 1. Deskew
+        deskewed = self.correct_skew(img)
 
-        # Convert to grayscale for further processing
-        gray = cv2.cvtColor(deskewed_img, cv2.COLOR_BGR2GRAY)
+        # 2. Grayscale
+        gray = cv2.cvtColor(deskewed, cv2.COLOR_BGR2GRAY) if len(deskewed.shape) == 3 else deskewed
 
-        # 2. Contrast Normalization (Histogram Equalization via CLAHE)
-        # CLAHE (Contrast Limited Adaptive Histogram Equalization) prevents noise over-amplification
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-        contrast_normalized = clahe.apply(gray)
+        # 3. CLAHE contrast normalization
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        contrast = clahe.apply(gray)
 
-        # 3. Edge Sharpening (Unsharp Masking)
-        # Blur the image
-        gaussian_blur = cv2.GaussianBlur(contrast_normalized, (9,9), 10.0)
-        # Add the original to the inverted blur
-        sharpened = cv2.addWeighted(contrast_normalized, 1.5, gaussian_blur, -0.5, 0)
+        # 4. Sharpening
+        blur = cv2.GaussianBlur(contrast, (9, 9), 10.0)
+        sharpened = cv2.addWeighted(contrast, 1.5, blur, -0.5, 0)
 
-        # 4. Adaptive Thresholding
-        # Helps deal with varying lighting conditions across the license plate
-        binary_thresh = cv2.adaptiveThreshold(
-            sharpened, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-            cv2.THRESH_BINARY, 11, 2
-        )
+        return sharpened
 
-        return binary_thresh
-        
-    def extract_text(self, image_path: str):
+    def extract_text(self, image):
         """
-        Runs the full pipeline and extracts text.
-        In a production environment, this passes the preprocessed image to Pytesseract.
+        Runs the full OCR pipeline using EasyOCR.
+        Accepts a file path (str) or a numpy array (BGR image).
         """
         try:
-            processed_img = self.preprocess_image(image_path)
-            
-            # import pytesseract
-            # text = pytesseract.image_to_string(processed_img, config='--psm 8')
-            
-            # --- Simulation Block ---
-            # To avoid tesseract binary dependencies during demo, we mock the final text extraction 
-            # while keeping the highly rigorous OpenCV preprocessing intact.
-            simulated_confidence = 0.92
-            simulated_text = "WP BBA-5678"
-            
+            processed = self.preprocess_image(image)
+            reader = _get_reader()
+            results = reader.readtext(processed, detail=1)
+
+            if not results:
+                return {"text": None, "confidence": 0.0, "status": "no_text_detected"}
+
+            # Combine all detected text, pick the one with highest confidence
+            best_result = max(results, key=lambda r: r[2])
+            all_text = " ".join([r[1] for r in results])
+
             return {
-                "text": simulated_text.strip(),
-                "confidence": simulated_confidence,
+                "text": best_result[1].strip().upper(),
+                "confidence": float(best_result[2]),
+                "all_text": all_text.strip().upper(),
                 "status": "success"
             }
         except Exception as e:
-            return {
-                "text": None,
-                "confidence": 0.0,
-                "status": f"error: {str(e)}"
-            }
+            logger.error(f"OCR extraction failed: {e}")
+            return {"text": None, "confidence": 0.0, "status": f"error: {str(e)}"}

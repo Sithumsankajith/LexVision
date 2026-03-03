@@ -25,7 +25,7 @@ class Token(BaseModel):
 class TokenData(BaseModel):
     email: Optional[str] = None
 
-# --- Report Schemas ---
+# --- Evidence Schema ---
 class EvidenceSchema(BaseModel):
     id: Optional[str] = None
     type: str
@@ -35,6 +35,21 @@ class EvidenceSchema(BaseModel):
     class Config:
         from_attributes = True
 
+# --- Inference Log Schema (must be before ReportResponse) ---
+class InferenceLogResponse(BaseModel):
+    id: str
+    report_id: str
+    model_version: str
+    bbox_coordinates: Any
+    confidence: float
+    ocr_text: Optional[str]
+    ocr_confidence: Optional[float]
+    inference_latency: float
+    timestamp: datetime
+    class Config:
+        from_attributes = True
+
+# --- Report Schemas ---
 class ReportCreate(BaseModel):
     violation_type: str
     datetime: datetime
@@ -58,6 +73,7 @@ class ReportResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     evidence: List[EvidenceSchema] = []
+    inference_log: Optional[InferenceLogResponse] = None
     class Config:
         from_attributes = True
 
@@ -104,17 +120,3 @@ class ProfileResponse(BaseModel):
     reports_count: int
     validated_reports_count: int
     claimed_rewards: List[UserRewardResponse]
-
-# --- Inference Log Schemas ---
-class InferenceLogResponse(BaseModel):
-    id: str
-    report_id: str
-    model_version: str
-    bbox_coordinates: Any
-    confidence: float
-    ocr_text: Optional[str]
-    ocr_confidence: Optional[float]
-    inference_latency: float
-    timestamp: datetime
-    class Config:
-        from_attributes = True

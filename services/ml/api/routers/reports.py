@@ -1,6 +1,6 @@
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from datetime import datetime
 from typing import List
 
@@ -10,7 +10,8 @@ from ..dependencies import get_current_active_user, get_citizen, get_police, log
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
-@router.post("/", response_model=schemas.ReportResponse)
+@router.post("", response_model=schemas.ReportResponse)
+@router.post("/", include_in_schema=False)
 def create_report(report_data: schemas.ReportCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: models.User = Depends(get_citizen)):
     new_report = models.Report(
         tracking_id=f"LEX-{datetime.now().year}-{str(uuid.uuid4())[:8].upper()}",
@@ -49,14 +50,48 @@ def create_report(report_data: schemas.ReportCreate, background_tasks: Backgroun
 
     return new_report
 
-@router.get("/", response_model=List[schemas.ReportResponse])
-def get_reports(db: Session = Depends(get_db), current_user: models.User = Depends(get_citizen)):
+@router.get("", response_model=List[schemas.ReportResponse])
+@router.get("/", include_in_schema=False)
+def get_reports(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_active_user)):
+    query = db.query(models.Report).options(
+        joinedload(models.Report.evidence),
+        joinedload(models.Report.inference_log)
+    )
     if current_user.role == models.RoleEnum.CITIZEN:
         # Citizens only see their own
-        reports = db.query(models.Report).filter(models.Report.user_id == current_user.id).all()
+        reports = query.filter(models.Report.user_id == current_user.id).order_by(models.Report.created_at.desc()).all()
     else:
-        reports = db.query(models.Report).all()
+        # Police and Admin see all reports
+        reports = query.order_by(models.Report.created_at.desc()).all()
     return reports
+
+@router.get("/tracking/{tracking_id}", response_model=schemas.ReportResponse)
+def get_report_by_tracking_id(tracking_id: str, db: Session = Depends(get_db)):
+    report = db.query(models.Report).options(
+        joinedload(models.Report.evidence),
+        joinedload(models.Report.inference_log)
+    ).filter(models.Report.tracking_id == tracking_id).first()
+
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    
+    return report
+
+@router.get("/{report_id}", response_model=schemas.ReportResponse)
+def get_report_by_id(report_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_active_user)):
+    report = db.query(models.Report).options(
+        joinedload(models.Report.evidence),
+        joinedload(models.Report.inference_log)
+    ).filter(models.Report.id == report_id).first()
+
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    
+    # Citizens can only view their own reports
+    if current_user.role == models.RoleEnum.CITIZEN and report.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to view this report")
+    
+    return report
 
 VALID_TRANSITIONS = {
     models.StatusEnum.SUBMITTED: [models.StatusEnum.AI_PROCESSING],

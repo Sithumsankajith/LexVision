@@ -97,36 +97,6 @@ export const ReportWizard: React.FC = () => {
     const submitReport = async () => {
         setIsSubmitting(true);
         try {
-            // 1. Run ML Inference on the first evidence file if it's an image
-            let aiAnalysis = undefined;
-            if (formData.evidenceFiles.length > 0) {
-                const firstFile = formData.evidenceFiles[0];
-                if (firstFile.type.startsWith('image/')) {
-                    try {
-                        const fd = new FormData();
-                        fd.append('file', firstFile);
-
-                        // Call local FastAPI server
-                        const mlRes = await fetch('http://localhost:8000/predict', {
-                            method: 'POST',
-                            body: fd
-                        });
-
-                        if (mlRes.ok) {
-                            const mlData = await mlRes.json();
-                            if (mlData.success) {
-                                aiAnalysis = {
-                                    detectedViolationType: mlData.detectedViolationType,
-                                    detectedPlate: mlData.detectedPlate
-                                };
-                            }
-                        }
-                    } catch (mlErr) {
-                        console.warn('ML Inference server not reachable or failed', mlErr);
-                    }
-                }
-            }
-
             // Convert files to base64 so they can be saved and viewed across browsers
             const evidencePayload = await Promise.all(
                 formData.evidenceFiles.map(async (f, i) => ({
@@ -138,7 +108,7 @@ export const ReportWizard: React.FC = () => {
                 }))
             );
 
-            // 2. Save report to mock DB
+            // Save report to backend — ML inference runs automatically as a background task
             const report = await mockDb.createReport({
                 violationType: formData.violationType as ViolationType,
                 datetime: `${formData.date}T${formData.time}`,
@@ -155,7 +125,6 @@ export const ReportWizard: React.FC = () => {
                     notes: formData.description,
                 },
                 citizen: {}, // Anonymous by default for wizard
-                aiAnalysis: aiAnalysis
             });
             setSubmittedId(report.trackingId);
         } catch (error) {

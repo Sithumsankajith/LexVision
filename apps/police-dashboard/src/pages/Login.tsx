@@ -21,7 +21,7 @@ export const Login: React.FC = () => {
 
         setLoading(true);
         try {
-            await auth.login(badge, true);
+            await auth.login(badge, password);
             navigate('/dashboard');
         } catch (err: any) {
             setError(err.message || 'Login failed.');
