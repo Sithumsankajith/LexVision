@@ -84,17 +84,26 @@ class OCRPipeline:
             reader = _get_reader()
             results = reader.readtext(processed, detail=1)
 
-            if not results:
-                return {"text": None, "confidence": 0.0, "status": "no_text_detected"}
+            import re
+            valid_results = []
+            for r in results:
+                text = r[1].strip().upper()
+                conf = float(r[2])
+                # Basic filter: typical plates have letters/numbers and len > 3
+                if len(text) > 3 and re.search(r'[A-Z0-9]', text):
+                    valid_results.append((text, conf))
 
-            # Combine all detected text, pick the one with highest confidence
-            best_result = max(results, key=lambda r: r[2])
-            all_text = " ".join([r[1] for r in results])
+            if not valid_results:
+                return {"text": None, "confidence": 0.0, "status": "no_valid_text_detected"}
+
+            # Pick the one with highest confidence
+            best_result = max(valid_results, key=lambda x: x[1])
+            all_text = " ".join([r[0] for r in valid_results])
 
             return {
-                "text": best_result[1].strip().upper(),
-                "confidence": float(best_result[2]),
-                "all_text": all_text.strip().upper(),
+                "text": best_result[0],
+                "confidence": best_result[1],
+                "all_text": all_text,
                 "status": "success"
             }
         except Exception as e:

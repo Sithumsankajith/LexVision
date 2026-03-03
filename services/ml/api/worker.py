@@ -35,8 +35,8 @@ def _get_yolo_model():
             logger.info(f"Using custom model: {custom_model}")
             _yolo_model = YOLO(custom_model)
         else:
-            logger.info("Custom model not found, using pretrained YOLOv8n (COCO)")
-            _yolo_model = YOLO("yolov8n.pt")
+            logger.info("Custom model not found, using pretrained YOLOv8s (COCO)")
+            _yolo_model = YOLO("yolov8s.pt")
 
         logger.info("YOLO model loaded.")
     return _yolo_model
@@ -160,18 +160,9 @@ def _run_ocr(image_path: str) -> dict:
 def _determine_violation_type(report_violation: str, yolo_results: dict) -> str:
     """
     Determine the final violation type based on YOLO detections.
-    Uses the citizen-reported type as base, enhanced by AI detection.
+    We respect the user's reported violation type as Ground Truth.
+    Object detection alone cannot infer the state of traffic lights or line boundaries.
     """
-    # If person + motorcycle detected, likely a helmet violation scenario
-    if yolo_results["has_person"] and "motorcycle" in yolo_results["detected_classes"]:
-        return "no-helmet"
-
-    # If vehicle detected but different scenario
-    if yolo_results["has_vehicle"]:
-        mapped = VIOLATION_MAP.get(report_violation, report_violation)
-        return mapped
-
-    # Fall back to citizen-reported type
     return VIOLATION_MAP.get(report_violation, report_violation)
 
 
@@ -229,7 +220,7 @@ def attempt_inference(report: Report, db: Session, attempt: int = 1):
     ocr_text = ocr_result.get("text")
     inference_log = InferenceLog(
         report_id=report.id,
-        model_version="yolov8n|easyocr",
+        model_version="yolov8s|easyocr",
         bbox_coordinates={
             "detections": yolo_results["detections"],
             "quality_score": round(quality_score, 4),
@@ -244,9 +235,10 @@ def attempt_inference(report: Report, db: Session, attempt: int = 1):
 
     # 8. Set status based on quality
     QUALITY_THRESHOLD = 0.15  # Lower threshold since pretrained model may have lower confidence on traffic images
-    if quality_score < QUALITY_THRESHOLD and yolo_results["num_detections"] == 0:
+    # If YOLO didn't detect anything, and OCR confidence is terrible or text is None, reject it
+    if quality_score < QUALITY_THRESHOLD and yolo_results["num_detections"] == 0 and (ocr_conf == 0.0 or not ocr_text):
         report.status = StatusEnum.REJECTED
-        inference_log.bbox_coordinates["filtering"] = "Rejected: no relevant objects detected."
+        inference_log.bbox_coordinates["filtering"] = "Rejected: no relevant objects or text detected."
     else:
         report.status = StatusEnum.UNDER_REVIEW
         report.violation_type = detected_violation
