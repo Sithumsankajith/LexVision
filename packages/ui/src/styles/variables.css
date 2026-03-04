@@ -87,3 +87,18 @@
     --button-height: 48px;
     --button-height-sm: 36px;
 }
+
+/* Global Link & Interactive Element Styles */
+a,
+a:hover,
+a:focus,
+a:active {
+    text-decoration: none !important;
+}
+
+/* Ensure buttons and cards do not inherit any accidental underlines */
+button,
+.card,
+[class*="card"] {
+    text-decoration: none !important;
+}

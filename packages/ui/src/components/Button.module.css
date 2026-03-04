@@ -11,7 +11,9 @@
     position: relative;
     overflow: hidden;
     white-space: nowrap;
+    text-decoration: none !important;
 }
+
 
 .btn:disabled {
     opacity: 0.6;
