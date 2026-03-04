@@ -13,3 +13,10 @@ models/*.pb
 __pycache__/
 *.py[cod]
 .ipynb_checkpoints/
+
+# Environment variables (never commit secrets!)
+.env
+
+# SQLite fallback DB
+*.sqlite3
+db.sqlite3
