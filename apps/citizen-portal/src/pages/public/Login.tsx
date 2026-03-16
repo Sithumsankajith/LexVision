@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
-import { Mail, Lock, LogIn, AlertCircle } from 'lucide-react';
+import { LogIn, AlertCircle } from 'lucide-react';
 import { Card, Input, Button } from '@lexvision/ui';
 import { auth } from '@lexvision/api-client';
 import styles from './Login.module.css';
