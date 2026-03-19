@@ -62,18 +62,21 @@
     --radius-xl: 24px;
     --radius-full: 9999px;
 
+    /* Glassmorphism */
+    --glass-bg: rgba(255, 255, 255, 0.7);
+    --glass-border: rgba(255, 255, 255, 0.5);
+    --glass-blur: blur(12px);
+    --glass-card: rgba(255, 255, 255, 0.4);
+    --glass-card-border: rgba(255, 255, 255, 0.2);
+
     /* Shadows - Premium Multi-layered */
     --shadow-none: none;
     --shadow-subtle: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
     --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
     --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
     --shadow-premium: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.02);
+    --shadow-deep: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
     --shadow-focus: 0 0 0 3px hsla(var(--color-primary-h), var(--color-primary-s), var(--color-primary-l), 0.15);
-
-    /* Glassmorphism */
-    --glass-bg: rgba(255, 255, 255, 0.7);
-    --glass-border: rgba(255, 255, 255, 0.5);
-    --glass-blur: blur(12px);
 
     /* Gradients */
     --grad-primary: linear-gradient(135deg, #0B3A66 0%, #1D70B8 100%);

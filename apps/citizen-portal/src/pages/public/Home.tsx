@@ -89,22 +89,37 @@ export const Home: React.FC = () => {
                         <p>Understanding the rules is the first step to safety.</p>
                     </header>
                     <div className="card-grid">
-                        <Link to="/features" className={styles.featureLink}>
-                            <Card className={styles.featureCard} hoverable padding="lg">
-                                <h3>Riding Without a Helmet</h3>
-                                <p>Helmets are your only defense against severe head injuries.</p>
+                        <Link to="/demo" className={styles.featureLink}>
+                            <Card className={styles.featureCard} padding="none">
+                                <div className={styles.featureImage}>
+                                    <img src="/images/detections/helmet.png" alt="No Helmet" />
+                                </div>
+                                <div className={styles.featureInfo}>
+                                    <h3>Riding Without a Helmet</h3>
+                                    <p>Helmets are your only defense against severe head injuries. Always ride responsibly.</p>
+                                </div>
                             </Card>
                         </Link>
-                        <Link to="/features" className={styles.featureLink}>
-                            <Card className={styles.featureCard} hoverable padding="lg">
-                                <h3>Red Light Violations</h3>
-                                <p>Stopping at red lights prevents severe intersection collisions.</p>
+                        <Link to="/demo" className={styles.featureLink}>
+                            <Card className={styles.featureCard} padding="none">
+                                <div className={styles.featureImage}>
+                                    <img src="/images/detections/speeding.png" alt="Speeding" />
+                                </div>
+                                <div className={styles.featureInfo}>
+                                    <h3>Overspeeding</h3>
+                                    <p>Excessive speed reduces reaction time. Slow down and protect fellow commuters.</p>
+                                </div>
                             </Card>
                         </Link>
-                        <Link to="/features" className={styles.featureLink}>
-                            <Card className={styles.featureCard} hoverable padding="lg">
-                                <h3>White Line Crossing</h3>
-                                <p>Lane discipline prevents dangerous head-on accidents.</p>
+                        <Link to="/demo" className={styles.featureLink}>
+                            <Card className={styles.featureCard} padding="none">
+                                <div className={styles.featureImage}>
+                                    <img src="/images/detections/lane.png" alt="Lane Crossing" />
+                                </div>
+                                <div className={styles.featureInfo}>
+                                    <h3>White Line Crossing</h3>
+                                    <p>Lane discipline helps prevent dangerous head-on collisions at blind turns.</p>
+                                </div>
                             </Card>
                         </Link>
                     </div>

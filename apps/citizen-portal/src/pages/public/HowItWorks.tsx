@@ -11,40 +11,51 @@ export const HowItWorks: React.FC = () => {
                 <p>A simple, transparent process to ensure road safety.</p>
             </header>
 
-            <div className="card-grid">
+            <div className={styles.steps}>
                 <div className={styles.step}>
-                    <div className={styles.stepNumber}>1</div>
+                    <div className={styles.stepHeader}>
+                        <div className={styles.stepNumber}>1</div>
+                        <div className={styles.line}></div>
+                    </div>
                     <Card className={styles.stepCard} padding="lg">
-                        <div className={styles.iconWrapper}><Eye size={32} /></div>
+                        <div className={styles.iconWrapper}><Eye size={40} /></div>
                         <h3>Spot a Violation</h3>
-                        <p>You witness a serious traffic violation that endangers safety.</p>
+                        <p>You witness a serious traffic violation that endangers safety on the road.</p>
                     </Card>
                 </div>
 
                 <div className={styles.step}>
-                    <div className={styles.stepNumber}>2</div>
+                    <div className={styles.stepHeader}>
+                        <div className={styles.stepNumber}>2</div>
+                        <div className={styles.line}></div>
+                    </div>
                     <Card className={styles.stepCard} padding="lg">
-                        <div className={styles.iconWrapper}><Camera size={32} /></div>
+                        <div className={styles.iconWrapper}><Camera size={40} /></div>
                         <h3>Submit Evidence</h3>
-                        <p>Upload a photo or video through our secure portal along with details.</p>
+                        <p>Quickly upload photos or videos through our secure portal with location details.</p>
                     </Card>
                 </div>
 
                 <div className={styles.step}>
-                    <div className={styles.stepNumber}>3</div>
+                    <div className={styles.stepHeader}>
+                        <div className={styles.stepNumber}>3</div>
+                        <div className={styles.line}></div>
+                    </div>
                     <Card className={styles.stepCard} padding="lg">
-                        <div className={styles.iconWrapper}><ShieldCheck size={32} /></div>
+                        <div className={styles.iconWrapper}><ShieldCheck size={40} /></div>
                         <h3>Authority Review</h3>
-                        <p>Police and traffic authorities review the evidence to verify the violation.</p>
+                        <p>LexVision AI and traffic authorities verify the evidence for legal validity.</p>
                     </Card>
                 </div>
 
                 <div className={styles.step}>
-                    <div className={styles.stepNumber}>4</div>
+                    <div className={styles.stepHeader}>
+                        <div className={styles.stepNumber}>4</div>
+                    </div>
                     <Card className={styles.stepCard} padding="lg">
-                        <div className={styles.iconWrapper}><Gavel size={32} /></div>
+                        <div className={styles.iconWrapper}><Gavel size={40} /></div>
                         <h3>Action Taken</h3>
-                        <p>If verified, appropriate legal action is taken to discourage repeat offenses.</p>
+                        <p>Appropriate legal action is initiated to ensure accountability and safety.</p>
                     </Card>
                 </div>
             </div>
