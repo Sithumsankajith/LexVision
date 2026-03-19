@@ -1,4 +1,4 @@
-export type ViolationType = 'helmet' | 'red-light' | 'white-line';
+export type ViolationType = 'helmet' | 'no-helmet' | 'red-light' | 'white-line';
 
 export type ReportStatus = 'submitted' | 'under-review' | 'verified' | 'rejected' | 'forwarded';
 

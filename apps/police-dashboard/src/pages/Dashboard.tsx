@@ -6,7 +6,6 @@ import {
     Clock,
     AlertTriangle,
     CheckCircle,
-    XCircle,
     BrainCircuit
 } from 'lucide-react';
 import { Button } from '@lexvision/ui';
@@ -39,7 +38,6 @@ export const Dashboard: React.FC = () => {
     const totalReports = reports.length;
     const newSubmissions = reports.filter(r => r.status === 'submitted' || r.status === 'under-review').length;
     const verified = reports.filter(r => r.status === 'verified').length;
-    const rejected = reports.filter(r => r.status === 'rejected').length;
     const resolvedToday = reports.filter(r =>
         (r.status === 'verified' || r.status === 'rejected') &&
         new Date(r.updatedAt).toDateString() === new Date().toDateString()
