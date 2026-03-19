@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
     Filter,
     Download
@@ -11,6 +11,8 @@ import type { Report } from '@lexvision/types';
 export const Reports: React.FC = () => {
     const [reports, setReports] = useState<Report[]>([]);
     const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState('');
+    const [statusFilter, setStatusFilter] = useState('all');
 
     useEffect(() => {
         const fetchReports = async () => {
@@ -22,6 +24,29 @@ export const Reports: React.FC = () => {
         const interval = setInterval(fetchReports, 5000);
         return () => clearInterval(interval);
     }, []);
+
+    const filteredReports = useMemo(() => {
+        let result = reports;
+
+        // Status filter
+        if (statusFilter !== 'all') {
+            result = result.filter(r => r.status === statusFilter);
+        }
+
+        // Search filter
+        if (search.trim()) {
+            const q = search.toLowerCase();
+            result = result.filter(r =>
+                r.trackingId.toLowerCase().includes(q) ||
+                (r.citizen.email || '').toLowerCase().includes(q) ||
+                (r.location.address || '').toLowerCase().includes(q) ||
+                (r.location.city || '').toLowerCase().includes(q) ||
+                r.violationType.toLowerCase().includes(q)
+            );
+        }
+
+        return result;
+    }, [reports, search, statusFilter]);
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
@@ -44,13 +69,18 @@ export const Reports: React.FC = () => {
 
             <Panel noPadding style={{ padding: 'var(--space-4)', display: 'flex', gap: 'var(--space-4)', alignItems: 'center', flexWrap: 'wrap' }}>
                 <div style={{ flex: 1, minWidth: '200px' }}>
-                    <Input placeholder="Search by Case ID, Citizen Email, or Location..." fullWidth />
+                    <Input
+                        placeholder="Search by Case ID, Citizen Email, or Location..."
+                        fullWidth
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                    />
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                     <span style={{ fontSize: '0.875rem', fontWeight: '500', color: 'var(--color-text-secondary)' }}><Filter size={16} /> Filters:</span>
                     <Select
-                        value="all"
-                        onChange={() => { }}
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
                         options={[
                             { value: 'all', label: 'All Status' },
                             { value: 'submitted', label: 'New' },
@@ -61,15 +91,20 @@ export const Reports: React.FC = () => {
                         style={{ width: '140px' }}
                     />
                 </div>
+                {(search || statusFilter !== 'all') && (
+                    <Button variant="ghost" size="sm" onClick={() => { setSearch(''); setStatusFilter('all'); }} style={{ color: 'var(--color-primary)', fontWeight: '700' }}>
+                        Reset
+                    </Button>
+                )}
             </Panel>
 
             <Panel
-                title={`Database Results (${reports.length})`}
-                action={<div style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>{loading ? 'Loading...' : `Showing loaded reports`}</div>}
+                title={`Database Results (${filteredReports.length})`}
+                action={<div style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>{loading ? 'Loading...' : `Showing ${filteredReports.length} of ${reports.length} reports`}</div>}
                 noPadding
             >
                 <DataTable headers={['Tracking ID', 'Citizen', 'Violation Type', 'Location', 'Date', 'Status']}>
-                    {reports.map((report) => (
+                    {filteredReports.map((report) => (
                         <tr key={report.id}>
                             <td style={{ fontFamily: 'monospace', fontWeight: '500' }}>{report.trackingId}</td>
                             <td>{report.citizen.email || 'Anonymous'}</td>
@@ -93,9 +128,11 @@ export const Reports: React.FC = () => {
                             </td>
                         </tr>
                     ))}
-                    {reports.length === 0 && !loading && (
+                    {filteredReports.length === 0 && !loading && (
                         <tr>
-                            <td colSpan={6} style={{ textAlign: 'center', padding: '2rem' }}>No reports found in the system.</td>
+                            <td colSpan={6} style={{ textAlign: 'center', padding: '2rem' }}>
+                                {search || statusFilter !== 'all' ? 'No reports match your filters.' : 'No reports found in the system.'}
+                            </td>
                         </tr>
                     )}
                 </DataTable>

@@ -94,7 +94,7 @@ def get_report_by_id(report_id: str, db: Session = Depends(get_db), current_user
     return report
 
 VALID_TRANSITIONS = {
-    models.StatusEnum.SUBMITTED: [models.StatusEnum.AI_PROCESSING],
+    models.StatusEnum.SUBMITTED: [models.StatusEnum.AI_PROCESSING, models.StatusEnum.UNDER_REVIEW],
     models.StatusEnum.AI_PROCESSING: [models.StatusEnum.UNDER_REVIEW],
     models.StatusEnum.UNDER_REVIEW: [models.StatusEnum.VALIDATED, models.StatusEnum.REJECTED],
     models.StatusEnum.VALIDATED: [],

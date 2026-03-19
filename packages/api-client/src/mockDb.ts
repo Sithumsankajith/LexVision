@@ -213,5 +213,50 @@ export const mockDb = {
         a.click();
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
+    },
+
+    adminGetReportsTrend: async (): Promise<{ date: string, count: number }[]> => {
+        const response = await fetch(`${API_BASE_URL}/admin/analytics/reports-trend`, { headers: getHeaders() });
+        if (!response.ok) return [];
+        return response.json();
+    },
+
+    adminGetAiMetrics: async (): Promise<{ avg_helmet_confidence: number, avg_ocr_confidence: number, avg_inference_latency_seconds: number }> => {
+        const response = await fetch(`${API_BASE_URL}/admin/analytics/ai-metrics`, { headers: getHeaders() });
+        if (!response.ok) return { avg_helmet_confidence: 0, avg_ocr_confidence: 0, avg_inference_latency_seconds: 0 };
+        return response.json();
+    },
+
+    adminGetOfficerMetrics: async (): Promise<{ officer_id: string, total_validations: number, tickets_issued: number, approval_rate_percent: number }[]> => {
+        const response = await fetch(`${API_BASE_URL}/admin/analytics/officers`, { headers: getHeaders() });
+        if (!response.ok) return [];
+        return response.json();
+    },
+
+    adminGetHeatmapData: async (): Promise<{ lat: number, lng: number, weight: number }[]> => {
+        const response = await fetch(`${API_BASE_URL}/admin/analytics/heatmap`, { headers: getHeaders() });
+        if (!response.ok) return [];
+        return response.json();
+    },
+
+    issueTicket: async (reportId: string, penalCode: string, fineAmount: number) => {
+        const response = await fetch(`${API_BASE_URL}/reports/${reportId}/ticket`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ report_id: reportId, penal_code: penalCode, fine_amount: fineAmount })
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || 'Failed to issue ticket');
+        }
+        return response.json();
+    },
+
+    getTicketForReport: async (_reportId: string) => {
+        try {
+            // We'll check the report data for ticket info - for now return null
+            // as there's no direct GET ticket by report endpoint
+            return null;
+        } catch { return null; }
     }
 };
