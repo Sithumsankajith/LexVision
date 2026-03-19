@@ -98,7 +98,7 @@ VALID_TRANSITIONS = {
     models.StatusEnum.AI_PROCESSING: [models.StatusEnum.UNDER_REVIEW],
     models.StatusEnum.UNDER_REVIEW: [models.StatusEnum.VALIDATED, models.StatusEnum.REJECTED],
     models.StatusEnum.VALIDATED: [],
-    models.StatusEnum.REJECTED: []
+    models.StatusEnum.REJECTED: [models.StatusEnum.UNDER_REVIEW]  # Allow police to re-open AI-rejected cases
 }
 
 @router.put("/{report_id}/status", response_model=schemas.ReportResponse)

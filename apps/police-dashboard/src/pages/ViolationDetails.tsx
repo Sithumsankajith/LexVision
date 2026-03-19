@@ -371,8 +371,21 @@ export const ViolationDetails: React.FC = () => {
                                     </>
                                 )}
 
-                                {/* Closed state */}
-                                {isClosed && !showTicketForm && !ticketIssued && isVerified && (
+                                {/* Re-open AI-rejected case for manual review */}
+                                {isRejected && !ticketIssued && (
+                                    <Button
+                                        variant="primary"
+                                        fullWidth
+                                        leftIcon={actionLoading ? <Loader2 size={18} /> : <AlertTriangle size={18} />}
+                                        onClick={() => handleStatusUpdate('under-review')}
+                                        disabled={actionLoading}
+                                    >
+                                        {actionLoading ? 'Processing...' : 'Re-open for Manual Review'}
+                                    </Button>
+                                )}
+
+                                {/* Issue ticket for verified cases */}
+                                {isVerified && !showTicketForm && !ticketIssued && (
                                     <Button
                                         variant="primary"
                                         fullWidth
