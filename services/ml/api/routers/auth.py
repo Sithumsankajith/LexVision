@@ -44,8 +44,12 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
             headers={"WWW-Authenticate": "Bearer"},
         )
         
-    access_token = create_access_token(data={"sub": user.email, "role": user.role})
-    
+    from ..dependencies import ACCESS_TOKEN_EXPIRE_MINUTES
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.email, "role": getattr(user.role, 'name', user.role)},
+        expires_delta=access_token_expires
+    )
     # Audit log
     log_audit_action(db, user.id, "LOGIN_ATTEMPT_SUCCESS", "User", user.id)
     
