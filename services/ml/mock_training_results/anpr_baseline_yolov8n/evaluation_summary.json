@@ -1,0 +1,80 @@
+{
+  "generated_at": "2026-04-07T05:41:42.982515+00:00",
+  "run_name": "anpr_baseline_yolov8n",
+  "target": {
+    "key": "anpr",
+    "display_name": "Automatic Number Plate Recognition"
+  },
+  "model_path": "yolov8n.pt",
+  "dataset": {
+    "data_yaml": "datasets/NumberPlate/Automatic Number Plate Recognition.v9i.yolov8/data.yaml",
+    "dataset_name": "Automatic Number Plate Recognition.v9i.yolov8",
+    "class_count": 1,
+    "class_names": [
+      "License_Plate"
+    ],
+    "splits": {
+      "train": {
+        "path": "datasets/NumberPlate/Automatic Number Plate Recognition.v9i.yolov8/train/images",
+        "image_count": 1358
+      },
+      "val": {
+        "path": "datasets/NumberPlate/Automatic Number Plate Recognition.v9i.yolov8/valid/images",
+        "image_count": 210
+      },
+      "test": {
+        "path": "datasets/NumberPlate/Automatic Number Plate Recognition.v9i.yolov8/test/images",
+        "image_count": 10
+      }
+    }
+  },
+  "evaluation": {
+    "imgsz": 320,
+    "device": "cpu",
+    "conf": 0.25,
+    "iou": 0.7,
+    "splits": {
+      "val": {
+        "split": "val",
+        "generated_at": "2026-04-07T05:41:41.627819+00:00",
+        "output_directory": "mock_training_results/anpr_baseline_yolov8n/evaluations/val",
+        "metrics": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "map50": 0.0,
+          "map50_95": 0.0,
+          "fitness": 0.0,
+          "per_class_map50_95": [],
+          "speed_ms_per_image": {
+            "preprocess": 0.3243,
+            "inference": 22.1708,
+            "loss": 0.0001,
+            "postprocess": 2.5872
+          }
+        }
+      },
+      "test": {
+        "split": "test",
+        "generated_at": "2026-04-07T05:41:42.982260+00:00",
+        "output_directory": "mock_training_results/anpr_baseline_yolov8n/evaluations/test",
+        "metrics": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "map50": 0.0,
+          "map50_95": 0.0,
+          "fitness": 0.0,
+          "per_class_map50_95": [],
+          "speed_ms_per_image": {
+            "preprocess": 0.2507,
+            "inference": 21.0474,
+            "loss": 0.0002,
+            "postprocess": 0.3881
+          }
+        }
+      }
+    }
+  },
+  "artifacts": {
+    "run_directory": "mock_training_results/anpr_baseline_yolov8n"
+  }
+}

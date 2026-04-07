@@ -1,9 +1,17 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Camera, MapPin, Radio, Upload, X, CheckCircle, FileText, ArrowRight, ArrowLeft, Locate, Loader2 } from 'lucide-react';
 import { Stepper, Button, Card, Input, Select } from '@lexvision/ui';
-import { mockDb } from '@lexvision/api-client';
+import { auth, mockDb } from '@lexvision/api-client';
 import type { ViolationType } from '@lexvision/types';
+import {
+    clearPendingReportDraft,
+    getDefaultReportFormData,
+    isDefaultReportCoordinates,
+    loadPendingReportDraft,
+    savePendingReportDraft,
+    type ReportFormData,
+} from '@/lib/reportDraft';
 import styles from '@/pages/portal/ReportWizard.module.css';
 
 const STEPS = [
@@ -89,6 +97,60 @@ const getBase64 = (file: File): Promise<string> => {
     });
 };
 
+interface LeafletLatLng {
+    lat: number;
+    lng: number;
+}
+
+interface LeafletMouseEvent {
+    latlng: LeafletLatLng;
+}
+
+interface LeafletMapInstance {
+    setView(center: [number, number], zoom: number): LeafletMapInstance;
+    on(event: 'click', handler: (event: LeafletMouseEvent) => void): void;
+    invalidateSize(): void;
+    remove(): void;
+}
+
+interface LeafletMarkerInstance {
+    addTo(map: LeafletMapInstance): LeafletMarkerInstance;
+    bindPopup(text: string): LeafletMarkerInstance;
+    openPopup(): LeafletMarkerInstance;
+    on(event: 'dragend', handler: () => void): void;
+    getLatLng(): LeafletLatLng;
+    setLatLng(position: LeafletLatLng | [number, number]): void;
+}
+
+interface LeafletTileLayer {
+    addTo(map: LeafletMapInstance): void;
+}
+
+interface LeafletApi {
+    map(element: HTMLElement): LeafletMapInstance;
+    tileLayer(
+        url: string,
+        options: {
+            attribution: string;
+            maxZoom: number;
+        },
+    ): LeafletTileLayer;
+    marker(position: [number, number], options: { draggable: boolean }): LeafletMarkerInstance;
+}
+
+declare global {
+    interface Window {
+        L?: LeafletApi;
+    }
+}
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+    if (error instanceof Error && error.message) {
+        return error.message;
+    }
+    return fallback;
+};
+
 // --- Interactive Map Component (Leaflet via CDN) ---
 const LocationMap: React.FC<{
     lat: number;
@@ -96,8 +158,8 @@ const LocationMap: React.FC<{
     onLocationChange: (lat: number, lng: number) => void;
 }> = ({ lat, lng, onLocationChange }) => {
     const mapRef = useRef<HTMLDivElement>(null);
-    const mapInstanceRef = useRef<any>(null);
-    const markerRef = useRef<any>(null);
+    const mapInstanceRef = useRef<LeafletMapInstance | null>(null);
+    const markerRef = useRef<LeafletMarkerInstance | null>(null);
 
     useEffect(() => {
         // Load Leaflet CSS
@@ -110,15 +172,15 @@ const LocationMap: React.FC<{
         }
 
         // Load Leaflet JS
-        const loadLeaflet = (): Promise<any> => {
+        const loadLeaflet = (): Promise<LeafletApi> => {
             return new Promise((resolve) => {
-                if ((window as any).L) {
-                    resolve((window as any).L);
+                if (window.L) {
+                    resolve(window.L);
                     return;
                 }
                 const script = document.createElement('script');
                 script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-                script.onload = () => resolve((window as any).L);
+                script.onload = () => resolve(window.L as LeafletApi);
                 document.head.appendChild(script);
             });
         };
@@ -140,7 +202,7 @@ const LocationMap: React.FC<{
                 onLocationChange(pos.lat, pos.lng);
             });
 
-            map.on('click', (e: any) => {
+            map.on('click', (e: LeafletMouseEvent) => {
                 marker.setLatLng(e.latlng);
                 onLocationChange(e.latlng.lat, e.latlng.lng);
             });
@@ -186,29 +248,50 @@ const LocationMap: React.FC<{
 
 
 export const ReportWizard: React.FC = () => {
+    const navigate = useNavigate();
     const [currentStep, setCurrentStep] = useState(1);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [submittedId, setSubmittedId] = useState<string | null>(null);
     const [gpsLoading, setGpsLoading] = useState(false);
     const [gpsError, setGpsError] = useState('');
+    const [draftReady, setDraftReady] = useState(false);
+    const [resumeNotice, setResumeNotice] = useState<string | null>(null);
 
     // Form State
-    const [formData, setFormData] = useState({
-        violationType: '' as ViolationType | '',
-        date: new Date().toISOString().split('T')[0],
-        time: `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`,
-        location: '',
-        city: '',
-        lat: 6.9271,  // Default: Colombo
-        lng: 79.8612,
-        description: '',
-        vehiclePlate: '',
-        vehicleType: '',
-        evidenceFiles: [] as File[],
-    });
+    const [formData, setFormData] = useState<ReportFormData>(() => getDefaultReportFormData());
 
     const [errors, setErrors] = useState<Record<string, string>>({});
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const isAuthenticated = auth.isAuthenticated();
+
+    useEffect(() => {
+        let active = true;
+
+        const restoreDraft = async () => {
+            try {
+                const draft = await loadPendingReportDraft();
+                if (!active) return;
+
+                if (draft) {
+                    setFormData(draft);
+                    setCurrentStep(4);
+                    setResumeNotice('Your saved report draft has been restored. Review it and submit.');
+                }
+            } catch (error) {
+                console.error('Failed to restore report draft', error);
+            } finally {
+                if (active) {
+                    setDraftReady(true);
+                }
+            }
+        };
+
+        restoreDraft();
+
+        return () => {
+            active = false;
+        };
+    }, []);
 
     // Auto-fetch current location on step 2
     const fetchCurrentLocation = useCallback(() => {
@@ -263,10 +346,11 @@ export const ReportWizard: React.FC = () => {
 
     // Auto-fetch on entering step 2
     useEffect(() => {
-        if (currentStep === 2 && formData.lat === 6.9271 && formData.lng === 79.8612) {
+        if (!draftReady) return;
+        if (currentStep === 2 && isDefaultReportCoordinates(formData.lat, formData.lng)) {
             fetchCurrentLocation();
         }
-    }, [currentStep, formData.lat, formData.lng, fetchCurrentLocation]);
+    }, [currentStep, draftReady, formData.lat, formData.lng, fetchCurrentLocation]);
 
     const handleMapLocationChange = (lat: number, lng: number) => {
         setFormData(prev => ({ ...prev, lat, lng }));
@@ -291,6 +375,10 @@ export const ReportWizard: React.FC = () => {
     const handleNext = async () => {
         if (validateStep(currentStep)) {
             if (currentStep === 4) {
+                if (!isAuthenticated) {
+                    await redirectToLoginForSubmit();
+                    return;
+                }
                 await submitReport();
             } else {
                 setCurrentStep((prev) => prev + 1);
@@ -371,10 +459,33 @@ export const ReportWizard: React.FC = () => {
                 },
                 citizen: {},
             });
+            await clearPendingReportDraft().catch(() => undefined);
             setSubmittedId(report.trackingId);
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Submission failed', error);
-            setErrors({ submit: `Failed to submit report: ${error?.message || 'Unknown error'}` });
+            setErrors({ submit: `Failed to submit report: ${getErrorMessage(error, 'Unknown error')}` });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const redirectToLoginForSubmit = async () => {
+        setIsSubmitting(true);
+        try {
+            await savePendingReportDraft(formData);
+            navigate('/login', {
+                state: {
+                    intent: 'final-report-submit',
+                    from: {
+                        pathname: '/portal/report',
+                    },
+                },
+            });
+        } catch (error: unknown) {
+            console.error('Failed to preserve report draft before login', error);
+            setErrors({
+                submit: `Could not preserve your report draft for login. ${getErrorMessage(error, 'Please try again.')}`,
+            });
         } finally {
             setIsSubmitting(false);
         }
@@ -425,6 +536,21 @@ export const ReportWizard: React.FC = () => {
             <h1 className={styles.title}>Report a Violation</h1>
 
             <Stepper steps={STEPS} currentStep={currentStep} />
+
+            {resumeNotice && (
+                <div
+                    style={{
+                        marginBottom: 'var(--space-4)',
+                        padding: 'var(--space-3) var(--space-4)',
+                        borderRadius: 'var(--radius-md)',
+                        border: '1px solid var(--color-border)',
+                        backgroundColor: 'var(--color-surface)',
+                        color: 'var(--color-text)',
+                    }}
+                >
+                    {resumeNotice}
+                </div>
+            )}
 
             {Object.keys(errors).length > 0 && (
                 <div
@@ -613,6 +739,20 @@ export const ReportWizard: React.FC = () => {
                 {/* Step 4: Vehicle & Notes */}
                 {currentStep === 4 && (
                     <div className="form-grid">
+                        {!isAuthenticated && (
+                            <div
+                                style={{
+                                    padding: 'var(--space-3) var(--space-4)',
+                                    borderRadius: 'var(--radius-md)',
+                                    border: '1px solid var(--color-border)',
+                                    backgroundColor: 'var(--color-surface)',
+                                    color: 'var(--color-text-secondary)',
+                                }}
+                            >
+                                You can complete the report first. Sign in only when you press the final submit button.
+                            </div>
+                        )}
+
                         <div className="form-grid form-grid--2-col">
                             <Input
                                 label="Vehicle Number Plate (Optional)"
@@ -666,7 +806,7 @@ export const ReportWizard: React.FC = () => {
                     isLoading={isSubmitting}
                     rightIcon={currentStep === 4 ? undefined : <ArrowRight size={16} />}
                 >
-                    {currentStep === 4 ? 'Submit Report' : 'Next Step'}
+                    {currentStep === 4 ? (isAuthenticated ? 'Submit Report' : 'Login to Submit') : 'Next Step'}
                 </Button>
             </div>
         </div>

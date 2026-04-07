@@ -1,0 +1,84 @@
+{
+  "generated_at": "2026-04-07T05:42:54.684137+00:00",
+  "run_name": "helmet_baseline_yolov8n",
+  "target": {
+    "key": "helmet",
+    "display_name": "Helmet Detection"
+  },
+  "model_path": "yolov8n.pt",
+  "dataset": {
+    "data_yaml": "datasets/Helmet/Helmet Detection.v2i.yolov8/data.yaml",
+    "dataset_name": "Helmet Detection.v2i.yolov8",
+    "class_count": 5,
+    "class_names": [
+      "Invalid",
+      "full-faced",
+      "half-faced",
+      "motorcycle",
+      "not wearing helment"
+    ],
+    "splits": {
+      "train": {
+        "path": "datasets/Helmet/Helmet Detection.v2i.yolov8/train/images",
+        "image_count": 1800
+      },
+      "val": {
+        "path": "datasets/Helmet/Helmet Detection.v2i.yolov8/valid/images",
+        "image_count": 171
+      },
+      "test": {
+        "path": "datasets/Helmet/Helmet Detection.v2i.yolov8/test/images",
+        "image_count": 88
+      }
+    }
+  },
+  "evaluation": {
+    "imgsz": 320,
+    "device": "cpu",
+    "conf": 0.25,
+    "iou": 0.7,
+    "splits": {
+      "val": {
+        "split": "val",
+        "generated_at": "2026-04-07T05:42:51.834632+00:00",
+        "output_directory": "mock_training_results/helmet_baseline_yolov8n/evaluations/val",
+        "metrics": {
+          "precision": 0.0977,
+          "recall": 0.028,
+          "map50": 0.0588,
+          "map50_95": 0.0229,
+          "fitness": 0.0265,
+          "per_class_map50_95": [],
+          "speed_ms_per_image": {
+            "preprocess": 0.1868,
+            "inference": 14.1509,
+            "loss": 0.0001,
+            "postprocess": 5.013
+          }
+        }
+      },
+      "test": {
+        "split": "test",
+        "generated_at": "2026-04-07T05:42:54.683791+00:00",
+        "output_directory": "mock_training_results/helmet_baseline_yolov8n/evaluations/test",
+        "metrics": {
+          "precision": 0.0969,
+          "recall": 0.0278,
+          "map50": 0.0625,
+          "map50_95": 0.0287,
+          "fitness": 0.0321,
+          "per_class_map50_95": [],
+          "speed_ms_per_image": {
+            "preprocess": 0.1836,
+            "inference": 15.0446,
+            "loss": 0.0001,
+            "postprocess": 0.3022
+          }
+        }
+      }
+    }
+  },
+  "artifacts": {
+    "run_directory": "mock_training_results/helmet_baseline_yolov8n"
+  }
+}

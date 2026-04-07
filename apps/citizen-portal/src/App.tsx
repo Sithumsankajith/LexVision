@@ -24,15 +24,18 @@ function AppContent() {
   const location = useLocation();
 
   useEffect(() => {
-    // Show loader on every location change
-    setLoading(true);
+    const showTimer = setTimeout(() => {
+      setLoading(true);
+    }, 0);
 
-    // Hide after a reasonable duration to show animation
-    const timer = setTimeout(() => {
+    const hideTimer = setTimeout(() => {
       setLoading(false);
     }, 800);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(showTimer);
+      clearTimeout(hideTimer);
+    };
   }, [location.pathname]);
 
   return (
@@ -55,11 +58,7 @@ function AppContent() {
           {/* Citizen Portal Routes */}
           <Route path="/portal" element={<PublicLayout />}>
             <Route index element={<PortalHome />} />
-            <Route path="report" element={
-              <ProtectedRoute>
-                <ReportWizard />
-              </ProtectedRoute>
-            } />
+            <Route path="report" element={<ReportWizard />} />
             <Route path="track" element={<TrackReport />} />
             <Route path="profile" element={
               <ProtectedRoute>

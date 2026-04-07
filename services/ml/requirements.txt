@@ -3,6 +3,7 @@ torch
 torchvision
 torchaudio
 opencv-python
+easyocr
 pandas
 matplotlib
 PyYAML

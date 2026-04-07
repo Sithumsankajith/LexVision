@@ -5,6 +5,21 @@ import { Card, Input, Button } from '@lexvision/ui';
 import { auth } from '@lexvision/api-client';
 import styles from './Login.module.css';
 
+interface AuthRedirectState {
+    from?: {
+        pathname?: string;
+        state?: unknown;
+    };
+    intent?: 'final-report-submit';
+}
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+    if (error instanceof Error && error.message) {
+        return error.message;
+    }
+    return fallback;
+};
+
 export const Login: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
@@ -13,7 +28,10 @@ export const Login: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const from = (location.state as any)?.from?.pathname || '/portal';
+    const navigationState = (location.state as AuthRedirectState | null) ?? null;
+    const fromPath = navigationState?.from?.pathname || '/portal';
+    const fromState = navigationState?.from?.state;
+    const isFinalSubmitLogin = navigationState?.intent === 'final-report-submit';
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -22,9 +40,9 @@ export const Login: React.FC = () => {
 
         try {
             await auth.login(email, password);
-            navigate(from, { replace: true });
-        } catch (err: any) {
-            setError(err.message || 'Login failed. Please check your credentials.');
+            navigate(fromPath, { replace: true, state: fromState });
+        } catch (error: unknown) {
+            setError(getErrorMessage(error, 'Login failed. Please check your credentials.'));
         } finally {
             setIsLoading(false);
         }
@@ -36,7 +54,7 @@ export const Login: React.FC = () => {
                 <div className={styles.header}>
                     <LogIn size={40} className={styles.icon} />
                     <h1>Citizen Portal Login</h1>
-                    <p>Access your reports and rewards</p>
+                    <p>{isFinalSubmitLogin ? 'Log in to submit your saved evidence report.' : 'Access your reports and rewards'}</p>
                 </div>
 
                 {error && (
@@ -78,7 +96,7 @@ export const Login: React.FC = () => {
                 </form>
 
                 <div className={styles.footer}>
-                    <p>Don't have an account? <Link to="/register">Register here</Link></p>
+                    <p>Don't have an account? <Link to="/register" state={location.state}>Register here</Link></p>
                 </div>
             </Card>
         </div>

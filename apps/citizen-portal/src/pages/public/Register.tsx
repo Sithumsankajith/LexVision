@@ -1,12 +1,20 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { UserPlus, AlertCircle, CheckCircle } from 'lucide-react';
 import { Card, Input, Button } from '@lexvision/ui';
 import { auth } from '@lexvision/api-client';
 import styles from './Login.module.css'; // Reuse login styles
 
+const getErrorMessage = (error: unknown, fallback: string) => {
+    if (error instanceof Error && error.message) {
+        return error.message;
+    }
+    return fallback;
+};
+
 export const Register: React.FC = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
@@ -28,9 +36,9 @@ export const Register: React.FC = () => {
         try {
             await auth.register(email, password);
             setIsSuccess(true);
-            setTimeout(() => navigate('/login'), 2000);
-        } catch (err: any) {
-            setError(err.message || 'Registration failed.');
+            setTimeout(() => navigate('/login', { state: location.state }), 2000);
+        } catch (error: unknown) {
+            setError(getErrorMessage(error, 'Registration failed.'));
         } finally {
             setIsLoading(false);
         }
@@ -105,7 +113,7 @@ export const Register: React.FC = () => {
                 </form>
 
                 <div className={styles.footer}>
-                    <p>Already have an account? <Link to="/login">Login here</Link></p>
+                    <p>Already have an account? <Link to="/login" state={location.state}>Login here</Link></p>
                 </div>
             </Card>
         </div>
