@@ -1,19 +1,21 @@
-import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
+from sqlalchemy import inspect
 
 from .database import engine, Base, SessionLocal
 from .routers import auth, reports, admin, users
 from . import models
 
-# Create tables if they don't exist
-Base.metadata.create_all(bind=engine)
+# Keep SQLite zero-config for local demos; PostgreSQL should be migrated explicitly.
+if engine.dialect.name == "sqlite":
+    Base.metadata.create_all(bind=engine)
 
 # Seed initial rewards if they don't exist
 def seed_rewards():
     db = SessionLocal()
     try:
+        if "rewards" not in inspect(engine).get_table_names():
+            return
         if db.query(models.Reward).count() == 0:
             rewards = [
                 models.Reward(
