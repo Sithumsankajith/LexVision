@@ -95,7 +95,16 @@ export const auth = {
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.detail || 'Citizen OTP verification failed.');
+            if (response.status === 401) {
+                throw new Error(errorData.detail || 'The backend could not verify this OTP session. Request a new OTP and try again.');
+            }
+            if (response.status === 503) {
+                throw new Error('Citizen phone verification is temporarily unavailable. Please try again shortly.');
+            }
+            if (response.status === 409) {
+                throw new Error(errorData.detail || 'This verified phone number conflicts with an existing citizen account.');
+            }
+            throw new Error(errorData.detail || 'Citizen backend verification failed.');
         }
 
         return response.json();

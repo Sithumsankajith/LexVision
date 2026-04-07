@@ -491,7 +491,11 @@ export const ReportWizard: React.FC = () => {
             setSubmittedId(report.trackingId);
         } catch (error: unknown) {
             console.error('Submission failed', error);
-            const message = `Failed to submit report: ${getErrorMessage(error, 'Unknown error')}`;
+            await savePendingReportDraft(formData).catch((draftError) => {
+                console.error('Failed to preserve the report draft after submission error', draftError);
+            });
+            setResumeNotice('Your report draft is still saved. You can retry the OTP verification or final submit without re-entering the form.');
+            const message = `Failed to submit report: ${getErrorMessage(error, 'Unknown error')} Your form data is still saved.`;
             setErrors({ submit: message });
             throw new Error(message);
         } finally {

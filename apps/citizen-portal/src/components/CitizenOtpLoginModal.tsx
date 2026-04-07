@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, CheckCircle2, MessageSquareLock, RefreshCcw, ShieldCheck, X } from 'lucide-react';
 import { Button, Card, Input } from '@lexvision/ui';
 import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from 'firebase/auth';
+import { FirebaseError } from 'firebase/app';
 import { ensureFirebaseAuthReady, getFirebaseAuth } from '@/lib/firebase';
 import styles from './CitizenOtpLoginModal.module.css';
 
@@ -33,6 +34,28 @@ const getErrorMessage = (error: unknown, fallback: string) => {
     return fallback;
 };
 
+const getOtpErrorMessage = (error: unknown) => {
+    if (error instanceof FirebaseError) {
+        switch (error.code) {
+            case 'auth/invalid-verification-code':
+                return 'The OTP you entered is invalid. Check the 6-digit code and try again.';
+            case 'auth/code-expired':
+                return 'This OTP has expired. Request a new code and try again.';
+            case 'auth/too-many-requests':
+                return 'Too many verification attempts were made. Please wait a moment and try again.';
+            default:
+                return getErrorMessage(error, 'OTP verification failed. Check the code and try again.');
+        }
+    }
+
+    return getErrorMessage(error, 'OTP verification failed. Check the code and try again.');
+};
+
+const getSubmitErrorMessage = (error: unknown) => {
+    const fallback = 'Your phone number was verified, but we could not complete the backend verification or report submission. Your filled report is still saved. Please try again.';
+    return getErrorMessage(error, fallback);
+};
+
 export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
     isOpen,
     onClose,
@@ -48,9 +71,11 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
     const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
     const [isSendingOtp, setIsSendingOtp] = useState(false);
     const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+    const [isCompletingSubmit, setIsCompletingSubmit] = useState(false);
+    const [verifiedResult, setVerifiedResult] = useState<CitizenOtpVerificationResult | null>(null);
     const [statusMessage, setStatusMessage] = useState<string | null>(null);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
-    const isBusy = isSendingOtp || isVerifyingOtp;
+    const isBusy = isSendingOtp || isVerifyingOtp || isCompletingSubmit;
 
     const teardownRecaptcha = useCallback(() => {
         verifierRef.current?.clear();
@@ -64,6 +89,7 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
     const resetFlow = useCallback(() => {
         setOtpCode('');
         setConfirmationResult(null);
+        setVerifiedResult(null);
         setStatusMessage(null);
         setErrorMessage(null);
     }, []);
@@ -130,6 +156,7 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
             return;
         }
 
+        setStatusMessage(`Sending OTP to ${normalizedPhoneNumber}...`);
         setIsSendingOtp(true);
 
         try {
@@ -163,34 +190,71 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
             return;
         }
 
+        setStatusMessage('Verifying the OTP you entered...');
         setIsVerifyingOtp(true);
 
         try {
             const credential = await confirmationResult.confirm(otpCode.trim());
             const idToken = await credential.user.getIdToken();
             const verifiedPhoneNumber = credential.user.phoneNumber || phoneNumber;
-
-            // Return the Firebase ID token so later work can exchange it with the backend.
-            await onVerified({
+            const result = {
                 idToken,
                 phoneNumber: verifiedPhoneNumber,
                 uid: credential.user.uid,
-            });
+            };
+
+            setVerifiedResult(result);
+            setStatusMessage('Phone number verified. Finalizing your report submission...');
+            setIsCompletingSubmit(true);
+
+            // Return the Firebase ID token so later work can exchange it with the backend.
+            await onVerified(result);
 
             onClose();
         } catch (error: unknown) {
-            setErrorMessage(getErrorMessage(error, 'OTP verification failed. Check the code and try again.'));
+            const isFirebaseVerificationError = error instanceof FirebaseError;
+            setErrorMessage(
+                isFirebaseVerificationError
+                    ? getOtpErrorMessage(error)
+                    : getSubmitErrorMessage(error)
+            );
+            if (!isFirebaseVerificationError) {
+                setStatusMessage('Your phone number is still verified. You can retry the final submit below without filling the form again.');
+            }
         } finally {
             setIsVerifyingOtp(false);
+            setIsCompletingSubmit(false);
         }
     };
 
     const handleRequestNewCode = () => {
         setOtpCode('');
         setConfirmationResult(null);
+        setVerifiedResult(null);
         setStatusMessage(null);
         setErrorMessage(null);
         teardownRecaptcha();
+    };
+
+    const handleRetrySubmit = async () => {
+        if (!verifiedResult) {
+            setErrorMessage('Verify the OTP first before retrying the final submit.');
+            return;
+        }
+
+        setErrorMessage(null);
+        setStatusMessage('Retrying backend verification and report submission...');
+        setIsCompletingSubmit(true);
+
+        try {
+            await onVerified(verifiedResult);
+            onClose();
+        } catch (error: unknown) {
+            setErrorMessage(getSubmitErrorMessage(error));
+            setStatusMessage('Your phone number is still verified. You can retry the final submit below without losing the report draft.');
+        } finally {
+            setIsCompletingSubmit(false);
+        }
     };
 
     return (
@@ -253,10 +317,26 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
                                         Cancel
                                     </Button>
                                     <Button type="submit" variant="primary" isLoading={isSendingOtp} leftIcon={<MessageSquareLock size={16} />} fullWidth>
-                                        Send OTP
+                                        {isSendingOtp ? 'Sending OTP...' : 'Send OTP'}
                                     </Button>
                                 </div>
                             </form>
+                        ) : verifiedResult ? (
+                            <div className={styles.form}>
+                                <div className={styles.successBox}>
+                                    <CheckCircle2 size={18} />
+                                    <span>Phone number verified for {verifiedResult.phoneNumber}. Your report draft is still safe.</span>
+                                </div>
+
+                                <div className={styles.actions}>
+                                    <Button type="button" variant="secondary" onClick={handleRequestNewCode} fullWidth disabled={isBusy}>
+                                        Use Another OTP
+                                    </Button>
+                                    <Button type="button" variant="primary" onClick={handleRetrySubmit} isLoading={isCompletingSubmit} fullWidth>
+                                        {isCompletingSubmit ? 'Submitting Report...' : 'Retry Final Submit'}
+                                    </Button>
+                                </div>
+                            </div>
                         ) : (
                             <form className={styles.form} onSubmit={handleVerifyOtp}>
                                 <Input
@@ -281,8 +361,8 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
                                     <Button type="button" variant="secondary" onClick={onClose} fullWidth disabled={isBusy}>
                                         Cancel
                                     </Button>
-                                    <Button type="submit" variant="primary" isLoading={isVerifyingOtp} fullWidth>
-                                        Verify OTP
+                                    <Button type="submit" variant="primary" isLoading={isVerifyingOtp || isCompletingSubmit} fullWidth>
+                                        {isCompletingSubmit ? 'Submitting Report...' : isVerifyingOtp ? 'Verifying OTP...' : 'Verify OTP'}
                                     </Button>
                                 </div>
                             </form>

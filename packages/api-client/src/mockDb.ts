@@ -148,7 +148,10 @@ export const mockDb = {
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.detail || 'Failed to submit the citizen evidence report.');
+            throw new Error(
+                errorData.detail ||
+                'Your phone number was verified, but the evidence report could not be submitted. Your draft is still saved, so you can try again.'
+            );
         }
 
         const data = await response.json();
