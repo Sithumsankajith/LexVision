@@ -54,11 +54,13 @@ export const ViolationDetails: React.FC = () => {
         if (!report) return;
         setActionLoading(true);
         try {
-            const updated = await mockDb.updateReportStatus(report.id, status);
+            const updated = await mockDb.updateReportStatus({ id: report.id, source: report.source }, status, officerNotes);
             if (updated) {
                 setReport(updated);
-                if (status === 'verified') {
+                if (status === 'verified' && updated.source !== 'evidence-report') {
                     setShowTicketForm(true);
+                } else if (status !== 'verified') {
+                    setShowTicketForm(false);
                 }
             } else {
                 alert('Failed to update status. The server may have rejected the transition.');
@@ -91,11 +93,13 @@ export const ViolationDetails: React.FC = () => {
     const mainEvidence = report.evidence[0];
 
     // Determine available actions based on current status
+    const isEvidenceReport = report.source === 'evidence-report';
     const isSubmitted = report.status === 'submitted';
     const isUnderReview = report.status === 'under-review';
     const isVerified = report.status === 'verified';
     const isRejected = report.status === 'rejected';
-    const isClosed = isVerified || isRejected;
+    const isClosed = report.status === 'closed';
+    const isResolved = isVerified || isRejected;
 
     return (
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
@@ -109,6 +113,7 @@ export const ViolationDetails: React.FC = () => {
                     report.status === 'submitted' ? 'info' :
                         report.status === 'under-review' ? 'warning' :
                             report.status === 'rejected' ? 'error' :
+                                report.status === 'closed' ? 'success' :
                                 'success'
                 }>
                     {report.status.replace(/-/g, ' ').toUpperCase()}
@@ -223,7 +228,9 @@ export const ViolationDetails: React.FC = () => {
                                     <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#10b981', marginTop: '6px', flexShrink: 0 }} />
                                     <div>
                                         <div style={{ fontWeight: '500', color: '#10b981' }}>Violation Verified & Approved</div>
-                                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>Fine has been issued</div>
+                                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
+                                            {isEvidenceReport ? 'Ready to be closed after review completion' : 'Fine has been issued'}
+                                        </div>
                                     </div>
                                 </div>
                             )}
@@ -234,6 +241,16 @@ export const ViolationDetails: React.FC = () => {
                                     <div>
                                         <div style={{ fontWeight: '500', color: '#ef4444' }}>Rejected (False Positive)</div>
                                         <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>Case dismissed by officer</div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {isClosed && (
+                                <div style={{ display: 'flex', gap: 'var(--space-3)', fontSize: '0.875rem' }}>
+                                    <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#2563eb', marginTop: '6px', flexShrink: 0 }} />
+                                    <div>
+                                        <div style={{ fontWeight: '500', color: '#2563eb' }}>Case Closed</div>
+                                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>No further officer action is required</div>
                                     </div>
                                 </div>
                             )}
@@ -288,7 +305,7 @@ export const ViolationDetails: React.FC = () => {
                             )}
 
                             {/* Ticket Issuance Form */}
-                            {showTicketForm && !ticketIssued && (
+                            {showTicketForm && !ticketIssued && !isEvidenceReport && (
                                 <div style={{
                                     padding: 'var(--space-4)',
                                     backgroundColor: 'rgba(59, 130, 246, 0.05)',
@@ -373,30 +390,53 @@ export const ViolationDetails: React.FC = () => {
 
                                 {/* Re-open AI-rejected case for manual review */}
                                 {isRejected && !ticketIssued && (
-                                    <Button
-                                        variant="primary"
-                                        fullWidth
-                                        leftIcon={actionLoading ? <Loader2 size={18} /> : <AlertTriangle size={18} />}
-                                        onClick={() => handleStatusUpdate('under-review')}
-                                        disabled={actionLoading}
-                                    >
-                                        {actionLoading ? 'Processing...' : 'Re-open for Manual Review'}
-                                    </Button>
+                                    <>
+                                        <Button
+                                            variant="primary"
+                                            fullWidth
+                                            leftIcon={actionLoading ? <Loader2 size={18} /> : <AlertTriangle size={18} />}
+                                            onClick={() => handleStatusUpdate('under-review')}
+                                            disabled={actionLoading}
+                                        >
+                                            {actionLoading ? 'Processing...' : 'Re-open for Manual Review'}
+                                        </Button>
+                                        {isEvidenceReport && (
+                                            <Button
+                                                variant="outline"
+                                                fullWidth
+                                                onClick={() => handleStatusUpdate('closed')}
+                                                disabled={actionLoading}
+                                            >
+                                                Close Case
+                                            </Button>
+                                        )}
+                                    </>
                                 )}
 
                                 {/* Issue ticket for verified cases */}
                                 {isVerified && !showTicketForm && !ticketIssued && (
-                                    <Button
-                                        variant="primary"
-                                        fullWidth
-                                        leftIcon={<ClipboardCheck size={18} />}
-                                        onClick={() => setShowTicketForm(true)}
-                                    >
-                                        Issue Traffic Ticket
-                                    </Button>
+                                    isEvidenceReport ? (
+                                        <Button
+                                            variant="outline"
+                                            fullWidth
+                                            onClick={() => handleStatusUpdate('closed')}
+                                            disabled={actionLoading}
+                                        >
+                                            Close Case
+                                        </Button>
+                                    ) : (
+                                        <Button
+                                            variant="primary"
+                                            fullWidth
+                                            leftIcon={<ClipboardCheck size={18} />}
+                                            onClick={() => setShowTicketForm(true)}
+                                        >
+                                            Issue Traffic Ticket
+                                        </Button>
+                                    )
                                 )}
 
-                                {isClosed && (
+                                {(isResolved || isClosed) && (
                                     <Button
                                         variant="outline"
                                         fullWidth

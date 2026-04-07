@@ -39,7 +39,7 @@ export const Dashboard: React.FC = () => {
     const newSubmissions = reports.filter(r => r.status === 'submitted' || r.status === 'under-review').length;
     const verified = reports.filter(r => r.status === 'verified').length;
     const resolvedToday = reports.filter(r =>
-        (r.status === 'verified' || r.status === 'rejected') &&
+        (r.status === 'verified' || r.status === 'rejected' || r.status === 'closed') &&
         new Date(r.updatedAt).toDateString() === new Date().toDateString()
     ).length;
 
@@ -144,7 +144,7 @@ export const Dashboard: React.FC = () => {
                                 <Badge variant={
                                     item.status === 'submitted' ? 'info' :
                                         item.status === 'under-review' ? 'warning' :
-                                            item.status === 'verified' ? 'success' : 'error'
+                                            item.status === 'verified' || item.status === 'closed' ? 'success' : 'error'
                                 }>
                                     {item.status.replace(/-/g, ' ')}
                                 </Badge>

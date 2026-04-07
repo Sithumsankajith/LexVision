@@ -1,6 +1,7 @@
 export type ViolationType = 'helmet' | 'no-helmet' | 'red-light' | 'white-line';
 
-export type ReportStatus = 'submitted' | 'under-review' | 'verified' | 'rejected' | 'forwarded';
+export type ReportStatus = 'submitted' | 'under-review' | 'verified' | 'rejected' | 'closed' | 'forwarded';
+export type ReportSource = 'legacy-report' | 'evidence-report';
 
 export interface Location {
   lat: number;
@@ -33,6 +34,7 @@ export interface Citizen {
 export interface Report {
   id: string;
   trackingId: string;
+  source?: ReportSource;
   citizen: Citizen;
   violationType: ViolationType;
   datetime: string; // ISO string

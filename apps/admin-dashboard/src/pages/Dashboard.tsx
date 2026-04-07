@@ -175,7 +175,8 @@ export const Dashboard: React.FC = () => {
         'AI_PROCESSING': '#8b5cf6',
         'UNDER_REVIEW': '#f59e0b',
         'VALIDATED': '#10b981',
-        'REJECTED': '#ef4444'
+        'REJECTED': '#ef4444',
+        'CLOSED': '#2563eb'
     };
     const donutData = statusRatio.map(s => ({
         label: String(s.status).replace('StatusEnum.', '').replace(/_/g, ' '),
@@ -395,7 +396,7 @@ export const Dashboard: React.FC = () => {
                                 <Badge variant={
                                     report.status === 'submitted' ? 'info' :
                                         report.status === 'under-review' ? 'warning' :
-                                            report.status === 'verified' ? 'success' :
+                                            report.status === 'verified' || report.status === 'closed' ? 'success' :
                                                 'error'
                                 }>
                                     {report.status.replace('-', ' ')}

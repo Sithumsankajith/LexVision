@@ -13,6 +13,7 @@ class ReportStatusEnum(str, enum.Enum):
     UNDER_REVIEW = "UNDER_REVIEW"
     VALIDATED = "VALIDATED"
     REJECTED = "REJECTED"
+    CLOSED = "CLOSED"
 
 
 # Backwards-compatible alias for existing imports.
@@ -23,8 +24,9 @@ REPORT_STATUS_TRANSITIONS = {
     ReportStatusEnum.SUBMITTED: [ReportStatusEnum.AI_PROCESSING, ReportStatusEnum.UNDER_REVIEW],
     ReportStatusEnum.AI_PROCESSING: [ReportStatusEnum.UNDER_REVIEW],
     ReportStatusEnum.UNDER_REVIEW: [ReportStatusEnum.VALIDATED, ReportStatusEnum.REJECTED],
-    ReportStatusEnum.VALIDATED: [],
-    ReportStatusEnum.REJECTED: [ReportStatusEnum.UNDER_REVIEW],
+    ReportStatusEnum.VALIDATED: [ReportStatusEnum.CLOSED],
+    ReportStatusEnum.REJECTED: [ReportStatusEnum.UNDER_REVIEW, ReportStatusEnum.CLOSED],
+    ReportStatusEnum.CLOSED: [],
 }
 
 
@@ -52,3 +54,7 @@ class SmsProviderEnum(str, enum.Enum):
 
 class SmsTemplateKeyEnum(str, enum.Enum):
     CITIZEN_REPORT_SUBMITTED_CONFIRMATION = "citizen_report_submitted_confirmation"
+    CITIZEN_REPORT_UNDER_REVIEW = "citizen_report_under_review"
+    CITIZEN_REPORT_ACCEPTED = "citizen_report_accepted"
+    CITIZEN_REPORT_REJECTED = "citizen_report_rejected"
+    CITIZEN_REPORT_CLOSED = "citizen_report_closed"

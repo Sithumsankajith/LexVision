@@ -32,12 +32,14 @@ const getHeaders = (token?: string) => {
 
 const mapBackendStatus = (status: string): Report['status'] =>
     status === 'SUBMITTED' ? 'submitted' :
+        status === 'CLOSED' ? 'closed' :
         status === 'VALIDATED' ? 'verified' :
             status === 'REJECTED' ? 'rejected' : 'under-review';
 
 const mapReportToFrontend = (b: any): Report => ({
     id: b.id,
     trackingId: b.tracking_id || b.id,
+    source: 'legacy-report',
     citizen: { email: 'citizen@lexvision.gov' }, // Placeholder as backend doesn't embed user email
     violationType: b.violation_type as any,
     datetime: b.datetime,
@@ -62,6 +64,7 @@ const mapReportToFrontend = (b: any): Report => ({
 const mapCitizenReportToFrontend = (b: any): Report => ({
     id: b.id,
     trackingId: b.tracking_id || b.id,
+    source: 'evidence-report',
     citizen: { phone: b.citizen?.phone_number },
     violationType: b.violation_type as any,
     datetime: b.incident_at,
@@ -176,34 +179,65 @@ export const mockDb = {
     getReportById: async (id: string): Promise<Report | null> => {
         try {
             const response = await fetch(`${API_BASE_URL}/reports/${id}`, { headers: getHeaders() });
-            if (!response.ok) return null;
-            const data = await response.json();
-            return mapReportToFrontend(data);
-        } catch { return null; }
+            if (response.ok) {
+                const data = await response.json();
+                return mapReportToFrontend(data);
+            }
+
+            if (response.status !== 404) return null;
+
+            const evidenceResponse = await fetch(`${API_BASE_URL}/evidence-reports/${id}`, { headers: getHeaders() });
+            if (!evidenceResponse.ok) return null;
+            const evidenceData = await evidenceResponse.json();
+            return mapCitizenReportToFrontend(evidenceData);
+        } catch (error) {
+            if (error instanceof Error) {
+                throw error;
+            }
+            return null;
+        }
     },
 
     getAllReports: async (): Promise<Report[]> => {
         try {
-            const response = await fetch(`${API_BASE_URL}/reports`, { headers: getHeaders() });
-            if (!response.ok) return [];
-            const data = await response.json();
-            return data.map(mapReportToFrontend);
+            const [legacyResponse, evidenceResponse] = await Promise.all([
+                fetch(`${API_BASE_URL}/reports`, { headers: getHeaders() }),
+                fetch(`${API_BASE_URL}/evidence-reports`, { headers: getHeaders() }),
+            ]);
+
+            const legacyReports = legacyResponse.ok
+                ? (await legacyResponse.json()).map(mapReportToFrontend)
+                : [];
+            const evidenceReports = evidenceResponse.ok
+                ? (await evidenceResponse.json()).map(mapCitizenReportToFrontend)
+                : [];
+
+            return [...legacyReports, ...evidenceReports];
         } catch { return []; }
     },
 
-    updateReportStatus: async (id: string, status: Report['status'], notes?: string): Promise<Report | null> => {
+    updateReportStatus: async (report: Pick<Report, 'id' | 'source'>, status: Report['status'], notes?: string): Promise<Report | null> => {
         try {
             const backendStatus = status === 'verified' ? 'VALIDATED' :
+                status === 'closed' ? 'CLOSED' :
                 status === 'rejected' ? 'REJECTED' :
                     status === 'under-review' ? 'UNDER_REVIEW' : 'SUBMITTED';
-            const response = await fetch(`${API_BASE_URL}/reports/${id}/status`, {
+            const endpoint = report.source === 'evidence-report'
+                ? `${API_BASE_URL}/evidence-reports/${report.id}/status`
+                : `${API_BASE_URL}/reports/${report.id}/status`;
+            const response = await fetch(endpoint, {
                 method: 'PUT',
                 headers: getHeaders(),
                 body: JSON.stringify({ status: backendStatus, notes }),
             });
-            if (!response.ok) return null;
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || 'Failed to update report status');
+            }
             const data = await response.json();
-            return mapReportToFrontend(data);
+            return report.source === 'evidence-report'
+                ? mapCitizenReportToFrontend(data)
+                : mapReportToFrontend(data);
         } catch { return null; }
     },
 

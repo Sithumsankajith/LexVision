@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from .constants import ReportStatusEnum, SmsNotificationStatusEnum, StatusChangeSourceEnum
+from .constants import REPORT_STATUS_TRANSITIONS, ReportStatusEnum, SmsNotificationStatusEnum, StatusChangeSourceEnum
 from . import models
 
 
@@ -23,6 +23,13 @@ def apply_evidence_report_status(
         details=details,
     )
     return report
+
+
+def is_valid_report_status_transition(
+    current_status: ReportStatusEnum | None,
+    next_status: ReportStatusEnum,
+) -> bool:
+    return next_status in REPORT_STATUS_TRANSITIONS.get(current_status, [])
 
 
 def log_sms_send_attempt(

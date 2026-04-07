@@ -19,7 +19,7 @@ export const History: React.FC = () => {
     useEffect(() => {
         const fetchReports = async () => {
             const data = await mockDb.getAllReports();
-            const closedCases = data.filter(r => r.status === 'verified' || r.status === 'rejected');
+            const closedCases = data.filter(r => r.status === 'verified' || r.status === 'rejected' || r.status === 'closed');
             setReports(closedCases.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()));
             setLoading(false);
         };
@@ -80,7 +80,8 @@ export const History: React.FC = () => {
                         options={[
                             { value: 'all', label: 'All Cases' },
                             { value: 'verified', label: 'Verified Cases' },
-                            { value: 'rejected', label: 'Rejected Cases' }
+                            { value: 'rejected', label: 'Rejected Cases' },
+                            { value: 'closed', label: 'Closed Cases' }
                         ]}
                         style={{ width: '150px' }}
                     />
@@ -108,7 +109,7 @@ export const History: React.FC = () => {
                             <td>{new Date(item.updatedAt).toLocaleString()}</td>
                             <td>
                                 <Badge variant={
-                                    item.status === 'verified' ? 'success' : 'error'
+                                    item.status === 'verified' || item.status === 'closed' ? 'success' : 'error'
                                 }>
                                     {item.status.replace(/-/g, ' ').toUpperCase()}
                                 </Badge>

@@ -86,7 +86,8 @@ export const Reports: React.FC = () => {
                             { value: 'submitted', label: 'New' },
                             { value: 'under-review', label: 'Under Review' },
                             { value: 'verified', label: 'Verified' },
-                            { value: 'rejected', label: 'Rejected' }
+                            { value: 'rejected', label: 'Rejected' },
+                            { value: 'closed', label: 'Closed' }
                         ]}
                         style={{ width: '140px' }}
                     />
@@ -107,7 +108,7 @@ export const Reports: React.FC = () => {
                     {filteredReports.map((report) => (
                         <tr key={report.id}>
                             <td style={{ fontFamily: 'monospace', fontWeight: '500' }}>{report.trackingId}</td>
-                            <td>{report.citizen.email || 'Anonymous'}</td>
+                            <td>{report.citizen.email || report.citizen.phone || 'Anonymous'}</td>
                             <td>
                                 {report.violationType.replace('-', ' ')}
                                 {report.aiAnalysis?.detectedViolationType && (
@@ -120,7 +121,7 @@ export const Reports: React.FC = () => {
                                 <Badge variant={
                                     report.status === 'submitted' ? 'info' :
                                         report.status === 'under-review' ? 'warning' :
-                                            report.status === 'verified' ? 'success' :
+                                            report.status === 'verified' || report.status === 'closed' ? 'success' :
                                                 'error'
                                 }>
                                     {report.status.replace('-', ' ')}

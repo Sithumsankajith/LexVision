@@ -7,6 +7,7 @@ from typing import List
 from .. import models, schemas
 from ..database import get_db
 from ..dependencies import get_current_active_user, get_citizen, get_police, log_audit_action
+from ..tracking import is_valid_report_status_transition
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -93,21 +94,13 @@ def get_report_by_id(report_id: str, db: Session = Depends(get_db), current_user
     
     return report
 
-VALID_TRANSITIONS = {
-    models.StatusEnum.SUBMITTED: [models.StatusEnum.AI_PROCESSING, models.StatusEnum.UNDER_REVIEW],
-    models.StatusEnum.AI_PROCESSING: [models.StatusEnum.UNDER_REVIEW],
-    models.StatusEnum.UNDER_REVIEW: [models.StatusEnum.VALIDATED, models.StatusEnum.REJECTED],
-    models.StatusEnum.VALIDATED: [],
-    models.StatusEnum.REJECTED: [models.StatusEnum.UNDER_REVIEW]  # Allow police to re-open AI-rejected cases
-}
-
 @router.put("/{report_id}/status", response_model=schemas.ReportResponse)
 def update_report_status(report_id: str, update: schemas.ReportStatusUpdate, db: Session = Depends(get_db), current_user: models.User = Depends(get_police)):
     report = db.query(models.Report).filter(models.Report.id == report_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
         
-    if update.status not in VALID_TRANSITIONS.get(report.status, []):
+    if not is_valid_report_status_transition(report.status, update.status):
         raise HTTPException(status_code=400, detail=f"Invalid transition from {report.status} to {update.status}")
     
     report.status = update.status

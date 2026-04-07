@@ -81,6 +81,14 @@ class CitizenEvidenceFileResponse(BaseModel):
         from_attributes = True
 
 
+class CitizenSummaryResponse(BaseModel):
+    id: str
+    phone_number: str
+
+    class Config:
+        from_attributes = True
+
+
 class CitizenEvidenceReportCreate(BaseModel):
     violation_type: str
     incident_at: datetime
@@ -114,6 +122,10 @@ class CitizenEvidenceReportResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class StaffEvidenceReportResponse(CitizenEvidenceReportResponse):
+    citizen: Optional[CitizenSummaryResponse] = None
 
 # --- Evidence Schema ---
 class EvidenceSchema(BaseModel):

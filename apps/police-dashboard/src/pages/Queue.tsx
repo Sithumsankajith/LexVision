@@ -103,7 +103,8 @@ export const Queue: React.FC = () => {
                             { value: 'submitted', label: 'New Reports' },
                             { value: 'under-review', label: 'In Review' },
                             { value: 'verified', label: 'Verified' },
-                            { value: 'rejected', label: 'Rejected' }
+                            { value: 'rejected', label: 'Rejected' },
+                            { value: 'closed', label: 'Closed' }
                         ]}
                         style={{ width: '180px', height: '52px' }}
                     />
@@ -170,6 +171,7 @@ export const Queue: React.FC = () => {
                                     item.status === 'submitted' ? 'info' :
                                         item.status === 'under-review' ? 'warning' :
                                             item.status === 'rejected' ? 'error' :
+                                                item.status === 'closed' ? 'success' :
                                                 'success'
                                 }>
                                     {item.status.replace(/-/g, ' ')}
