@@ -40,3 +40,11 @@ class SmsNotificationStatusEnum(str, enum.Enum):
     PENDING = "PENDING"
     SENT = "SENT"
     FAILED = "FAILED"
+
+
+class SmsProviderEnum(str, enum.Enum):
+    NOOP = "noop"
+    MOBITEL_MSMS = "mobitel_msms"
+    DIALOG_ESMS = "dialog_esms"
+    HUTCH = "hutch"
+    TWILIO = "twilio"

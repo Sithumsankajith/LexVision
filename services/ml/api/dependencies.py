@@ -7,6 +7,7 @@ from typing import Optional
 
 from . import models, schemas
 from .database import get_db
+from .sms import SmsService, get_sms_service as build_sms_service
 
 SECRET_KEY = "supersecret_lexvision_key_for_demo_only"
 ALGORITHM = "HS256"
@@ -104,3 +105,7 @@ def log_audit_action(db: Session, user_id: str, action: str, target_type: str = 
     )
     db.add(audit_log)
     db.commit()
+
+
+def get_sms_service(db: Session = Depends(get_db)) -> SmsService:
+    return build_sms_service(db)
