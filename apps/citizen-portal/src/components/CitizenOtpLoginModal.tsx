@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, CheckCircle2, MessageSquareLock, RefreshCcw, ShieldCheck, X } from 'lucide-react';
 import { Button, Card, Input } from '@lexvision/ui';
 import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from 'firebase/auth';
-import { ensureFirebaseAuthReady, firebaseAuth } from '@/lib/firebase';
+import { ensureFirebaseAuthReady, getFirebaseAuth } from '@/lib/firebase';
 import styles from './CitizenOtpLoginModal.module.css';
 
 export interface CitizenOtpVerificationResult {
@@ -79,7 +79,7 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
         }
 
         // Firebase phone auth on web requires a live reCAPTCHA challenge before OTP can be sent.
-        const verifier = new RecaptchaVerifier(firebaseAuth, recaptchaContainerRef.current, {
+        const verifier = new RecaptchaVerifier(getFirebaseAuth(), recaptchaContainerRef.current, {
             size: 'normal',
             callback: () => {
                 setErrorMessage(null);
