@@ -5,9 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 
 from .. import models, schemas
-from ..constants import StatusChangeSourceEnum
+from ..constants import SmsTemplateKeyEnum, StatusChangeSourceEnum
 from ..database import get_db
 from ..dependencies import get_current_citizen_account, log_audit_action
+from ..sms import SmsSendRequest, dispatch_sms, render_sms_template
 from ..tracking import apply_evidence_report_status
 
 router = APIRouter(prefix="/api/citizen-reports", tags=["citizen-reports"])
@@ -77,6 +78,25 @@ def create_citizen_report(
             "tracking_id": saved_report.tracking_id,
             "phone_number": current_citizen.phone_number,
         },
+    )
+
+    # SMS delivery is best-effort. Failed provider/config issues are recorded in sms_notifications
+    # by dispatch_sms(), but they must not roll back or fail the already-saved report submission.
+    rendered_sms = render_sms_template(
+        SmsTemplateKeyEnum.CITIZEN_REPORT_SUBMITTED_CONFIRMATION,
+        report=saved_report,
+        citizen=current_citizen,
+    )
+    dispatch_sms(
+        db,
+        SmsSendRequest(
+            phone_number=current_citizen.phone_number,
+            message_body=rendered_sms.message_body,
+            template_key=rendered_sms.template_key.value,
+            citizen_id=current_citizen.id,
+            report_id=saved_report.id,
+            metadata=rendered_sms.metadata,
+        ),
     )
 
     return saved_report

@@ -48,3 +48,7 @@ class SmsProviderEnum(str, enum.Enum):
     DIALOG_ESMS = "dialog_esms"
     HUTCH = "hutch"
     TWILIO = "twilio"
+
+
+class SmsTemplateKeyEnum(str, enum.Enum):
+    CITIZEN_REPORT_SUBMITTED_CONFIRMATION = "citizen_report_submitted_confirmation"

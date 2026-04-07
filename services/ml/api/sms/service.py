@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, replace
 
 from sqlalchemy.orm import Session
@@ -128,3 +129,67 @@ class SmsService:
 
 def get_sms_service(db: Session) -> SmsService:
     return SmsService(db=db)
+
+
+def dispatch_sms(db: Session, request_payload: SmsSendRequest, *, settings: SmsSettings | None = None) -> SmsDispatchOutcome:
+    try:
+        service = SmsService(db=db, settings=settings)
+    except Exception as exc:
+        return _persist_failed_dispatch(
+            db,
+            request_payload,
+            provider=_resolve_provider_label(settings),
+            error_message=str(exc),
+            exception_type=exc.__class__.__name__,
+            details={"stage": "service_initialization"},
+        )
+
+    try:
+        return service.send(request_payload)
+    except Exception as exc:
+        return _persist_failed_dispatch(
+            db,
+            request_payload,
+            provider=service.provider.provider_name.value,
+            error_message=str(exc),
+            exception_type=exc.__class__.__name__,
+            details={"stage": "provider_dispatch"},
+        )
+
+
+def _persist_failed_dispatch(
+    db: Session,
+    request_payload: SmsSendRequest,
+    *,
+    provider: str | None,
+    error_message: str,
+    exception_type: str,
+    details: dict,
+) -> SmsDispatchOutcome:
+    failure_details = dict(details)
+    if request_payload.metadata:
+        failure_details["request_metadata"] = request_payload.metadata
+    failure_details["exception_type"] = exception_type
+
+    notification = log_sms_send_attempt(
+        db,
+        citizen_id=request_payload.citizen_id,
+        report_id=request_payload.report_id,
+        phone_number=request_payload.phone_number,
+        template_key=request_payload.template_key,
+        provider=provider,
+        provider_message_id=None,
+        message_body=request_payload.message_body,
+        delivery_status=SmsNotificationStatusEnum.FAILED,
+        error_message=error_message,
+        details=failure_details,
+    )
+    db.commit()
+    db.refresh(notification)
+    return SmsDispatchOutcome(notification=notification, provider_result=None, error=error_message)
+
+
+def _resolve_provider_label(settings: SmsSettings | None) -> str:
+    if settings is not None:
+        return settings.provider.value
+    return os.getenv("SMS_PROVIDER", "unknown").strip() or "unknown"
