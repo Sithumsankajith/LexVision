@@ -33,6 +33,32 @@ class Token(BaseModel):
 class TokenData(BaseModel):
     email: Optional[str] = None
 
+
+class FirebaseCitizenAuthRequest(BaseModel):
+    id_token: str
+
+
+class CitizenResponse(BaseModel):
+    id: str
+    firebase_uid: str
+    phone_number: str
+    verified_at: datetime
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CitizenAuthResponse(BaseModel):
+    access_token: str
+    token_type: str
+    citizen: CitizenResponse
+
+
+class CitizenTokenData(BaseModel):
+    citizen_id: Optional[str] = None
+    token_scope: Optional[str] = None
+
 # --- Evidence Schema ---
 class EvidenceSchema(BaseModel):
     id: Optional[str] = None

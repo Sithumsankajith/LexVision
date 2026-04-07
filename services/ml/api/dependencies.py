@@ -13,6 +13,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+citizen_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/citizen/firebase-login")
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
@@ -46,6 +47,39 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 
 def get_current_active_user(current_user: models.User = Depends(get_current_user)):
     return current_user
+
+
+def create_citizen_access_token(citizen: models.Citizen, expires_delta: Optional[timedelta] = None):
+    return create_access_token(
+        data={
+            "sub": citizen.id,
+            "role": models.RoleEnum.CITIZEN.value,
+            "token_scope": "citizen",
+        },
+        expires_delta=expires_delta,
+    )
+
+
+def get_current_citizen_account(token: str = Depends(citizen_oauth2_scheme), db: Session = Depends(get_db)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate citizen credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        citizen_id: str = payload.get("sub")
+        token_scope: str = payload.get("token_scope")
+        if citizen_id is None or token_scope != "citizen":
+            raise credentials_exception
+        token_data = schemas.CitizenTokenData(citizen_id=citizen_id, token_scope=token_scope)
+    except JWTError:
+        raise credentials_exception
+
+    citizen = db.query(models.Citizen).filter(models.Citizen.id == token_data.citizen_id).first()
+    if citizen is None:
+        raise credentials_exception
+    return citizen
 
 # --- RBAC Role Dependency Factories ---
 def role_required(allowed_roles: list[models.RoleEnum]):

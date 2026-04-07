@@ -4,8 +4,10 @@ from sqlalchemy.orm import Session
 from datetime import timedelta
 
 from .. import models, schemas
+from ..citizen_auth import CitizenAccountConflictError, CitizenAuthError, get_or_create_citizen_account, verify_citizen_firebase_identity
 from ..database import get_db
-from ..dependencies import create_access_token, get_current_user, log_audit_action
+from ..dependencies import create_access_token, create_citizen_access_token, get_current_citizen_account, get_current_user, log_audit_action
+from ..firebase_admin import FirebaseAdminConfigError
 import bcrypt
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -54,3 +56,67 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
     log_audit_action(db, user.id, "LOGIN_ATTEMPT_SUCCESS", "User", user.id)
     
     return {"access_token": access_token, "token_type": "bearer"}
+
+
+@router.post("/citizen/firebase-login", response_model=schemas.CitizenAuthResponse)
+def login_citizen_with_firebase(
+    payload: schemas.FirebaseCitizenAuthRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        identity = verify_citizen_firebase_identity(payload.id_token)
+    except FirebaseAdminConfigError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except CitizenAuthError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Firebase ID token.",
+        ) from exc
+
+    try:
+        citizen = get_or_create_citizen_account(
+            db,
+            firebase_uid=identity["firebase_uid"],
+            phone_number=identity["phone_number"],
+        )
+    except CitizenAccountConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+    from ..dependencies import ACCESS_TOKEN_EXPIRE_MINUTES
+
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_citizen_access_token(citizen, expires_delta=access_token_expires)
+
+    log_audit_action(
+        db,
+        None,
+        "CITIZEN_FIREBASE_LOGIN_SUCCESS",
+        "Citizen",
+        citizen.id,
+        details={
+            "firebase_uid": citizen.firebase_uid,
+            "phone_number": citizen.phone_number,
+        },
+    )
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "citizen": citizen,
+    }
+
+
+@router.get("/citizen/me", response_model=schemas.CitizenResponse)
+def get_current_citizen_profile(current_citizen: models.Citizen = Depends(get_current_citizen_account)):
+    return current_citizen
