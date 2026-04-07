@@ -50,6 +50,7 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
     const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
     const [statusMessage, setStatusMessage] = useState<string | null>(null);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const isBusy = isSendingOtp || isVerifyingOtp;
 
     const teardownRecaptcha = useCallback(() => {
         verifierRef.current?.clear();
@@ -101,7 +102,7 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
         setPhoneNumber(initialPhoneNumber);
 
         const handleEscape = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') {
+            if (event.key === 'Escape' && !isBusy) {
                 onClose();
             }
         };
@@ -112,7 +113,7 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
             document.removeEventListener('keydown', handleEscape);
             teardownRecaptcha();
         };
-    }, [initialPhoneNumber, isOpen, onClose, resetFlow, teardownRecaptcha]);
+    }, [initialPhoneNumber, isBusy, isOpen, onClose, resetFlow, teardownRecaptcha]);
 
     if (!isOpen) {
         return null;
@@ -193,10 +194,10 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
     };
 
     return (
-        <div className={styles.overlay} role="presentation" onClick={onClose}>
+        <div className={styles.overlay} role="presentation" onClick={() => { if (!isBusy) onClose(); }}>
             <div className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby="citizen-otp-title" onClick={(event) => event.stopPropagation()}>
                 <Card padding="lg">
-                    <button type="button" className={styles.closeButton} onClick={onClose} aria-label="Close phone verification">
+                    <button type="button" className={styles.closeButton} onClick={onClose} aria-label="Close phone verification" disabled={isBusy}>
                         <X size={18} />
                     </button>
 
@@ -248,7 +249,7 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
                                 </div>
 
                                 <div className={styles.actions}>
-                                    <Button type="button" variant="secondary" onClick={onClose} fullWidth>
+                                    <Button type="button" variant="secondary" onClick={onClose} fullWidth disabled={isBusy}>
                                         Cancel
                                     </Button>
                                     <Button type="submit" variant="primary" isLoading={isSendingOtp} leftIcon={<MessageSquareLock size={16} />} fullWidth>
@@ -277,7 +278,7 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
                                 </div>
 
                                 <div className={styles.actions}>
-                                    <Button type="button" variant="secondary" onClick={onClose} fullWidth>
+                                    <Button type="button" variant="secondary" onClick={onClose} fullWidth disabled={isBusy}>
                                         Cancel
                                     </Button>
                                     <Button type="submit" variant="primary" isLoading={isVerifyingOtp} fullWidth>

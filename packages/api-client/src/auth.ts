@@ -8,6 +8,20 @@ export interface UserSession {
     token: string;
 }
 
+export interface CitizenIdentity {
+    id: string;
+    firebase_uid: string;
+    phone_number: string;
+    verified_at: string;
+    created_at: string;
+}
+
+export interface CitizenTokenExchange {
+    access_token: string;
+    token_type: string;
+    citizen: CitizenIdentity;
+}
+
 export const auth = {
     /**
      * Authenticates a user with the backend API.
@@ -66,6 +80,25 @@ export const auth = {
             const errorData = await response.json().catch(() => ({}));
             throw new Error(errorData.detail || 'Registration failed. Email might already be in use.');
         }
+    },
+
+    /**
+     * Exchanges a Firebase citizen ID token for a LexVision backend citizen token.
+     * This does not persist a global portal session.
+     */
+    loginCitizenWithFirebaseToken: async (idToken: string): Promise<CitizenTokenExchange> => {
+        const response = await fetch(`${API_BASE_URL}/auth/citizen/firebase-login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id_token: idToken }),
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || 'Citizen OTP verification failed.');
+        }
+
+        return response.json();
     },
 
     /**

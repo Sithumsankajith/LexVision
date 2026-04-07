@@ -3,16 +3,37 @@ import { auth } from './auth';
 
 const API_BASE_URL = 'http://localhost:8000/api';
 
-const getHeaders = () => {
+interface CitizenReportPayload {
+    violationType: Report['violationType'];
+    datetime: string;
+    location: Report['location'];
+    evidence: Array<{
+        id?: string;
+        type: 'image' | 'video';
+        url: string;
+        name: string;
+        size: number;
+        mimeType?: string;
+    }>;
+    vehicle: Report['vehicle'];
+}
+
+const getHeaders = (token?: string) => {
     const session = auth.getSession();
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
     };
-    if (session?.token) {
-        headers['Authorization'] = `Bearer ${session.token}`;
+    const bearerToken = token || session?.token;
+    if (bearerToken) {
+        headers['Authorization'] = `Bearer ${bearerToken}`;
     }
     return headers;
 };
+
+const mapBackendStatus = (status: string): Report['status'] =>
+    status === 'SUBMITTED' ? 'submitted' :
+        status === 'VALIDATED' ? 'verified' :
+            status === 'REJECTED' ? 'rejected' : 'under-review';
 
 const mapReportToFrontend = (b: any): Report => ({
     id: b.id,
@@ -28,9 +49,7 @@ const mapReportToFrontend = (b: any): Report => ({
     },
     evidence: b.evidence || [],
     vehicle: { plate: b.inference_log?.ocr_text || b.vehicle_plate },
-    status: b.status === 'SUBMITTED' ? 'submitted' :
-        b.status === 'VALIDATED' ? 'verified' :
-            b.status === 'REJECTED' ? 'rejected' : 'under-review',
+    status: mapBackendStatus(b.status),
     createdAt: b.created_at,
     updatedAt: b.updated_at || b.created_at,
     aiAnalysis: b.inference_log ? {
@@ -38,6 +57,35 @@ const mapReportToFrontend = (b: any): Report => ({
         detectedPlate: b.inference_log.ocr_text,
         confidence: b.inference_log.confidence
     } : undefined
+});
+
+const mapCitizenReportToFrontend = (b: any): Report => ({
+    id: b.id,
+    trackingId: b.tracking_id || b.id,
+    citizen: { phone: b.citizen?.phone_number },
+    violationType: b.violation_type as any,
+    datetime: b.incident_at,
+    location: {
+        lat: b.location_lat,
+        lng: b.location_lng,
+        address: b.location_address,
+        city: b.location_city,
+    },
+    evidence: (b.files || []).map((file: any, index: number) => ({
+        id: file.id || `citizen-file-${index}`,
+        type: file.file_type,
+        url: file.storage_url,
+        name: file.original_name,
+        size: file.size_bytes,
+    })),
+    vehicle: {
+        plate: b.vehicle_plate,
+        type: b.vehicle_type,
+        notes: b.description,
+    },
+    status: mapBackendStatus(b.status),
+    createdAt: b.created_at,
+    updatedAt: b.updated_at || b.created_at,
 });
 
 export const mockDb = {
@@ -70,12 +118,55 @@ export const mockDb = {
         return mapReportToFrontend(data);
     },
 
+    submitCitizenReportWithFirebase: async (firebaseIdToken: string, reportData: CitizenReportPayload): Promise<Report> => {
+        const citizenAuth = await auth.loginCitizenWithFirebaseToken(firebaseIdToken);
+
+        const payload = {
+            violation_type: reportData.violationType,
+            incident_at: reportData.datetime,
+            location_lat: reportData.location.lat,
+            location_lng: reportData.location.lng,
+            location_address: reportData.location.address,
+            location_city: reportData.location.city,
+            description: reportData.vehicle.notes,
+            vehicle_plate: reportData.vehicle.plate,
+            vehicle_type: reportData.vehicle.type,
+            evidence: reportData.evidence.map((e) => ({
+                type: e.type,
+                url: e.url,
+                name: e.name,
+                size: e.size,
+                mime_type: e.mimeType,
+            })),
+        };
+
+        const response = await fetch(`${API_BASE_URL}/citizen-reports`, {
+            method: 'POST',
+            headers: getHeaders(citizenAuth.access_token),
+            body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || 'Failed to submit the citizen evidence report.');
+        }
+
+        const data = await response.json();
+        return mapCitizenReportToFrontend(data);
+    },
+
     getReportByTrackingId: async (trackingId: string): Promise<Report | null> => {
         try {
             const response = await fetch(`${API_BASE_URL}/reports/tracking/${trackingId}`);
-            if (!response.ok) return null;
-            const data = await response.json();
-            return mapReportToFrontend(data);
+            if (response.ok) {
+                const data = await response.json();
+                return mapReportToFrontend(data);
+            }
+
+            const citizenResponse = await fetch(`${API_BASE_URL}/citizen-reports/tracking/${trackingId}`);
+            if (!citizenResponse.ok) return null;
+            const citizenData = await citizenResponse.json();
+            return mapCitizenReportToFrontend(citizenData);
         } catch { return null; }
     },
 

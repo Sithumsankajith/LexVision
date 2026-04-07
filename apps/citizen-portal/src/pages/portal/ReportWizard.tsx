@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Camera, MapPin, Radio, Upload, X, CheckCircle, FileText, ArrowRight, ArrowLeft, Locate, Loader2 } from 'lucide-react';
 import { Stepper, Button, Card, Input, Select } from '@lexvision/ui';
-import { auth, mockDb } from '@lexvision/api-client';
+import { mockDb } from '@lexvision/api-client';
 import type { ViolationType } from '@lexvision/types';
+import { CitizenOtpLoginModal, type CitizenOtpVerificationResult } from '@/components/CitizenOtpLoginModal';
 import {
     clearPendingReportDraft,
     getDefaultReportFormData,
@@ -248,9 +249,9 @@ const LocationMap: React.FC<{
 
 
 export const ReportWizard: React.FC = () => {
-    const navigate = useNavigate();
     const [currentStep, setCurrentStep] = useState(1);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isOtpModalOpen, setIsOtpModalOpen] = useState(false);
     const [submittedId, setSubmittedId] = useState<string | null>(null);
     const [gpsLoading, setGpsLoading] = useState(false);
     const [gpsError, setGpsError] = useState('');
@@ -262,7 +263,6 @@ export const ReportWizard: React.FC = () => {
 
     const [errors, setErrors] = useState<Record<string, string>>({});
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const isAuthenticated = auth.isAuthenticated();
 
     useEffect(() => {
         let active = true;
@@ -372,62 +372,91 @@ export const ReportWizard: React.FC = () => {
             .catch(() => { /* continue silently */ });
     };
 
-    const handleNext = async () => {
-        if (validateStep(currentStep)) {
-            if (currentStep === 4) {
-                if (!isAuthenticated) {
-                    await redirectToLoginForSubmit();
-                    return;
-                }
-                await submitReport();
-            } else {
-                setCurrentStep((prev) => prev + 1);
-                window.scrollTo(0, 0);
-            }
-        }
-    };
-
     const handleBack = () => {
         setCurrentStep((prev) => prev - 1);
     };
 
-    const validateStep = (step: number) => {
+    const buildValidationResult = (stepsToValidate: number[]) => {
         const newErrors: Record<string, string> = {};
         let isValid = true;
+        let firstInvalidStep: number | null = null;
 
-        if (step === 1) {
+        const markInvalid = (step: number, key: string, message: string) => {
+            if (!newErrors[key]) {
+                newErrors[key] = message;
+            }
+            if (firstInvalidStep === null) {
+                firstInvalidStep = step;
+            }
+            isValid = false;
+        };
+
+        if (stepsToValidate.includes(1)) {
             if (!formData.violationType) {
-                newErrors.violationType = 'Please select a violation type.';
-                isValid = false;
+                markInvalid(1, 'violationType', 'Please select a violation type.');
             }
         }
 
-        if (step === 2) {
-            if (!formData.date) newErrors.date = 'Date is required.';
-            if (!formData.time) newErrors.time = 'Time is required.';
-            if (!formData.location) newErrors.location = 'Location description is required.';
-            if (!formData.city) newErrors.city = 'City is required.';
+        if (stepsToValidate.includes(2)) {
+            if (!formData.date) markInvalid(2, 'date', 'Date is required.');
+            if (!formData.time) markInvalid(2, 'time', 'Time is required.');
+            if (!formData.location) markInvalid(2, 'location', 'Location description is required.');
+            if (!formData.city) markInvalid(2, 'city', 'City is required.');
 
             // Future date validation
             const selectedDate = new Date(`${formData.date}T${formData.time}`);
             if (selectedDate > new Date()) {
-                newErrors.date = 'Cannot report violations in the future.';
-                isValid = false;
+                markInvalid(2, 'date', 'Cannot report violations in the future.');
             }
         }
 
-        if (step === 3) {
+        if (stepsToValidate.includes(3)) {
             if (formData.evidenceFiles.length === 0) {
-                newErrors.evidence = 'At least one image or video is required.';
-                isValid = false;
+                markInvalid(3, 'evidence', 'At least one image or video is required.');
             }
         }
 
+        return { isValid, newErrors, firstInvalidStep };
+    };
+
+    const validateStep = (step: number) => {
+        const { isValid, newErrors } = buildValidationResult([step]);
         setErrors(newErrors);
         return isValid;
     };
 
-    const submitReport = async () => {
+    const validateReportForSubmit = () => {
+        const { isValid, newErrors, firstInvalidStep } = buildValidationResult([1, 2, 3, 4]);
+        setErrors(newErrors);
+
+        if (!isValid && firstInvalidStep !== null) {
+            setCurrentStep(firstInvalidStep);
+            window.scrollTo(0, 0);
+        }
+
+        return isValid;
+    };
+
+    const handleNext = async () => {
+        if (currentStep === 4) {
+            if (!validateReportForSubmit()) {
+                return;
+            }
+
+            await savePendingReportDraft(formData).catch((error) => {
+                console.error('Failed to persist the report draft before OTP verification', error);
+            });
+            setIsOtpModalOpen(true);
+            return;
+        }
+
+        if (validateStep(currentStep)) {
+            setCurrentStep((prev) => prev + 1);
+            window.scrollTo(0, 0);
+        }
+    };
+
+    const submitCitizenReport = async (verificationResult: CitizenOtpVerificationResult) => {
         setIsSubmitting(true);
         try {
             // Convert files to base64 so they can be saved and viewed across browsers
@@ -438,11 +467,11 @@ export const ReportWizard: React.FC = () => {
                     url: await getBase64(f),
                     name: f.name,
                     size: f.size,
+                    mimeType: f.type || undefined,
                 }))
             );
 
-            // Save report to backend — ML inference runs automatically as a background task
-            const report = await mockDb.createReport({
+            const report = await mockDb.submitCitizenReportWithFirebase(verificationResult.idToken, {
                 violationType: formData.violationType as ViolationType,
                 datetime: `${formData.date}T${formData.time}`,
                 location: {
@@ -457,35 +486,14 @@ export const ReportWizard: React.FC = () => {
                     type: formData.vehicleType,
                     notes: formData.description,
                 },
-                citizen: {},
             });
             await clearPendingReportDraft().catch(() => undefined);
             setSubmittedId(report.trackingId);
         } catch (error: unknown) {
             console.error('Submission failed', error);
-            setErrors({ submit: `Failed to submit report: ${getErrorMessage(error, 'Unknown error')}` });
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
-    const redirectToLoginForSubmit = async () => {
-        setIsSubmitting(true);
-        try {
-            await savePendingReportDraft(formData);
-            navigate('/login', {
-                state: {
-                    intent: 'final-report-submit',
-                    from: {
-                        pathname: '/portal/report',
-                    },
-                },
-            });
-        } catch (error: unknown) {
-            console.error('Failed to preserve report draft before login', error);
-            setErrors({
-                submit: `Could not preserve your report draft for login. ${getErrorMessage(error, 'Please try again.')}`,
-            });
+            const message = `Failed to submit report: ${getErrorMessage(error, 'Unknown error')}`;
+            setErrors({ submit: message });
+            throw new Error(message);
         } finally {
             setIsSubmitting(false);
         }
@@ -510,14 +518,14 @@ export const ReportWizard: React.FC = () => {
             <div className={`container ${styles.successContainer}`}>
                 <CheckCircle size={80} className={styles.successIcon} />
                 <h1>Report Submitted Successfully!</h1>
-                <p>Your report has been received and is under review.</p>
+                <p>Your OTP-verified report has been received and linked to your verified phone number.</p>
 
                 <div className={styles.trackingBox}>
-                    <span>Tracking ID:</span>
+                    <span>Report Reference Number:</span>
                     <div className={styles.trackingId}>{submittedId}</div>
                 </div>
 
-                <p>Save this ID to track the status of your report.</p>
+                <p>Save this reference number to track the status of your report.</p>
 
                 <div className={styles.actions} style={{ justifyContent: 'center', gap: '16px' }}>
                     <Link to="/portal/track">
@@ -739,19 +747,17 @@ export const ReportWizard: React.FC = () => {
                 {/* Step 4: Vehicle & Notes */}
                 {currentStep === 4 && (
                     <div className="form-grid">
-                        {!isAuthenticated && (
-                            <div
-                                style={{
-                                    padding: 'var(--space-3) var(--space-4)',
-                                    borderRadius: 'var(--radius-md)',
-                                    border: '1px solid var(--color-border)',
-                                    backgroundColor: 'var(--color-surface)',
-                                    color: 'var(--color-text-secondary)',
-                                }}
-                            >
-                                You can complete the report first. Sign in only when you press the final submit button.
-                            </div>
-                        )}
+                        <div
+                            style={{
+                                padding: 'var(--space-3) var(--space-4)',
+                                borderRadius: 'var(--radius-md)',
+                                border: '1px solid var(--color-border)',
+                                backgroundColor: 'var(--color-surface)',
+                                color: 'var(--color-text-secondary)',
+                            }}
+                        >
+                            You can complete the entire report first. When you press the final submit button, a phone OTP dialog will open to verify your number before the report is sent.
+                        </div>
 
                         <div className="form-grid form-grid--2-col">
                             <Input
@@ -806,9 +812,16 @@ export const ReportWizard: React.FC = () => {
                     isLoading={isSubmitting}
                     rightIcon={currentStep === 4 ? undefined : <ArrowRight size={16} />}
                 >
-                    {currentStep === 4 ? (isAuthenticated ? 'Submit Report' : 'Login to Submit') : 'Next Step'}
+                    {currentStep === 4 ? 'Verify Phone & Submit' : 'Next Step'}
                 </Button>
             </div>
+
+            <CitizenOtpLoginModal
+                isOpen={isOtpModalOpen}
+                onClose={() => setIsOtpModalOpen(false)}
+                onVerified={submitCitizenReport}
+                description="Verify your Sri Lankan mobile number to complete the final report submission. After verification, LexVision will submit the evidence and generate a report reference number."
+            />
         </div>
     );
 };

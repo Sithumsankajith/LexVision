@@ -59,6 +59,62 @@ class CitizenTokenData(BaseModel):
     citizen_id: Optional[str] = None
     token_scope: Optional[str] = None
 
+
+class CitizenEvidenceFileCreate(BaseModel):
+    type: str
+    url: str
+    name: str
+    size: float
+    mime_type: Optional[str] = None
+
+
+class CitizenEvidenceFileResponse(BaseModel):
+    id: str
+    file_type: str
+    storage_url: str
+    original_name: str
+    mime_type: Optional[str]
+    size_bytes: float
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CitizenEvidenceReportCreate(BaseModel):
+    violation_type: str
+    incident_at: datetime
+    location_lat: float
+    location_lng: float
+    location_address: str
+    location_city: str
+    description: Optional[str] = None
+    vehicle_plate: Optional[str] = None
+    vehicle_type: Optional[str] = None
+    evidence: List[CitizenEvidenceFileCreate]
+
+
+class CitizenEvidenceReportResponse(BaseModel):
+    id: str
+    tracking_id: str
+    citizen_id: str
+    violation_type: str
+    incident_at: datetime
+    location_lat: float
+    location_lng: float
+    location_address: Optional[str]
+    location_city: Optional[str]
+    description: Optional[str]
+    vehicle_plate: Optional[str]
+    vehicle_type: Optional[str]
+    status: StatusEnum
+    created_at: datetime
+    updated_at: datetime
+    files: List[CitizenEvidenceFileResponse] = []
+
+    class Config:
+        from_attributes = True
+
 # --- Evidence Schema ---
 class EvidenceSchema(BaseModel):
     id: Optional[str] = None
