@@ -68,6 +68,11 @@
     color: var(--color-error);
 }
 
+.status-closed {
+    background-color: #dbeafe;
+    color: #1d4ed8;
+}
+
 .detailsGrid {
     display: grid;
     grid-template-columns: 1fr;

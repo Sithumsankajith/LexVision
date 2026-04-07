@@ -1,0 +1,215 @@
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-4);
+    margin-bottom: var(--space-8);
+    background: linear-gradient(135deg, var(--color-primary) 0%, #1e40af 100%);
+    padding: var(--space-8);
+    border-radius: var(--radius-lg);
+    color: white;
+}
+
+.headerInfo {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+}
+
+.avatar {
+    width: 64px;
+    height: 64px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.header h1 {
+    margin: 0 0 var(--space-1);
+    color: white;
+}
+
+.header p {
+    margin: 0;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.headerActions {
+    display: flex;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+}
+
+.statsGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: var(--space-4);
+    margin-bottom: var(--space-8);
+}
+
+.statCard {
+    display: grid;
+    gap: var(--space-2);
+}
+
+.statLabel {
+    color: var(--color-text-secondary);
+    font-size: 0.875rem;
+}
+
+.statValue {
+    font-size: 1.75rem;
+    font-weight: 700;
+}
+
+.reportList {
+    display: grid;
+    gap: var(--space-4);
+}
+
+.reportLink {
+    text-decoration: none;
+    color: inherit;
+}
+
+.reportCard {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.reportCard:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.reportContent {
+    flex: 1;
+    display: grid;
+    gap: var(--space-4);
+}
+
+.reportHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--space-4);
+}
+
+.referenceLabel {
+    color: var(--color-text-secondary);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: var(--space-1);
+}
+
+.referenceValue {
+    font-family: monospace;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--color-primary);
+}
+
+.reportMeta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-4);
+    color: var(--color-text-secondary);
+    font-size: 0.875rem;
+}
+
+.reportMeta span {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.statusBadge {
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-full);
+    font-size: 0.8rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.statusSubmitted {
+    background: #e0f2fe;
+    color: #0369a1;
+}
+
+.statusUnderReview {
+    background: #fef3c7;
+    color: #b45309;
+}
+
+.statusAccepted {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.statusRejected {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.statusClosed {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+.chevron {
+    color: var(--color-text-secondary);
+}
+
+.centerState {
+    min-height: 380px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-secondary);
+}
+
+.stateCard {
+    text-align: center;
+    display: grid;
+    gap: var(--space-4);
+    justify-items: center;
+}
+
+.stateCard h1,
+.stateCard h2 {
+    margin: 0;
+}
+
+.stateCard p {
+    max-width: 540px;
+    color: var(--color-text-secondary);
+}
+
+.stateIconInfo {
+    color: var(--color-primary);
+}
+
+.stateIconError {
+    color: var(--color-error);
+}
+
+.stateActions {
+    display: flex;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+@media (max-width: 768px) {
+    .header,
+    .reportHeader {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}

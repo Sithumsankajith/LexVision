@@ -2,6 +2,7 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional, List, Any
 from datetime import datetime
 from .models import RoleEnum, StatusEnum
+from .constants import StatusChangeSourceEnum
 
 # --- User Schemas ---
 class UserCreate(BaseModel):
@@ -126,6 +127,34 @@ class CitizenEvidenceReportResponse(BaseModel):
 
 class StaffEvidenceReportResponse(CitizenEvidenceReportResponse):
     citizen: Optional[CitizenSummaryResponse] = None
+
+
+class CitizenReportSummaryResponse(BaseModel):
+    id: str
+    tracking_id: str
+    violation_type: str
+    status: StatusEnum
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CitizenStatusHistoryResponse(BaseModel):
+    id: str
+    previous_status: Optional[StatusEnum] = None
+    new_status: StatusEnum
+    change_source: StatusChangeSourceEnum
+    notes: Optional[str] = None
+    changed_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CitizenReportDetailResponse(CitizenEvidenceReportResponse):
+    status_history: List[CitizenStatusHistoryResponse] = []
 
 # --- Evidence Schema ---
 class EvidenceSchema(BaseModel):

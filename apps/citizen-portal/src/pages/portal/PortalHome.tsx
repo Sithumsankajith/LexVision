@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { PlusCircle, Search, Info } from 'lucide-react';
+import { PlusCircle, Search, Info, FolderSearch } from 'lucide-react';
 import { Card, Button } from '@lexvision/ui';
 import styles from '@/pages/portal/PortalHome.module.css';
 
@@ -31,6 +31,15 @@ export const PortalHome: React.FC = () => {
                             <h2>Track My Report</h2>
                             <p>Check the status of your submitted reports using your Tracking ID.</p>
                             <Button variant="secondary" fullWidth>Check Status</Button>
+                        </Card>
+                    </Link>
+
+                    <Link to="/portal/my-reports" className={styles.actionLink}>
+                        <Card className={styles.actionCard} hoverable padding="lg">
+                            <FolderSearch size={48} className={styles.icon} />
+                            <h2>My Reports</h2>
+                            <p>Sign in with your verified phone number to see only the reports linked to your citizen account.</p>
+                            <Button variant="secondary" fullWidth>Open My Reports</Button>
                         </Card>
                     </Link>
                 </div>

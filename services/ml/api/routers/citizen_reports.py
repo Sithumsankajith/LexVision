@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
@@ -12,6 +13,10 @@ from ..sms import SmsSendRequest, dispatch_sms, render_sms_template
 from ..tracking import apply_evidence_report_status
 
 router = APIRouter(prefix="/api/citizen-reports", tags=["citizen-reports"])
+
+
+def _citizen_report_query(db: Session):
+    return db.query(models.EvidenceReport)
 
 
 @router.post("", response_model=schemas.CitizenEvidenceReportResponse)
@@ -102,10 +107,48 @@ def create_citizen_report(
     return saved_report
 
 
+@router.get("/me", response_model=List[schemas.CitizenReportSummaryResponse])
+def get_current_citizen_reports(
+    db: Session = Depends(get_db),
+    current_citizen: models.Citizen = Depends(get_current_citizen_account),
+):
+    return (
+        _citizen_report_query(db)
+        .filter(models.EvidenceReport.citizen_id == current_citizen.id)
+        .order_by(models.EvidenceReport.created_at.desc())
+        .all()
+    )
+
+
+@router.get("/me/{report_id}", response_model=schemas.CitizenReportDetailResponse)
+def get_current_citizen_report_detail(
+    report_id: str,
+    db: Session = Depends(get_db),
+    current_citizen: models.Citizen = Depends(get_current_citizen_account),
+):
+    report = (
+        _citizen_report_query(db)
+        .options(
+            joinedload(models.EvidenceReport.files),
+            joinedload(models.EvidenceReport.status_history),
+        )
+        .filter(
+            models.EvidenceReport.id == report_id,
+            models.EvidenceReport.citizen_id == current_citizen.id,
+        )
+        .first()
+    )
+
+    if not report:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Citizen report not found")
+
+    return report
+
+
 @router.get("/tracking/{tracking_id}", response_model=schemas.CitizenEvidenceReportResponse)
 def get_citizen_report_by_tracking_id(tracking_id: str, db: Session = Depends(get_db)):
     report = (
-        db.query(models.EvidenceReport)
+        _citizen_report_query(db)
         .options(joinedload(models.EvidenceReport.files))
         .filter(models.EvidenceReport.tracking_id == tracking_id)
         .first()

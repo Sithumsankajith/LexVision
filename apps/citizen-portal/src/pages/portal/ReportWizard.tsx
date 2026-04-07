@@ -532,6 +532,9 @@ export const ReportWizard: React.FC = () => {
                 <p>Save this reference number to track the status of your report.</p>
 
                 <div className={styles.actions} style={{ justifyContent: 'center', gap: '16px' }}>
+                    <Link to="/portal/my-reports">
+                        <Button variant="secondary">Open My Reports</Button>
+                    </Link>
                     <Link to="/portal/track">
                         <Button variant="primary">Track Status</Button>
                     </Link>

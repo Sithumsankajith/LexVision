@@ -2,14 +2,15 @@ import React, { useState } from 'react';
 import { Search, AlertCircle, MapPin, Video } from 'lucide-react';
 import { Card, Input, Button, Stepper } from '@lexvision/ui';
 import { mockDb } from '@lexvision/api-client';
-import type { Report, ReportStatus } from '@lexvision/types';
+import type { Report } from '@lexvision/types';
+import { getCitizenStatusLabel, getCitizenStatusStep } from '@/lib/reportStatus';
 import styles from '@/pages/portal/TrackReport.module.css';
 
 const STATUS_STEPS = [
     { id: 1, label: 'Submitted' },
     { id: 2, label: 'Under Review' },
-    { id: 3, label: 'Verified' },
-    { id: 4, label: 'Forwarded' },
+    { id: 3, label: 'Accepted / Rejected' },
+    { id: 4, label: 'Closed' },
 ];
 
 export const TrackReport: React.FC = () => {
@@ -40,17 +41,6 @@ export const TrackReport: React.FC = () => {
             console.error(err);
         } finally {
             setLoading(false);
-        }
-    };
-
-    const getStatusStep = (status: ReportStatus) => {
-        switch (status) {
-            case 'submitted': return 1;
-            case 'under-review': return 2;
-            case 'verified': return 3;
-            case 'forwarded': return 4;
-            case 'rejected': return 2; // Show as reviewing but maybe add a rejected state UI
-            default: return 1;
         }
     };
 
@@ -96,14 +86,14 @@ export const TrackReport: React.FC = () => {
                             </small>
                         </div>
                         <div className={`${styles.statusBadge} ${styles[`status-${report.status}`]}`}>
-                            {report.status.replace('-', ' ')}
+                            {getCitizenStatusLabel(report.status)}
                         </div>
                     </div>
 
                     <div style={{ margin: '40px 0' }}>
                         <Stepper
                             steps={STATUS_STEPS}
-                            currentStep={getStatusStep(report.status)}
+                            currentStep={getCitizenStatusStep(report.status)}
                         />
                     </div>
 

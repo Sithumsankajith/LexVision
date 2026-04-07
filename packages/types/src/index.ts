@@ -2,6 +2,7 @@ export type ViolationType = 'helmet' | 'no-helmet' | 'red-light' | 'white-line';
 
 export type ReportStatus = 'submitted' | 'under-review' | 'verified' | 'rejected' | 'closed' | 'forwarded';
 export type ReportSource = 'legacy-report' | 'evidence-report';
+export type ReportStatusSource = 'system' | 'citizen' | 'police' | 'admin' | 'ml-worker';
 
 export interface Location {
   lat: number;
@@ -50,6 +51,19 @@ export interface Report {
     detectedPlate?: string | null;
     confidence?: number;
   };
+}
+
+export interface ReportStatusHistoryEntry {
+  id: string;
+  previousStatus?: ReportStatus | null;
+  newStatus: ReportStatus;
+  notes?: string;
+  changedAt: string;
+  source: ReportStatusSource;
+}
+
+export interface CitizenReportDetail extends Report {
+  statusHistory: ReportStatusHistoryEntry[];
 }
 
 export interface ViolationStats {

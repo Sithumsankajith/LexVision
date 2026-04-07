@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
-import { LogIn, AlertCircle, CheckCircle2, Smartphone } from 'lucide-react';
-import { Card, Input, Button } from '@lexvision/ui';
+import { LogIn, AlertCircle, Smartphone } from 'lucide-react';
+import { Card, Button } from '@lexvision/ui';
 import { auth } from '@lexvision/api-client';
 import { CitizenOtpLoginModal, type CitizenOtpVerificationResult } from '@/components/CitizenOtpLoginModal';
 import styles from './Login.module.css';
@@ -24,12 +24,9 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 export const Login: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isOtpModalOpen, setIsOtpModalOpen] = useState(false);
-    const [otpVerificationResult, setOtpVerificationResult] = useState<CitizenOtpVerificationResult | null>(null);
 
     const navigationState = (location.state as AuthRedirectState | null) ?? null;
     const fromPath = navigationState?.from?.pathname || '/portal';
@@ -37,28 +34,30 @@ export const Login: React.FC = () => {
     const isFinalSubmitLogin = navigationState?.intent === 'final-report-submit';
 
     React.useEffect(() => {
+        if (auth.isCitizenAuthenticated()) {
+            navigate(fromPath, { replace: true, state: fromState });
+            return;
+        }
+
         if (isFinalSubmitLogin) {
             setIsOtpModalOpen(true);
         }
-    }, [isFinalSubmitLogin]);
+    }, [fromPath, fromState, isFinalSubmitLogin, navigate]);
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleOtpVerified = async (result: CitizenOtpVerificationResult) => {
         setError(null);
         setIsLoading(true);
 
         try {
-            await auth.login(email, password);
+            await auth.loginCitizenWithFirebaseToken(result.idToken, { persistSession: true });
             navigate(fromPath, { replace: true, state: fromState });
-        } catch (error: unknown) {
-            setError(getErrorMessage(error, 'Login failed. Please check your credentials.'));
+        } catch (verificationError: unknown) {
+            const message = getErrorMessage(verificationError, 'Phone verification succeeded, but we could not create your citizen session.');
+            setError(message);
+            throw new Error(message);
         } finally {
             setIsLoading(false);
         }
-    };
-
-    const handleOtpVerified = (result: CitizenOtpVerificationResult) => {
-        setOtpVerificationResult(result);
     };
 
     return (
@@ -67,42 +66,8 @@ export const Login: React.FC = () => {
                 <div className={styles.header}>
                     <LogIn size={40} className={styles.icon} />
                     <h1>Citizen Portal Login</h1>
-                    <p>{isFinalSubmitLogin ? 'Log in to submit your saved evidence report.' : 'Access your reports and rewards'}</p>
+                    <p>{isFinalSubmitLogin ? 'Verify your phone to continue with the saved report submission.' : 'Verify your phone number to view only the reports linked to your citizen account.'}</p>
                 </div>
-
-                {otpVerificationResult && (
-                    <Card className={styles.tokenCard} padding="md">
-                        <div className={styles.successHeader}>
-                            <CheckCircle2 size={22} />
-                            <h2>Phone Verification Complete</h2>
-                        </div>
-                        <p className={styles.successText}>
-                            Firebase phone authentication succeeded. The ID token below is ready for the later backend exchange step.
-                        </p>
-                        <div className={styles.verifiedMeta}>
-                            <div>
-                                <label>Verified Phone Number</label>
-                                <span className={styles.verifiedValue}>{otpVerificationResult.phoneNumber}</span>
-                            </div>
-                            <div>
-                                <label>Firebase UID</label>
-                                <span className={styles.verifiedValue}>{otpVerificationResult.uid}</span>
-                            </div>
-                        </div>
-                        <div className={styles.tokenField}>
-                            <label htmlFor="firebase-id-token">Firebase ID Token</label>
-                            <textarea
-                                id="firebase-id-token"
-                                className={styles.tokenPreview}
-                                readOnly
-                                value={otpVerificationResult.idToken}
-                            />
-                            <p className={styles.helperText}>
-                                This is intentionally not connected to report submission or backend login yet.
-                            </p>
-                        </div>
-                    </Card>
-                )}
 
                 {error && (
                     <div className={styles.errorBox}>
@@ -119,51 +84,17 @@ export const Login: React.FC = () => {
                         className={styles.otpTrigger}
                         leftIcon={<Smartphone size={18} />}
                         onClick={() => setIsOtpModalOpen(true)}
+                        isLoading={isLoading}
                     >
                         Verify With Phone OTP
                     </Button>
                     <p className={styles.helperText}>
-                        This opens the reusable Firebase phone-auth modal with reCAPTCHA and returns a Firebase ID token after verification.
+                        Use the same verified mobile number you used during report submission. After OTP verification, LexVision will create your citizen session and open your reports area.
                     </p>
                 </div>
 
-                <div className={styles.divider}>
-                    <span>Existing portal login</span>
-                </div>
-
-                <form onSubmit={handleSubmit} className={styles.form}>
-                    <Input
-                        label="Email Address"
-                        type="email"
-                        placeholder="e.g. citizen@example.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        required
-                        fullWidth
-                    />
-                    <Input
-                        label="Password"
-                        type="password"
-                        placeholder="••••••••"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required
-                        fullWidth
-                    />
-
-                    <Button
-                        type="submit"
-                        variant="primary"
-                        isLoading={isLoading}
-                        fullWidth
-                        className={styles.submitBtn}
-                    >
-                        Login
-                    </Button>
-                </form>
-
                 <div className={styles.footer}>
-                    <p>Don't have an account? <Link to="/register" state={location.state}>Register here</Link></p>
+                    <p>Need to check a report without signing in? <Link to="/portal/track">Track by reference number</Link></p>
                 </div>
             </Card>
 
@@ -173,8 +104,8 @@ export const Login: React.FC = () => {
                 onVerified={handleOtpVerified}
                 description={
                     isFinalSubmitLogin
-                        ? 'Complete Firebase phone verification here. The ID token will be produced, but report submission wiring is intentionally deferred for the next step.'
-                        : undefined
+                        ? 'Complete Firebase phone verification here to continue with your saved evidence submission.'
+                        : 'Verify your phone number to open your citizen reports linked to this mobile account.'
                 }
             />
         </div>

@@ -1,0 +1,243 @@
+.topActions {
+    margin-bottom: var(--space-4);
+}
+
+.summaryCard {
+    display: grid;
+    gap: var(--space-6);
+}
+
+.summaryHeader {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-4);
+    align-items: flex-start;
+}
+
+.referenceLabel {
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    letter-spacing: 0.04em;
+    margin-bottom: var(--space-1);
+}
+
+.referenceValue {
+    font-family: monospace;
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--color-primary);
+}
+
+.referenceMeta {
+    margin-top: var(--space-2);
+    color: var(--color-text-secondary);
+}
+
+.statusBadge {
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-full);
+    font-size: 0.875rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.statusSubmitted {
+    background: #e0f2fe;
+    color: #0369a1;
+}
+
+.statusUnderReview {
+    background: #fef3c7;
+    color: #b45309;
+}
+
+.statusAccepted {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.statusRejected {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.statusClosed {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+.stepperWrap {
+    padding: var(--space-2) 0;
+}
+
+.metaGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: var(--space-4);
+}
+
+.metaCard {
+    padding: var(--space-4);
+    border-radius: var(--radius-md);
+    background: var(--color-background);
+    display: grid;
+    gap: var(--space-2);
+}
+
+.metaCard h3,
+.detailSection h3 {
+    margin: 0;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.metaCard p {
+    margin: 0;
+    color: var(--color-text-secondary);
+}
+
+.detailGrid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-6);
+}
+
+.detailSection {
+    display: grid;
+    gap: var(--space-4);
+}
+
+.detailRow {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.detailRow span {
+    color: var(--color-text-secondary);
+}
+
+.detailNotes {
+    display: grid;
+    gap: var(--space-2);
+}
+
+.detailNotes span {
+    color: var(--color-text-secondary);
+}
+
+.detailNotes p {
+    margin: 0;
+    padding: var(--space-4);
+    border-radius: var(--radius-md);
+    background: var(--color-background);
+}
+
+.timeline {
+    position: relative;
+    display: grid;
+    gap: var(--space-4);
+}
+
+.timelineItem {
+    display: grid;
+    grid-template-columns: 20px 1fr;
+    gap: var(--space-3);
+    align-items: flex-start;
+}
+
+.timelineDot {
+    width: 12px;
+    height: 12px;
+    border-radius: var(--radius-full);
+    background: var(--color-primary);
+    margin-top: 6px;
+}
+
+.timelineContent {
+    padding-bottom: var(--space-4);
+    border-bottom: 1px solid var(--color-border);
+    display: grid;
+    gap: var(--space-2);
+}
+
+.timelineHeader {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-3);
+    align-items: center;
+}
+
+.timelineHeader span,
+.timelineMeta {
+    color: var(--color-text-secondary);
+    font-size: 0.875rem;
+}
+
+.timelineMeta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+}
+
+.timelineMeta span {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+}
+
+.timelineNotes {
+    margin: 0;
+    color: var(--color-text);
+    line-height: 1.6;
+}
+
+.timelineEmpty {
+    padding: var(--space-6);
+    border-radius: var(--radius-md);
+    background: var(--color-background);
+    color: var(--color-text-secondary);
+}
+
+.centerState {
+    min-height: 360px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-secondary);
+}
+
+.stateCard {
+    text-align: center;
+    display: grid;
+    gap: var(--space-4);
+    justify-items: center;
+}
+
+.stateCard p {
+    color: var(--color-text-secondary);
+}
+
+.stateIconError {
+    color: var(--color-error);
+}
+
+.stateActions {
+    display: flex;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+@media (max-width: 900px) {
+    .summaryHeader,
+    .detailGrid {
+        grid-template-columns: 1fr;
+        display: grid;
+    }
+}

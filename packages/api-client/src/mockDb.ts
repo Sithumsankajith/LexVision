@@ -1,4 +1,4 @@
-import type { Report } from '@lexvision/types';
+import type { CitizenReportDetail, Report, ReportStatusHistoryEntry, ReportStatusSource } from '@lexvision/types';
 import { auth } from './auth';
 
 const API_BASE_URL = 'http://localhost:8000/api';
@@ -35,6 +35,20 @@ const mapBackendStatus = (status: string): Report['status'] =>
         status === 'CLOSED' ? 'closed' :
         status === 'VALIDATED' ? 'verified' :
             status === 'REJECTED' ? 'rejected' : 'under-review';
+
+const mapBackendStatusSource = (source: string): ReportStatusSource =>
+    source === 'ML_WORKER' ? 'ml-worker' :
+        source === 'POLICE' ? 'police' :
+            source === 'ADMIN' ? 'admin' :
+                source === 'CITIZEN' ? 'citizen' : 'system';
+
+const requireCitizenSessionToken = () => {
+    const session = auth.getCitizenSession();
+    if (!session?.token) {
+        throw new Error('Please verify your phone number to access your reports.');
+    }
+    return session.token;
+};
 
 const mapReportToFrontend = (b: any): Report => ({
     id: b.id,
@@ -91,6 +105,18 @@ const mapCitizenReportToFrontend = (b: any): Report => ({
     updatedAt: b.updated_at || b.created_at,
 });
 
+const mapCitizenReportDetailToFrontend = (b: any): CitizenReportDetail => ({
+    ...mapCitizenReportToFrontend(b),
+    statusHistory: (b.status_history || []).map((entry: any): ReportStatusHistoryEntry => ({
+        id: entry.id,
+        previousStatus: entry.previous_status ? mapBackendStatus(entry.previous_status) : null,
+        newStatus: mapBackendStatus(entry.new_status),
+        notes: entry.notes || undefined,
+        changedAt: entry.changed_at,
+        source: mapBackendStatusSource(entry.change_source),
+    })),
+});
+
 export const mockDb = {
     createReport: async (reportData: Omit<Report, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'trackingId'>): Promise<Report> => {
         const payload = {
@@ -122,7 +148,7 @@ export const mockDb = {
     },
 
     submitCitizenReportWithFirebase: async (firebaseIdToken: string, reportData: CitizenReportPayload): Promise<Report> => {
-        const citizenAuth = await auth.loginCitizenWithFirebaseToken(firebaseIdToken);
+        const citizenAuth = await auth.loginCitizenWithFirebaseToken(firebaseIdToken, { persistSession: true });
 
         const payload = {
             violation_type: reportData.violationType,
@@ -159,6 +185,63 @@ export const mockDb = {
 
         const data = await response.json();
         return mapCitizenReportToFrontend(data);
+    },
+
+    getCitizenMyReports: async (): Promise<Report[]> => {
+        const token = requireCitizenSessionToken();
+        const response = await fetch(`${API_BASE_URL}/citizen-reports/me`, {
+            headers: getHeaders(token),
+        });
+
+        if (response.status === 401) {
+            auth.logoutCitizen();
+            throw new Error('Your citizen session has expired. Please verify your phone number again.');
+        }
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || 'Failed to load your reports.');
+        }
+
+        const data = await response.json();
+        return data.map((report: any) => ({
+            id: report.id,
+            trackingId: report.tracking_id,
+            source: 'evidence-report',
+            citizen: { phone: auth.getCitizenSession()?.phone_number },
+            violationType: report.violation_type,
+            datetime: report.created_at,
+            location: { lat: 0, lng: 0, address: '', city: '' },
+            evidence: [],
+            vehicle: {},
+            status: mapBackendStatus(report.status),
+            createdAt: report.created_at,
+            updatedAt: report.updated_at,
+        }));
+    },
+
+    getCitizenMyReportById: async (reportId: string): Promise<CitizenReportDetail | null> => {
+        const token = requireCitizenSessionToken();
+        const response = await fetch(`${API_BASE_URL}/citizen-reports/me/${reportId}`, {
+            headers: getHeaders(token),
+        });
+
+        if (response.status === 401) {
+            auth.logoutCitizen();
+            throw new Error('Your citizen session has expired. Please verify your phone number again.');
+        }
+
+        if (response.status === 404) {
+            return null;
+        }
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || 'Failed to load this report.');
+        }
+
+        const data = await response.json();
+        return mapCitizenReportDetailToFrontend(data);
     },
 
     getReportByTrackingId: async (trackingId: string): Promise<Report | null> => {

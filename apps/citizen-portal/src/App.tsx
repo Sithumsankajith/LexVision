@@ -1,5 +1,5 @@
 import { Suspense, useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { PublicLayout } from './layouts/PublicLayout';
 import { Home } from '@/pages/public/Home';
 import { HowItWorks } from '@/pages/public/HowItWorks';
@@ -12,7 +12,8 @@ import { Register } from '@/pages/public/Register';
 import { PortalHome } from '@/pages/portal/PortalHome';
 import { ReportWizard } from '@/pages/portal/ReportWizard';
 import { TrackReport } from '@/pages/portal/TrackReport';
-import { Profile } from '@/pages/portal/Profile';
+import { MyReports } from '@/pages/portal/MyReports';
+import { MyReportDetail } from '@/pages/portal/MyReportDetail';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { PageLoader } from '@lexvision/ui';
 
@@ -60,9 +61,19 @@ function AppContent() {
             <Route index element={<PortalHome />} />
             <Route path="report" element={<ReportWizard />} />
             <Route path="track" element={<TrackReport />} />
+            <Route path="my-reports" element={
+              <ProtectedRoute>
+                <MyReports />
+              </ProtectedRoute>
+            } />
+            <Route path="my-reports/:reportId" element={
+              <ProtectedRoute>
+                <MyReportDetail />
+              </ProtectedRoute>
+            } />
             <Route path="profile" element={
               <ProtectedRoute>
-                <Profile />
+                <Navigate to="/portal/my-reports" replace />
               </ProtectedRoute>
             } />
           </Route>

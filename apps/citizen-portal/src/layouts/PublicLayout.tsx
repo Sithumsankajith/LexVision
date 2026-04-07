@@ -3,14 +3,28 @@ import { Outlet, useNavigate } from 'react-router-dom';
 import { Navbar, Footer, PageTransition } from '@lexvision/ui';
 import { auth } from '@lexvision/api-client';
 
+const getNavbarSession = () => {
+    const staffSession = auth.getSession();
+    if (staffSession) {
+        return { email: staffSession.email };
+    }
+
+    const citizenSession = auth.getCitizenSession();
+    if (citizenSession) {
+        return { email: citizenSession.phone_number };
+    }
+
+    return null;
+};
+
 export const PublicLayout: React.FC = () => {
     const navigate = useNavigate();
-    const [session, setSession] = useState(auth.getSession());
+    const [session, setSession] = useState(getNavbarSession());
 
     useEffect(() => {
         // Simple listener for session changes if needed
         const interval = setInterval(() => {
-            const currentSession = auth.getSession();
+            const currentSession = getNavbarSession();
             if (JSON.stringify(currentSession) !== JSON.stringify(session)) {
                 setSession(currentSession);
             }
@@ -20,8 +34,9 @@ export const PublicLayout: React.FC = () => {
 
     const handleLogout = () => {
         auth.logout();
+        auth.logoutCitizen();
         setSession(null);
-        navigate('/');
+        navigate('/portal');
     };
 
     return (
