@@ -3,7 +3,12 @@ import { AlertCircle, CheckCircle2, MessageSquareLock, RefreshCcw, ShieldCheck, 
 import { Button, Card, Input } from '@lexvision/ui';
 import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app';
-import { ensureFirebaseAuthReady, getFirebaseAuth } from '@/lib/firebase';
+import {
+    ensureFirebaseAuthReady,
+    getFirebaseAuth,
+    getFirebaseConfigErrorMessage,
+    isFirebaseConfigError,
+} from '@/lib/firebase';
 import styles from './CitizenOtpLoginModal.module.css';
 
 export interface CitizenOtpVerificationResult {
@@ -56,6 +61,25 @@ const getSubmitErrorMessage = (error: unknown) => {
     return getErrorMessage(error, fallback);
 };
 
+const getSendOtpErrorMessage = (error: unknown) => {
+    if (isFirebaseConfigError(error)) {
+        return getFirebaseConfigErrorMessage(error);
+    }
+
+    if (error instanceof FirebaseError) {
+        switch (error.code) {
+            case 'auth/invalid-phone-number':
+                return 'Enter a valid Sri Lankan mobile number in international format, for example +94771234567.';
+            case 'auth/too-many-requests':
+                return 'Too many OTP requests were made from this device. Please wait a moment and try again.';
+            default:
+                return getErrorMessage(error, 'Unable to send the OTP right now. Please try again.');
+        }
+    }
+
+    return getErrorMessage(error, 'Unable to send the OTP right now. Please try again.');
+};
+
 export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
     isOpen,
     onClose,
@@ -76,6 +100,7 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
     const [statusMessage, setStatusMessage] = useState<string | null>(null);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const isBusy = isSendingOtp || isVerifyingOtp || isCompletingSubmit;
+    const currentStep = verifiedResult ? 3 : confirmationResult ? 2 : 1;
 
     const teardownRecaptcha = useCallback(() => {
         verifierRef.current?.clear();
@@ -168,7 +193,8 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
             setConfirmationResult(result);
             setStatusMessage(`An OTP has been sent to ${normalizedPhoneNumber}. Enter it below to continue.`);
         } catch (error: unknown) {
-            setErrorMessage(getErrorMessage(error, 'Unable to send the OTP right now. Please try again.'));
+            setStatusMessage(null);
+            setErrorMessage(getSendOtpErrorMessage(error));
             teardownRecaptcha();
         } finally {
             setIsSendingOtp(false);
@@ -274,6 +300,31 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
                         <p className={styles.description}>{description}</p>
                     </div>
 
+                    <div className={styles.stepRow} aria-label="Phone verification steps">
+                        {[
+                            { id: 1, label: 'Phone' },
+                            { id: 2, label: 'OTP' },
+                            { id: 3, label: 'Submit' },
+                        ].map((step) => {
+                            const isComplete = currentStep > step.id;
+                            const isCurrent = currentStep === step.id;
+
+                            return (
+                                <div
+                                    key={step.id}
+                                    className={[
+                                        styles.stepCard,
+                                        isComplete ? styles.stepCardComplete : '',
+                                        isCurrent ? styles.stepCardCurrent : '',
+                                    ].filter(Boolean).join(' ')}
+                                >
+                                    <span className={styles.stepNumber}>{step.id}</span>
+                                    <span className={styles.stepLabel}>{step.label}</span>
+                                </div>
+                            );
+                        })}
+                    </div>
+
                     <div className={styles.form}>
                         {errorMessage && (
                             <div className={styles.errorBox} role="alert">
@@ -290,7 +341,7 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
                         )}
 
                         <div className={styles.infoBox}>
-                            Use an international phone number such as <strong>+94771234567</strong>. Firebase will send the OTP directly to that number.
+                            Use your Sri Lankan mobile number in international format, such as <strong>+94771234567</strong>.
                         </div>
 
                         {!confirmationResult ? (
@@ -304,8 +355,9 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
                                     autoComplete="tel"
                                     fullWidth
                                     required
+                                    disabled={isBusy}
                                 />
-                                <p className={styles.hint}>Firebase phone auth expects E.164 format with the country code.</p>
+                                <p className={styles.hint}>We will send the OTP directly to this number.</p>
 
                                 <div className={styles.recaptchaShell}>
                                     <label className={styles.recaptchaLabel}>Security Check</label>
@@ -349,6 +401,7 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
                                     autoComplete="one-time-code"
                                     fullWidth
                                     required
+                                    disabled={isBusy}
                                 />
 
                                 <div className={styles.secondaryActions}>

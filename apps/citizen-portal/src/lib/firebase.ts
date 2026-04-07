@@ -10,10 +10,12 @@ type FirebaseEnvKey =
     | 'VITE_FIREBASE_MESSAGING_SENDER_ID'
     | 'VITE_FIREBASE_APP_ID';
 
+const MISSING_FIREBASE_ENV_PREFIX = 'Missing required Firebase environment variable: ';
+
 const readRequiredEnv = (key: FirebaseEnvKey): string => {
     const value = import.meta.env[key];
     if (!value) {
-        throw new Error(`Missing required Firebase environment variable: ${key}`);
+        throw new Error(`${MISSING_FIREBASE_ENV_PREFIX}${key}`);
     }
     return value;
 };
@@ -23,6 +25,18 @@ let cachedApp: FirebaseApp | null = null;
 let cachedAuth: Auth | null = null;
 let persistencePromise: Promise<void> | null = null;
 let analyticsPromise: Promise<Analytics | null> | null = null;
+
+export const isFirebaseConfigError = (error: unknown): error is Error =>
+    error instanceof Error && error.message.startsWith(MISSING_FIREBASE_ENV_PREFIX);
+
+export const getFirebaseConfigErrorMessage = (error: unknown): string => {
+    if (!isFirebaseConfigError(error)) {
+        return 'Citizen phone verification is not configured for this environment.';
+    }
+
+    const missingKey = error.message.replace(MISSING_FIREBASE_ENV_PREFIX, '');
+    return `Citizen phone verification is not configured yet. Add ${missingKey} to apps/citizen-portal/.env.local and restart the citizen portal.`;
+};
 
 export const getFirebaseConfig = (): FirebaseOptions => {
     if (!cachedConfig) {
