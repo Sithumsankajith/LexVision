@@ -12,5 +12,8 @@
     },
     "devDependencies": {
         "pnpm": "^10.29.1"
+    },
+    "dependencies": {
+        "firebase": "^12.11.0"
     }
 }
