@@ -33,6 +33,13 @@ export interface CitizenTokenExchange {
     citizen: CitizenIdentity;
 }
 
+export interface CitizenOtpReadiness {
+    backend_configured: boolean;
+    firebase_project_id: string | null;
+    missing_backend_env: string[];
+    requirements: string[];
+}
+
 interface CitizenLoginOptions {
     persistSession?: boolean;
 }
@@ -140,6 +147,16 @@ export const auth = {
             auth.setCitizenSession(exchange);
         }
         return exchange;
+    },
+
+    getCitizenOtpReadiness: async (): Promise<CitizenOtpReadiness> => {
+        const response = await fetch(`${API_BASE_URL}/auth/citizen/otp-readiness`);
+
+        if (!response.ok) {
+            throw new Error('Unable to load citizen OTP readiness details.');
+        }
+
+        return response.json();
     },
 
     setCitizenSession: (exchange: CitizenTokenExchange): CitizenSession => {

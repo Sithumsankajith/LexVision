@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
-import { LogIn, AlertCircle, Smartphone } from 'lucide-react';
+import { LogIn, AlertCircle, Smartphone, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { Card, Button } from '@lexvision/ui';
-import { auth } from '@lexvision/api-client';
+import { auth, type CitizenOtpReadiness } from '@lexvision/api-client';
 import { CitizenOtpLoginModal, type CitizenOtpVerificationResult } from '@/components/CitizenOtpLoginModal';
 import styles from './Login.module.css';
 
@@ -27,6 +27,8 @@ export const Login: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isOtpModalOpen, setIsOtpModalOpen] = useState(false);
+    const [otpReadiness, setOtpReadiness] = useState<CitizenOtpReadiness | null>(null);
+    const [readinessError, setReadinessError] = useState<string | null>(null);
 
     const navigationState = (location.state as AuthRedirectState | null) ?? null;
     const fromPath = navigationState?.from?.pathname || '/portal';
@@ -43,6 +45,26 @@ export const Login: React.FC = () => {
             setIsOtpModalOpen(true);
         }
     }, [fromPath, fromState, isFinalSubmitLogin, navigate]);
+
+    React.useEffect(() => {
+        let isMounted = true;
+
+        auth.getCitizenOtpReadiness()
+            .then((readiness) => {
+                if (isMounted) {
+                    setOtpReadiness(readiness);
+                }
+            })
+            .catch((loadError: unknown) => {
+                if (isMounted) {
+                    setReadinessError(getErrorMessage(loadError, 'Unable to load OTP readiness details.'));
+                }
+            });
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
 
     const handleOtpVerified = async (result: CitizenOtpVerificationResult) => {
         setError(null);
@@ -91,6 +113,42 @@ export const Login: React.FC = () => {
                     <p className={styles.helperText}>
                         Use the same verified mobile number you used during report submission. After OTP verification, LexVision will create your citizen session and open your reports area.
                     </p>
+                </div>
+
+                <div className={styles.readinessCard}>
+                    <div className={styles.readinessHeader}>
+                        {otpReadiness?.backend_configured ? (
+                            <ShieldCheck size={18} className={styles.readinessSuccessIcon} />
+                        ) : (
+                            <TriangleAlert size={18} className={styles.readinessWarningIcon} />
+                        )}
+                        <h2>OTP Requirements</h2>
+                    </div>
+
+                    {readinessError ? (
+                        <p className={styles.readinessError}>{readinessError}</p>
+                    ) : otpReadiness ? (
+                        <>
+                            <p className={styles.readinessSummary}>
+                                Backend Firebase Admin: <strong>{otpReadiness.backend_configured ? 'Configured' : 'Not configured'}</strong>
+                                {otpReadiness.firebase_project_id ? ` for ${otpReadiness.firebase_project_id}` : ''}
+                            </p>
+
+                            {!otpReadiness.backend_configured && otpReadiness.missing_backend_env.length > 0 && (
+                                <p className={styles.readinessError}>
+                                    Missing backend env: {otpReadiness.missing_backend_env.join(', ')}
+                                </p>
+                            )}
+
+                            <ul className={styles.requirementsList}>
+                                {otpReadiness.requirements.map((requirement) => (
+                                    <li key={requirement}>{requirement}</li>
+                                ))}
+                            </ul>
+                        </>
+                    ) : (
+                        <p className={styles.readinessSummary}>Loading OTP readiness details...</p>
+                    )}
                 </div>
 
                 <div className={styles.footer}>

@@ -68,8 +68,21 @@ const getSendOtpErrorMessage = (error: unknown) => {
 
     if (error instanceof FirebaseError) {
         switch (error.code) {
+            case 'auth/app-not-authorized':
+            case 'auth/unauthorized-domain':
+                return 'This domain is not authorized for Firebase phone sign-in. Add your current domain, such as localhost, in Firebase Authentication Authorized domains.';
+            case 'auth/captcha-check-failed':
+                return 'The reCAPTCHA check failed or this domain is not allowed. Complete the challenge again and confirm the current domain is authorized in Firebase.';
             case 'auth/invalid-phone-number':
                 return 'Enter a valid Sri Lankan mobile number in international format, for example +94771234567.';
+            case 'auth/invalid-api-key':
+                return 'The Firebase web configuration is invalid. Check the VITE_FIREBASE_* values in apps/citizen-portal/.env.local.';
+            case 'auth/operation-not-allowed':
+                return 'Firebase Phone Authentication is not enabled for this project. Enable the Phone provider in Firebase Authentication.';
+            case 'auth/quota-exceeded':
+                return 'Firebase could not send the OTP because the SMS quota or billing requirement has been hit. Move the project to Blaze, allow Sri Lanka in SMS regions, and try again later.';
+            case 'auth/network-request-failed':
+                return 'The OTP request could not reach Firebase. Check your internet connection and browser network access.';
             case 'auth/too-many-requests':
                 return 'Too many OTP requests were made from this device. Please wait a moment and try again.';
             default:

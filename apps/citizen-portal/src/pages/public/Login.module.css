@@ -137,6 +137,60 @@
     line-height: 1.6;
 }
 
+.readinessCard {
+    margin-top: var(--space-6);
+    padding: var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+}
+
+.readinessHeader {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
+}
+
+.readinessHeader h2 {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.readinessSuccessIcon {
+    color: var(--color-success);
+}
+
+.readinessWarningIcon {
+    color: #b7791f;
+}
+
+.readinessSummary {
+    color: var(--color-text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.6;
+    margin-bottom: var(--space-3);
+}
+
+.readinessError {
+    color: var(--color-error);
+    font-size: 0.9rem;
+    line-height: 1.6;
+    margin-bottom: var(--space-3);
+}
+
+.requirementsList {
+    margin: 0;
+    padding-left: 1.25rem;
+    color: var(--color-text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.65;
+}
+
+.requirementsList li + li {
+    margin-top: 0.35rem;
+}
+
 .divider {
     position: relative;
     margin: var(--space-2) 0;

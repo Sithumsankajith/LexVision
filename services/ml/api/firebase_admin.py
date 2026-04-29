@@ -93,3 +93,19 @@ def get_verified_phone_number(id_token: str) -> str | None:
     if isinstance(phone_number, str) and phone_number.strip():
         return phone_number
     return None
+
+
+def get_firebase_admin_status() -> dict[str, Any]:
+    required_env_names = [
+        "FIREBASE_PROJECT_ID",
+        "FIREBASE_CLIENT_EMAIL",
+        "FIREBASE_PRIVATE_KEY",
+    ]
+    missing_env = [name for name in required_env_names if not os.getenv(name, "").strip()]
+    project_id = os.getenv("FIREBASE_PROJECT_ID", "").strip() or None
+
+    return {
+        "configured": len(missing_env) == 0,
+        "project_id": project_id,
+        "missing_env": missing_env,
+    }

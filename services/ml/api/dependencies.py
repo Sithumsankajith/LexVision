@@ -1,17 +1,23 @@
+import os
+from pathlib import Path
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from typing import Optional
+from dotenv import load_dotenv
 
 from . import models, schemas
 from .database import get_db
 from .sms import SmsService, get_sms_service as build_sms_service
 
-SECRET_KEY = "supersecret_lexvision_key_for_demo_only"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
+_env_path = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(dotenv_path=_env_path)
+
+SECRET_KEY = os.getenv("SECRET_KEY", "supersecret_lexvision_key_for_demo_only")
+ALGORITHM = os.getenv("ALGORITHM", "HS256")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", str(60 * 24)))
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 citizen_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/citizen/firebase-login")

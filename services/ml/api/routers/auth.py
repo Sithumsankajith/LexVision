@@ -7,7 +7,7 @@ from .. import models, schemas
 from ..citizen_auth import CitizenAccountConflictError, CitizenAuthError, get_or_create_citizen_account, verify_citizen_firebase_identity
 from ..database import get_db
 from ..dependencies import create_access_token, create_citizen_access_token, get_current_citizen_account, get_current_user, log_audit_action
-from ..firebase_admin import FirebaseAdminConfigError
+from ..firebase_admin import FirebaseAdminConfigError, get_firebase_admin_status
 import bcrypt
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -120,3 +120,22 @@ def login_citizen_with_firebase(
 @router.get("/citizen/me", response_model=schemas.CitizenResponse)
 def get_current_citizen_profile(current_citizen: models.Citizen = Depends(get_current_citizen_account)):
     return current_citizen
+
+
+@router.get("/citizen/otp-readiness", response_model=schemas.CitizenOtpReadinessResponse)
+def get_citizen_otp_readiness():
+    backend_status = get_firebase_admin_status()
+    return {
+        "backend_configured": backend_status["configured"],
+        "firebase_project_id": backend_status["project_id"],
+        "missing_backend_env": backend_status["missing_env"],
+        "requirements": [
+            "Citizen portal frontend must include all VITE_FIREBASE_* values in apps/citizen-portal/.env.local.",
+            "Backend must include FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY in services/ml/.env.",
+            "Firebase Authentication Phone provider must be enabled for this project.",
+            "The Firebase project must be on the Blaze plan because verification SMS is not available on Spark.",
+            "Phone Number Verification / OAuth branding must be verified and published in Google Cloud.",
+            "SMS region policy must allow Sri Lanka (LK) for OTP delivery.",
+            "The testing domain such as localhost or your deployed domain must be listed in Firebase Authorized domains.",
+        ],
+    }

@@ -61,6 +61,13 @@ class CitizenTokenData(BaseModel):
     token_scope: Optional[str] = None
 
 
+class CitizenOtpReadinessResponse(BaseModel):
+    backend_configured: bool
+    firebase_project_id: Optional[str] = None
+    missing_backend_env: List[str] = []
+    requirements: List[str] = []
+
+
 class CitizenEvidenceFileCreate(BaseModel):
     type: str
     url: str
