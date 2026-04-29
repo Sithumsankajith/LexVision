@@ -1,0 +1,116 @@
+{
+  "generated_at": "2026-04-29T09:01:35.767012+00:00",
+  "dataset": {
+    "dataset_name": "Helmet Detection.v2i.yolov8",
+    "data_yaml": "datasets/Helmet/Helmet Detection.v2i.yolov8/data.yaml",
+    "class_count": 5,
+    "class_names": [
+      "Invalid",
+      "full-faced",
+      "half-faced",
+      "motorcycle",
+      "not wearing helment"
+    ]
+  },
+  "splits": {
+    "train": {
+      "image_count": 1800,
+      "label_file_count": 1800,
+      "annotation_count": 10663,
+      "missing_label_files": 0,
+      "empty_label_files": 3,
+      "invalid_bounding_boxes": 0,
+      "orphan_label_files": 0,
+      "class_counts": {
+        "Invalid": 173,
+        "full-faced": 1673,
+        "half-faced": 3498,
+        "motorcycle": 4966,
+        "not wearing helment": 353
+      },
+      "label_directory": "datasets/Helmet/Helmet Detection.v2i.yolov8/train/labels",
+      "invalid_annotation_examples": []
+    },
+    "val": {
+      "image_count": 171,
+      "label_file_count": 171,
+      "annotation_count": 957,
+      "missing_label_files": 0,
+      "empty_label_files": 0,
+      "invalid_bounding_boxes": 0,
+      "orphan_label_files": 0,
+      "class_counts": {
+        "Invalid": 20,
+        "full-faced": 161,
+        "half-faced": 294,
+        "motorcycle": 457,
+        "not wearing helment": 25
+      },
+      "label_directory": "datasets/Helmet/Helmet Detection.v2i.yolov8/valid/labels",
+      "invalid_annotation_examples": []
+    },
+    "test": {
+      "image_count": 88,
+      "label_file_count": 88,
+      "annotation_count": 490,
+      "missing_label_files": 0,
+      "empty_label_files": 0,
+      "invalid_bounding_boxes": 0,
+      "orphan_label_files": 0,
+      "class_counts": {
+        "Invalid": 16,
+        "full-faced": 76,
+        "half-faced": 157,
+        "motorcycle": 223,
+        "not wearing helment": 18
+      },
+      "label_directory": "datasets/Helmet/Helmet Detection.v2i.yolov8/test/labels",
+      "invalid_annotation_examples": []
+    }
+  },
+  "totals": {
+    "image_count": 2059,
+    "label_file_count": 2059,
+    "annotation_count": 12110,
+    "class_counts": {
+      "Invalid": 209,
+      "full-faced": 1910,
+      "half-faced": 3949,
+      "motorcycle": 5646,
+      "not wearing helment": 396
+    }
+  },
+  "issues": {
+    "missing_label_files": 0,
+    "empty_label_files": 3,
+    "invalid_bounding_boxes": 0,
+    "orphan_label_files": 0
+  },
+  "class_imbalance": {
+    "status": "computed",
+    "majority_class": "motorcycle",
+    "minority_class": "Invalid",
+    "majority_count": 5646,
+    "minority_count": 209,
+    "minority_to_majority_ratio": 0.037,
+    "severity": "severe"
+  },
+  "samples": {
+    "missing_label_examples": [],
+    "invalid_bbox_examples": [],
+    "orphan_label_examples": []
+  },
+  "artifacts": {
+    "report_directory": "dataset_tools/reports/Helmet_Detection.v2i.yolov8",
+    "audit_report_json": "dataset_tools/reports/Helmet_Detection.v2i.yolov8/audit_report.json",
+    "audit_report_md": "dataset_tools/reports/Helmet_Detection.v2i.yolov8/audit_report.md",
+    "charts": {
+      "overall_class_distribution": "dataset_tools/reports/Helmet_Detection.v2i.yolov8/charts/class_distribution_overall.png",
+      "split_class_distribution": "dataset_tools/reports/Helmet_Detection.v2i.yolov8/charts/class_distribution_by_split.png"
+    }
+  },
+  "recommendations": [
+    "Review the 3 empty label files. Keep them only if they are intentional negative samples; otherwise annotate or remove them.",
+    "Class imbalance is severe: `Invalid` has only 0.037x the annotations of `motorcycle`. Collect more minority-class examples or rebalance with targeted augmentation."
+  ]
+}
