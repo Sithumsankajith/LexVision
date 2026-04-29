@@ -201,7 +201,9 @@ class ReportResponse(BaseModel):
     id: str
     tracking_id: str
     user_id: str
-    violation_type: str
+    claimed_violation_type: Optional[str] = None
+    inferred_violation_type: Optional[str] = None
+    violation_type: Optional[str] = None
     datetime: datetime
     location_lat: float
     location_lng: float

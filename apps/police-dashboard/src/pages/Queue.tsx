@@ -11,6 +11,8 @@ import { Panel, DataTable, Badge } from '@lexvision/ui';
 import { mockDb } from '@lexvision/api-client';
 import type { Report } from '@lexvision/types';
 
+const formatViolation = (value?: string | null, emptyLabel = 'Pending police validation') => value ? value.replace(/-/g, ' ') : emptyLabel;
+
 export const Queue: React.FC = () => {
     const [reports, setReports] = useState<Report[]>([]);
     const [loading, setLoading] = useState(true);
@@ -46,6 +48,9 @@ export const Queue: React.FC = () => {
                 (r.location.city || '').toLowerCase().includes(q) ||
                 (r.vehicle?.plate || '').toLowerCase().includes(q) ||
                 (r.aiAnalysis?.detectedPlate || '').toLowerCase().includes(q) ||
+                (r.claimedViolationType || '').toLowerCase().includes(q) ||
+                (r.inferredViolationType || '').toLowerCase().includes(q) ||
+                (r.finalViolationType || '').toLowerCase().includes(q) ||
                 r.violationType.toLowerCase().includes(q)
             );
         }
@@ -141,17 +146,26 @@ export const Queue: React.FC = () => {
                                         <FileText size={16} color="var(--color-primary)" />
                                     </div>
                                     <span style={{ fontWeight: '600' }}>Citizen</span>
-                                    {item.aiAnalysis?.detectedViolationType && (
+                                    {item.aiAnalysis && (
                                         <Badge variant="warning"><BrainCircuit size={10} /> AI Flag</Badge>
                                     )}
                                 </div>
                             </td>
                             <td>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                    <span style={{ fontWeight: '700', color: 'var(--color-text)' }}>{item.violationType.replace(/-/g, ' ')}</span>
-                                    {item.aiAnalysis?.detectedViolationType && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                    <span style={{ fontWeight: '700', color: 'var(--color-text)' }}>
+                                        Final: {formatViolation(item.finalViolationType)}
+                                    </span>
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
+                                        Claimed: {formatViolation(item.claimedViolationType || item.violationType)}
+                                    </span>
+                                    <span style={{ fontSize: '0.75rem', color: item.inferredViolationType ? 'var(--color-primary)' : 'var(--color-text-secondary)', fontWeight: '600' }}>
+                                        AI inferred: {formatViolation(item.inferredViolationType, 'Not inferred')}
+                                    </span>
+                                    {item.aiAnalysis?.confidence !== undefined && (
                                         <span style={{ fontSize: '0.75rem', color: 'var(--color-primary)', fontWeight: '600', opacity: 0.8 }}>
                                             Confidence: {((item.aiAnalysis.confidence || 0) * 100).toFixed(0)}%
+                                            {item.aiAnalysis.confidenceBand ? ` (${item.aiAnalysis.confidenceBand})` : ''}
                                         </span>
                                     )}
                                 </div>

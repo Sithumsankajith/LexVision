@@ -16,6 +16,15 @@ from ..dependencies import get_admin, log_audit_action
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
+
+def _report_violation_expression():
+    return func.coalesce(
+        models.Report.violation_type,
+        models.Report.inferred_violation_type,
+        models.Report.claimed_violation_type,
+        "unclassified",
+    )
+
 # --- AUDIT LOGS ---
 @router.get("/audit-logs")
 def get_audit_logs(db: Session = Depends(get_db), current_user: models.User = Depends(get_admin)):
@@ -68,10 +77,11 @@ def get_status_ratio(db: Session = Depends(get_db), current_user: models.User = 
 @router.get("/analytics/violation-types")
 def get_violation_types(db: Session = Depends(get_db), current_user: models.User = Depends(get_admin)):
     """ Bar chart violation payload """
+    violation_expr = _report_violation_expression()
     query = db.query(
-        models.Report.violation_type,
+        violation_expr.label("violation_type"),
         func.count(models.Report.id).label('count')
-    ).group_by(models.Report.violation_type).all()
+    ).group_by(violation_expr).all()
     
     return [{"type": q.violation_type, "count": q.count} for q in query]
 
@@ -143,11 +153,37 @@ def export_reports_csv(db: Session = Depends(get_db), current_user: models.User 
     def iter_csv():
         output = StringIO()
         writer = csv.writer(output)
-        writer.writerow(['ID', 'TrackingID', 'ViolationType', 'DateTime', 'Status', 'Lat', 'Lng', 'City'])
-        
+        writer.writerow(
+            [
+                'ID',
+                'TrackingID',
+                'ClaimedViolationType',
+                'InferredViolationType',
+                'FinalViolationType',
+                'DateTime',
+                'Status',
+                'Lat',
+                'Lng',
+                'City',
+            ]
+        )
+
         for r in reports:
             status_val = r.status.value if hasattr(r.status, 'value') else str(r.status)
-            writer.writerow([r.id, r.tracking_id, r.violation_type, r.datetime, status_val, r.location_lat, r.location_lng, r.location_city])
+            writer.writerow(
+                [
+                    r.id,
+                    r.tracking_id,
+                    r.claimed_violation_type,
+                    r.inferred_violation_type,
+                    r.violation_type,
+                    r.datetime,
+                    status_val,
+                    r.location_lat,
+                    r.location_lng,
+                    r.location_city,
+                ]
+            )
             yield output.getvalue()
             output.seek(0)
             output.truncate(0)

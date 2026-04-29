@@ -1,4 +1,5 @@
-export type ViolationType = 'helmet' | 'no-helmet' | 'red-light' | 'white-line';
+export type ViolationType = 'helmet' | 'no-helmet' | 'red-light' | 'white-line' | string;
+export type ConfidenceBand = 'high' | 'medium' | 'low';
 
 export type ReportStatus = 'submitted' | 'under-review' | 'verified' | 'rejected' | 'closed' | 'forwarded';
 export type ReportSource = 'legacy-report' | 'evidence-report';
@@ -38,6 +39,9 @@ export interface Report {
   source?: ReportSource;
   citizen: Citizen;
   violationType: ViolationType;
+  claimedViolationType?: string | null;
+  inferredViolationType?: string | null;
+  finalViolationType?: string | null;
   datetime: string; // ISO string
   location: Location;
   evidence: Evidence[];
@@ -48,8 +52,21 @@ export interface Report {
   notes?: string;
   aiAnalysis?: {
     detectedViolationType?: string | null;
+    claimedViolationType?: string | null;
+    inferredViolationType?: string | null;
+    finalViolationType?: string | null;
     detectedPlate?: string | null;
     confidence?: number;
+    confidenceBand?: ConfidenceBand | null;
+    modelVersion?: string | null;
+    bbox?: Record<string, unknown> | null;
+    ocrOutput?: {
+      text?: string | null;
+      rawText?: string | null;
+      confidence?: number | null;
+      validationStatus?: string | null;
+    } | null;
+    processedAt?: string | null;
   };
 }
 

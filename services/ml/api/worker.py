@@ -4,6 +4,7 @@ import os
 import re
 import tempfile
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import cv2
@@ -24,16 +25,28 @@ ANPR_MODEL_PATH = MODELS_DIR / "anpr_best.pt"
 PLATE_CLASS_NAME = "License_Plate"
 ANPR_MODEL_VERSION = f"{ANPR_MODEL_PATH.name}|easyocr"
 QUALITY_THRESHOLD = 0.15
+HIGH_CONFIDENCE_THRESHOLD = 0.8
+MEDIUM_CONFIDENCE_THRESHOLD = 0.5
 
 _plate_detector = None
 _plate_detector_load_attempted = False
 _ocr_reader = None
 _ocr_reader_load_attempted = False
 
-VIOLATION_MAP = {
-    "helmet": "no-helmet",
-    "red-light": "red-light-violation",
-    "white-line": "white-line-crossing",
+VIOLATION_LABEL_ALIASES = {
+    "helmet": "helmet",
+    "nohelmet": "no-helmet",
+    "no-helmet": "no-helmet",
+    "notwearinghelmet": "no-helmet",
+    "not_wearing_helmet": "no-helmet",
+    "not wearing helmet": "no-helmet",
+    "not wearing helment": "no-helmet",
+    "redlight": "red-light",
+    "red-light": "red-light",
+    "red-light-violation": "red-light",
+    "whiteline": "white-line",
+    "white-line": "white-line",
+    "white-line-crossing": "white-line",
 }
 
 # A permissive matcher for common Sri Lankan private-vehicle layouts once OCR
@@ -73,6 +86,39 @@ def _relative_to_base(path: Path | None) -> str | None:
         return str(path.resolve().relative_to(BASE_DIR.resolve()))
     except ValueError:
         return str(path.resolve())
+
+
+def _confidence_band(score: float) -> str:
+    if score >= HIGH_CONFIDENCE_THRESHOLD:
+        return "high"
+    if score >= MEDIUM_CONFIDENCE_THRESHOLD:
+        return "medium"
+    return "low"
+
+
+def _normalize_violation_label(label: str | None) -> str | None:
+    if not label:
+        return None
+
+    normalized_key = re.sub(r"[^a-z0-9]+", "", label.strip().lower())
+    if not normalized_key:
+        return None
+    return VIOLATION_LABEL_ALIASES.get(normalized_key)
+
+
+def _infer_violation_type_from_ai(detected_classes: list[str]) -> str | None:
+    """
+    Infer a violation type only from model outputs.
+
+    The current worker runs a dedicated ANPR detector, so most runs will only
+    produce license-plate classes and return None here. That is intentional: we
+    no longer copy the citizen's claim into the AI-inferred field.
+    """
+    for detected_class in detected_classes:
+        inferred_label = _normalize_violation_label(detected_class)
+        if inferred_label:
+            return inferred_label
+    return None
 
 
 def _get_plate_detector():
@@ -412,13 +458,6 @@ def _build_anpr_result(report_id: str, image_path: str | None) -> dict:
     return result
 
 
-def _determine_violation_type(report_violation: str) -> str:
-    """
-    Keep the current report-violation mapping stable for the rest of the backend.
-    """
-    return VIOLATION_MAP.get(report_violation, report_violation)
-
-
 def _cleanup_temporary_evidence(image_path: str | None) -> None:
     if image_path and image_path.startswith(tempfile.gettempdir()):
         try:
@@ -431,6 +470,12 @@ def attempt_inference(report: Report, db: Session, attempt: int = 1):
     """Run ANPR inference on a report's evidence while preserving the API contract."""
     logger.info("Starting inference job for report %s (Attempt %s)", report.id, attempt)
     start_time = time.time()
+    processed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    # Legacy rows may still have only violation_type populated from before the
+    # claimed/inferred/final split. Keep the citizen claim accessible.
+    if report.claimed_violation_type is None and report.violation_type is not None:
+        report.claimed_violation_type = report.violation_type
 
     if report.status == StatusEnum.SUBMITTED:
         report.status = StatusEnum.AI_PROCESSING
@@ -448,34 +493,46 @@ def attempt_inference(report: Report, db: Session, attempt: int = 1):
         + anpr_result["plate_confidence"] * 0.4
         + bbox_clarity * 0.2
     )
+    overall_confidence = round(quality_score, 4)
+    confidence_band = _confidence_band(overall_confidence)
     latency = time.time() - start_time
-    detected_violation = _determine_violation_type(report.violation_type)
+    inferred_violation_type = _infer_violation_type_from_ai(anpr_result["detected_classes"])
+    report.inferred_violation_type = inferred_violation_type
 
     bbox_payload = {
+        "model_version": ANPR_MODEL_VERSION,
+        "processing_timestamp": processed_at.isoformat(),
         "detections": anpr_result["detections"],
         "detected_classes": anpr_result["detected_classes"],
-        "quality_score": round(quality_score, 4),
+        "quality_score": overall_confidence,
+        "confidence_band": confidence_band,
+        "claimed_violation_type": report.claimed_violation_type,
+        "inferred_violation_type": inferred_violation_type,
         "bbox": anpr_result["bbox"],
         "crop_path": anpr_result["crop_path"],
         "plate_text": anpr_result["plate_text"],
         "plate_confidence": round(anpr_result["plate_confidence"], 4),
         "validation_status": anpr_result["validation_status"],
-        "raw_text": anpr_result["raw_text"],
-        "ocr_candidates": anpr_result["ocr_candidates"],
+        "ocr_output": {
+            "raw_text": anpr_result["raw_text"],
+            "plate_text": anpr_result["plate_text"],
+            "plate_confidence": round(anpr_result["plate_confidence"], 4),
+            "candidates": anpr_result["ocr_candidates"],
+        },
     }
 
-    inference_log = InferenceLog(
-        report_id=report.id,
-        model_version=ANPR_MODEL_VERSION,
-        bbox_coordinates=bbox_payload,
-        confidence=round(anpr_result["detection_confidence"], 4)
-        if anpr_result["detection_confidence"] > 0
-        else round(quality_score, 4),
-        ocr_text=anpr_result["plate_text"],
-        ocr_confidence=round(anpr_result["plate_confidence"], 4),
-        inference_latency=round(latency, 4),
-    )
-    db.add(inference_log)
+    inference_log = db.query(InferenceLog).filter(InferenceLog.report_id == report.id).first()
+    if inference_log is None:
+        inference_log = InferenceLog(report_id=report.id)
+        db.add(inference_log)
+
+    inference_log.model_version = ANPR_MODEL_VERSION
+    inference_log.bbox_coordinates = bbox_payload
+    inference_log.confidence = overall_confidence
+    inference_log.ocr_text = anpr_result["plate_text"]
+    inference_log.ocr_confidence = round(anpr_result["plate_confidence"], 4)
+    inference_log.inference_latency = round(latency, 4)
+    inference_log.timestamp = processed_at
 
     # Safe fallback: if the worker cannot extract a usable plate candidate, keep
     # the report available for manual review instead of hard-rejecting it.
@@ -484,13 +541,14 @@ def attempt_inference(report: Report, db: Session, attempt: int = 1):
         inference_log.bbox_coordinates["filtering"] = "Rejected: no usable evidence image found."
     else:
         report.status = StatusEnum.UNDER_REVIEW
-        report.violation_type = detected_violation
         if anpr_result["bbox"] is None:
             inference_log.bbox_coordinates["filtering"] = "No plate detected; forwarded to manual review."
         elif not anpr_result["plate_text"]:
             inference_log.bbox_coordinates["filtering"] = "Plate detected but OCR/validation failed; forwarded to manual review."
         elif quality_score < QUALITY_THRESHOLD:
             inference_log.bbox_coordinates["filtering"] = "Low-confidence plate read; forwarded to manual review."
+        elif inferred_violation_type is None:
+            inference_log.bbox_coordinates["filtering"] = "ANPR completed, but the current AI pipeline did not infer a violation class."
 
     audit = AuditLog(
         user_id=report.user_id,
@@ -498,11 +556,13 @@ def attempt_inference(report: Report, db: Session, attempt: int = 1):
         target_type="InferenceLog",
         details={
             "latency_seconds": round(latency, 4),
-            "quality_score": round(quality_score, 4),
+            "quality_score": overall_confidence,
+            "confidence_band": confidence_band,
             "plate_detections": anpr_result["num_detections"],
             "ocr_text": anpr_result["plate_text"],
             "validation_status": anpr_result["validation_status"],
-            "detected_violation": detected_violation,
+            "claimed_violation_type": report.claimed_violation_type,
+            "inferred_violation_type": inferred_violation_type,
             "threshold_met": quality_score >= QUALITY_THRESHOLD,
             "attempt": attempt,
         },
@@ -511,11 +571,13 @@ def attempt_inference(report: Report, db: Session, attempt: int = 1):
     db.commit()
 
     logger.info(
-        "Inference complete for %s | plate_text=%s | det_conf=%.4f | ocr_conf=%.4f | validation=%s | report_status=%s",
+        "Inference complete for %s | claimed=%s | inferred=%s | plate_text=%s | confidence=%.4f (%s) | validation=%s | report_status=%s",
         report.id,
+        report.claimed_violation_type or "N/A",
+        inferred_violation_type or "N/A",
         anpr_result["plate_text"] or "N/A",
-        anpr_result["detection_confidence"],
-        anpr_result["plate_confidence"],
+        overall_confidence,
+        confidence_band,
         anpr_result["validation_status"],
         report.status,
     )

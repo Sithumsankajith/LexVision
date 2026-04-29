@@ -17,7 +17,9 @@ def create_report(report_data: schemas.ReportCreate, background_tasks: Backgroun
     new_report = models.Report(
         tracking_id=f"LEX-{datetime.now().year}-{str(uuid.uuid4())[:8].upper()}",
         user_id=current_user.id,
-        violation_type=report_data.violation_type,
+        claimed_violation_type=report_data.violation_type,
+        inferred_violation_type=None,
+        violation_type=None,
         datetime=report_data.datetime,
         location_lat=report_data.location_lat,
         location_lng=report_data.location_lng,
@@ -105,6 +107,8 @@ def update_report_status(report_id: str, update: schemas.ReportStatusUpdate, db:
     
     report.status = update.status
     if update.status == models.StatusEnum.VALIDATED:
+        # The final violation type is assigned only after officer validation.
+        report.violation_type = report.inferred_violation_type or report.claimed_violation_type
         # Award points to the citizen who reported it
         report.user.reward_points += 50.0
     

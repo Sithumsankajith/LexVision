@@ -18,6 +18,8 @@ import {
 import { mockDb } from '@lexvision/api-client';
 import type { Report } from '@lexvision/types';
 
+const formatViolation = (value?: string | null, emptyLabel = 'Pending police validation') => value ? value.replace(/-/g, ' ') : emptyLabel;
+
 export const Dashboard: React.FC = () => {
     const [reports, setReports] = useState<Report[]>([]);
     const [loading, setLoading] = useState(true);
@@ -88,7 +90,17 @@ export const Dashboard: React.FC = () => {
                         {activeCases.slice(0, 5).map((item) => (
                             <tr key={item.id}>
                                 <td style={{ fontFamily: 'monospace', fontWeight: '500' }}>{item.trackingId}</td>
-                                <td>{item.violationType.replace(/-/g, ' ')}</td>
+                                <td>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                        <span>{formatViolation(item.finalViolationType)}</span>
+                                        <span style={{ fontSize: '0.72rem', color: 'var(--color-text-secondary)' }}>
+                                            Claimed: {formatViolation(item.claimedViolationType || item.violationType)}
+                                        </span>
+                                        <span style={{ fontSize: '0.72rem', color: 'var(--color-primary)' }}>
+                                            AI: {formatViolation(item.inferredViolationType, 'Not inferred')}
+                                        </span>
+                                    </div>
+                                </td>
                                 <td>{item.location.address || item.location.city}</td>
                                 <td style={{ color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>
                                     <Clock size={14} style={{ verticalAlign: 'text-bottom', marginRight: '4px' }} />
@@ -108,7 +120,7 @@ export const Dashboard: React.FC = () => {
                                         color: item.aiAnalysis?.confidence ? (item.aiAnalysis.confidence > 0.8 ? 'var(--color-success)' : 'var(--color-warning)') : 'var(--color-text-secondary)',
                                         fontWeight: '600'
                                     }}>
-                                        {item.aiAnalysis?.confidence ? `${(item.aiAnalysis.confidence * 100).toFixed(0)}%` : 'N/A'}
+                                        {item.aiAnalysis?.confidence ? `${(item.aiAnalysis.confidence * 100).toFixed(0)}%${item.aiAnalysis.confidenceBand ? ` (${item.aiAnalysis.confidenceBand})` : ''}` : 'N/A'}
                                     </span>
                                 </td>
                                 <td>
@@ -132,10 +144,20 @@ export const Dashboard: React.FC = () => {
             >
                 <DataTable headers={['Case ID', 'Type', 'Location', 'Date', 'Status', 'AI', 'Action']}>
                     {recentReports.map((item) => (
-                        <tr key={item.id}>
-                            <td style={{ fontFamily: 'monospace', fontWeight: '500' }}>{item.trackingId}</td>
-                            <td>{item.violationType.replace(/-/g, ' ')}</td>
-                            <td>{item.location.address || item.location.city}</td>
+                            <tr key={item.id}>
+                                <td style={{ fontFamily: 'monospace', fontWeight: '500' }}>{item.trackingId}</td>
+                                <td>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                        <span>{formatViolation(item.finalViolationType)}</span>
+                                        <span style={{ fontSize: '0.72rem', color: 'var(--color-text-secondary)' }}>
+                                            Claimed: {formatViolation(item.claimedViolationType || item.violationType)}
+                                        </span>
+                                        <span style={{ fontSize: '0.72rem', color: 'var(--color-primary)' }}>
+                                            AI: {formatViolation(item.inferredViolationType, 'Not inferred')}
+                                        </span>
+                                    </div>
+                                </td>
+                                <td>{item.location.address || item.location.city}</td>
                             <td style={{ color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>
                                 {new Date(item.datetime).toLocaleDateString()}{' '}
                                 {new Date(item.datetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -155,6 +177,7 @@ export const Dashboard: React.FC = () => {
                                         <BrainCircuit size={14} color="var(--color-primary)" />
                                         <span style={{ fontWeight: '600', color: item.aiAnalysis.confidence > 0.8 ? 'var(--color-success)' : 'var(--color-warning)' }}>
                                             {(item.aiAnalysis.confidence * 100).toFixed(0)}%
+                                            {item.aiAnalysis.confidenceBand ? ` (${item.aiAnalysis.confidenceBand})` : ''}
                                         </span>
                                     </span>
                                 ) : (

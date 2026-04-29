@@ -50,12 +50,49 @@ const requireCitizenSessionToken = () => {
     return session.token;
 };
 
+const getEffectiveViolationType = (backendReport: any): Report['violationType'] =>
+    (backendReport.violation_type ||
+        backendReport.inferred_violation_type ||
+        backendReport.claimed_violation_type ||
+        'unclassified') as Report['violationType'];
+
+const buildAiAnalysis = (backendReport: any): Report['aiAnalysis'] | undefined => {
+    if (!backendReport.inference_log) {
+        return undefined;
+    }
+
+    const bboxPayload = backendReport.inference_log.bbox_coordinates || {};
+    const ocrOutput = bboxPayload.ocr_output || {};
+
+    return {
+        detectedViolationType: backendReport.inferred_violation_type || null,
+        claimedViolationType: backendReport.claimed_violation_type || null,
+        inferredViolationType: backendReport.inferred_violation_type || null,
+        finalViolationType: backendReport.violation_type || null,
+        detectedPlate: backendReport.inference_log.ocr_text || bboxPayload.plate_text || null,
+        confidence: backendReport.inference_log.confidence,
+        confidenceBand: bboxPayload.confidence_band || null,
+        modelVersion: backendReport.inference_log.model_version || null,
+        bbox: bboxPayload.bbox || null,
+        ocrOutput: {
+            text: backendReport.inference_log.ocr_text || bboxPayload.plate_text || null,
+            rawText: ocrOutput.raw_text || null,
+            confidence: backendReport.inference_log.ocr_confidence ?? bboxPayload.plate_confidence ?? null,
+            validationStatus: bboxPayload.validation_status || null,
+        },
+        processedAt: backendReport.inference_log.timestamp || bboxPayload.processing_timestamp || null,
+    };
+};
+
 const mapReportToFrontend = (b: any): Report => ({
     id: b.id,
     trackingId: b.tracking_id || b.id,
     source: 'legacy-report',
     citizen: { email: 'citizen@lexvision.gov' }, // Placeholder as backend doesn't embed user email
-    violationType: b.violation_type as any,
+    violationType: getEffectiveViolationType(b),
+    claimedViolationType: b.claimed_violation_type || null,
+    inferredViolationType: b.inferred_violation_type || null,
+    finalViolationType: b.violation_type || null,
     datetime: b.datetime,
     location: {
         lat: b.location_lat,
@@ -68,11 +105,7 @@ const mapReportToFrontend = (b: any): Report => ({
     status: mapBackendStatus(b.status),
     createdAt: b.created_at,
     updatedAt: b.updated_at || b.created_at,
-    aiAnalysis: b.inference_log ? {
-        detectedViolationType: b.violation_type,
-        detectedPlate: b.inference_log.ocr_text,
-        confidence: b.inference_log.confidence
-    } : undefined
+    aiAnalysis: buildAiAnalysis(b),
 });
 
 const mapCitizenReportToFrontend = (b: any): Report => ({
@@ -81,6 +114,9 @@ const mapCitizenReportToFrontend = (b: any): Report => ({
     source: 'evidence-report',
     citizen: { phone: b.citizen?.phone_number },
     violationType: b.violation_type as any,
+    claimedViolationType: b.violation_type || null,
+    inferredViolationType: null,
+    finalViolationType: (b.status === 'VALIDATED' || b.status === 'CLOSED') ? b.violation_type || null : null,
     datetime: b.incident_at,
     location: {
         lat: b.location_lat,

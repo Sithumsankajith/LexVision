@@ -8,6 +8,8 @@ import { Panel, DataTable, Badge } from '@lexvision/ui';
 import { mockDb } from '@lexvision/api-client';
 import type { Report } from '@lexvision/types';
 
+const formatViolation = (value?: string | null, emptyLabel = 'Pending police validation') => value ? value.replace(/-/g, ' ') : emptyLabel;
+
 export const Reports: React.FC = () => {
     const [reports, setReports] = useState<Report[]>([]);
     const [loading, setLoading] = useState(true);
@@ -110,10 +112,13 @@ export const Reports: React.FC = () => {
                             <td style={{ fontFamily: 'monospace', fontWeight: '500' }}>{report.trackingId}</td>
                             <td>{report.citizen.email || report.citizen.phone || 'Anonymous'}</td>
                             <td>
-                                {report.violationType.replace('-', ' ')}
-                                {report.aiAnalysis?.detectedViolationType && (
-                                    <div style={{ fontSize: '0.7rem', color: 'var(--color-primary)' }}>AI: {report.aiAnalysis.detectedViolationType.replace('-', ' ')}</div>
-                                )}
+                                <div>{formatViolation(report.finalViolationType)}</div>
+                                <div style={{ fontSize: '0.7rem', color: 'var(--color-text-secondary)' }}>
+                                    Claimed: {formatViolation(report.claimedViolationType || report.violationType)}
+                                </div>
+                                <div style={{ fontSize: '0.7rem', color: 'var(--color-primary)' }}>
+                                    AI: {formatViolation(report.inferredViolationType, 'Not inferred')}
+                                </div>
                             </td>
                             <td>{report.location.address || report.location.city}</td>
                             <td>{new Date(report.createdAt).toLocaleString()}</td>

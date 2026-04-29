@@ -20,6 +20,8 @@ import { Panel, Badge } from '@lexvision/ui';
 import { mockDb } from '@lexvision/api-client';
 import type { Report } from '@lexvision/types';
 
+const formatViolation = (value?: string | null, emptyLabel = 'Pending police validation') => value ? value.replace(/-/g, ' ') : emptyLabel;
+
 export const ViolationDetails: React.FC = () => {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -119,7 +121,7 @@ export const ViolationDetails: React.FC = () => {
                     {report.status.replace(/-/g, ' ').toUpperCase()}
                 </Badge>
                 <div style={{ marginLeft: 'auto' }}>
-                    {report.aiAnalysis?.detectedViolationType ? (
+                    {report.aiAnalysis ? (
                         <Badge variant="warning">
                             <BrainCircuit size={14} style={{ marginRight: '4px' }} /> AI ANALYZED
                         </Badge>
@@ -164,7 +166,11 @@ export const ViolationDetails: React.FC = () => {
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
                             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontWeight: '600' }}><AlertTriangle size={14} style={{ verticalAlign: 'text-bottom' }} /> Violation</span>
-                            <span style={{ fontWeight: '600', color: 'var(--color-text)' }}>{report.violationType.replace(/-/g, ' ')}</span>
+                            <span style={{ fontWeight: '600', color: 'var(--color-text)' }}>Final: {formatViolation(report.finalViolationType)}</span>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>Claimed: {formatViolation(report.claimedViolationType || report.violationType)}</span>
+                            <span style={{ fontSize: '0.75rem', color: report.inferredViolationType ? 'var(--color-primary)' : 'var(--color-text-secondary)' }}>
+                                AI inferred: {formatViolation(report.inferredViolationType, 'Not inferred')}
+                            </span>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
                             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontWeight: '600' }}><Calendar size={14} style={{ verticalAlign: 'text-bottom' }} /> Time</span>
@@ -190,9 +196,13 @@ export const ViolationDetails: React.FC = () => {
                                             <BrainCircuit size={14} /> AI Detection Alert
                                         </div>
                                         <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginTop: '4px' }}>
-                                            The model detected a potential <strong>{report.aiAnalysis.detectedViolationType}</strong> violation
-                                            with <strong>{((report.aiAnalysis.confidence || 0) * 100).toFixed(0)}%</strong> confidence.
-                                            {report.aiAnalysis.detectedPlate && <span> Reading plate: <strong>{report.aiAnalysis.detectedPlate}</strong>.</span>}
+                                            Claimed violation: <strong>{formatViolation(report.claimedViolationType || report.violationType)}</strong>.
+                                            {' '}AI inferred: <strong>{formatViolation(report.inferredViolationType, 'Not inferred')}</strong>.
+                                            {' '}Confidence: <strong>{((report.aiAnalysis.confidence || 0) * 100).toFixed(0)}%</strong>
+                                            {report.aiAnalysis.confidenceBand && <span> (<strong>{report.aiAnalysis.confidenceBand}</strong>)</span>}.
+                                            {report.aiAnalysis.detectedPlate && <span> Plate read: <strong>{report.aiAnalysis.detectedPlate}</strong>.</span>}
+                                            {report.aiAnalysis.modelVersion && <span> Model: <strong>{report.aiAnalysis.modelVersion}</strong>.</span>}
+                                            {report.aiAnalysis.processedAt && <span> Processed: <strong>{new Date(report.aiAnalysis.processedAt).toLocaleString()}</strong>.</span>}
                                         </div>
                                     </div>
                                 </div>
