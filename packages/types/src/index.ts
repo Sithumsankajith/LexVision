@@ -88,3 +88,67 @@ export interface ViolationStats {
   verifiedReports: number;
   violationsByType: Record<ViolationType, number>;
 }
+
+// ---------------------------------------------------------------------------
+// Ticket Lifecycle Types
+// ---------------------------------------------------------------------------
+
+/**
+ * Enforcement ticket lifecycle statuses.
+ *
+ * Lifecycle:
+ *   draft → issued → notified → paid → closed
+ *                       ↓         ↓
+ *                    overdue   appealed → cancelled → closed
+ *                       ↓                    ↑
+ *                    paid / cancelled ────────┘
+ */
+export type TicketStatus =
+  | 'draft'
+  | 'issued'
+  | 'notified'
+  | 'paid'
+  | 'overdue'
+  | 'appealed'
+  | 'cancelled'
+  | 'closed';
+
+/** Full enforcement ticket representation. */
+export interface TrafficTicket {
+  id: string;
+  ticketNumber: string;
+  reportId?: string | null;
+  evidenceReportId?: string | null;
+  officerId: string;
+  status: TicketStatus;
+  penalCode: string;
+  fineAmount: number;
+  violationType?: string | null;
+  vehiclePlate?: string | null;
+  offenderName?: string | null;
+  offenderContact?: string | null;
+  dueDate?: string | null;
+  paidAt?: string | null;
+  paymentReference?: string | null;
+  appealReason?: string | null;
+  appealedAt?: string | null;
+  cancelledAt?: string | null;
+  cancelledReason?: string | null;
+  notes?: string | null;
+  issuedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  statusHistory?: TicketStatusHistoryEntry[];
+}
+
+/** Single audit entry for a ticket status transition. */
+export interface TicketStatusHistoryEntry {
+  id: string;
+  previousStatus?: TicketStatus | null;
+  newStatus: TicketStatus;
+  changeSource: ReportStatusSource;
+  notes?: string | null;
+  details?: Record<string, unknown> | null;
+  changedAt: string;
+}
+

@@ -1,4 +1,4 @@
-import type { CitizenReportDetail, Report, ReportStatusHistoryEntry, ReportStatusSource } from '@lexvision/types';
+import type { CitizenReportDetail, Report, ReportStatusHistoryEntry, ReportStatusSource, TicketStatus, TicketStatusHistoryEntry, TrafficTicket } from '@lexvision/types';
 import { auth } from './auth';
 
 const API_BASE_URL = 'http://localhost:8000/api';
@@ -150,6 +150,55 @@ const mapCitizenReportDetailToFrontend = (b: any): CitizenReportDetail => ({
         notes: entry.notes || undefined,
         changedAt: entry.changed_at,
         source: mapBackendStatusSource(entry.change_source),
+    })),
+});
+
+// ---------------------------------------------------------------------------
+// Ticket mapping helpers
+// ---------------------------------------------------------------------------
+
+const mapBackendTicketStatus = (status: string): TicketStatus =>
+    status === 'DRAFT' ? 'draft' :
+        status === 'ISSUED' ? 'issued' :
+            status === 'NOTIFIED' ? 'notified' :
+                status === 'PAID' ? 'paid' :
+                    status === 'OVERDUE' ? 'overdue' :
+                        status === 'APPEALED' ? 'appealed' :
+                            status === 'CANCELLED' ? 'cancelled' :
+                                'closed';
+
+const mapTicketToFrontend = (b: any): TrafficTicket => ({
+    id: b.id,
+    ticketNumber: b.ticket_number,
+    reportId: b.report_id || null,
+    evidenceReportId: b.evidence_report_id || null,
+    officerId: b.officer_id,
+    status: mapBackendTicketStatus(b.status),
+    penalCode: b.penal_code,
+    fineAmount: b.fine_amount,
+    violationType: b.violation_type || null,
+    vehiclePlate: b.vehicle_plate || null,
+    offenderName: b.offender_name || null,
+    offenderContact: b.offender_contact || null,
+    dueDate: b.due_date || null,
+    paidAt: b.paid_at || null,
+    paymentReference: b.payment_reference || null,
+    appealReason: b.appeal_reason || null,
+    appealedAt: b.appealed_at || null,
+    cancelledAt: b.cancelled_at || null,
+    cancelledReason: b.cancelled_reason || null,
+    notes: b.notes || null,
+    issuedAt: b.issued_at || null,
+    createdAt: b.created_at,
+    updatedAt: b.updated_at || b.created_at,
+    statusHistory: (b.status_history || []).map((entry: any): TicketStatusHistoryEntry => ({
+        id: entry.id,
+        previousStatus: entry.previous_status ? mapBackendTicketStatus(entry.previous_status) : null,
+        newStatus: mapBackendTicketStatus(entry.new_status),
+        changeSource: mapBackendStatusSource(entry.change_source),
+        notes: entry.notes || null,
+        details: entry.details || null,
+        changedAt: entry.changed_at,
     })),
 });
 
@@ -486,24 +535,119 @@ export const mockDb = {
         return response.json();
     },
 
-    issueTicket: async (reportId: string, penalCode: string, fineAmount: number) => {
-        const response = await fetch(`${API_BASE_URL}/reports/${reportId}/ticket`, {
+    issueTicket: async (
+        reportId: string,
+        penalCode: string,
+        fineAmount: number,
+        options?: {
+            evidenceReportId?: string;
+            violationType?: string;
+            vehiclePlate?: string;
+            offenderName?: string;
+            notes?: string;
+            issueImmediately?: boolean;
+        },
+    ) => {
+        // Determine which endpoint to use: legacy report or new tickets API.
+        // If an evidenceReportId is provided, use the new /api/tickets endpoint.
+        const useNewApi = !!options?.evidenceReportId;
+
+        const payload = useNewApi
+            ? {
+                evidence_report_id: options!.evidenceReportId,
+                penal_code: penalCode,
+                fine_amount: fineAmount,
+                violation_type: options?.violationType,
+                vehicle_plate: options?.vehiclePlate,
+                offender_name: options?.offenderName,
+                notes: options?.notes,
+                issue_immediately: options?.issueImmediately ?? true,
+            }
+            : {
+                report_id: reportId,
+                penal_code: penalCode,
+                fine_amount: fineAmount,
+                violation_type: options?.violationType,
+                vehicle_plate: options?.vehiclePlate,
+                offender_name: options?.offenderName,
+                notes: options?.notes,
+                issue_immediately: options?.issueImmediately ?? true,
+            };
+
+        const url = useNewApi
+            ? `${API_BASE_URL}/tickets`
+            : `${API_BASE_URL}/reports/${reportId}/ticket`;
+
+        const response = await fetch(url, {
             method: 'POST',
             headers: getHeaders(),
-            body: JSON.stringify({ report_id: reportId, penal_code: penalCode, fine_amount: fineAmount })
+            body: JSON.stringify(payload),
         });
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
             throw new Error(errorData.detail || 'Failed to issue ticket');
         }
-        return response.json();
+        return mapTicketToFrontend(await response.json());
     },
 
-    getTicketForReport: async (_reportId: string) => {
+    getTicketForReport: async (reportId: string, source?: string) => {
         try {
-            // We'll check the report data for ticket info - for now return null
-            // as there's no direct GET ticket by report endpoint
-            return null;
+            const endpoint = source === 'evidence-report'
+                ? `${API_BASE_URL}/tickets/by-evidence-report/${reportId}`
+                : `${API_BASE_URL}/tickets/by-report/${reportId}`;
+            const response = await fetch(endpoint, { headers: getHeaders() });
+            if (!response.ok) return null;
+            return mapTicketToFrontend(await response.json());
         } catch { return null; }
-    }
+    },
+
+    getTicketById: async (ticketId: string) => {
+        const response = await fetch(`${API_BASE_URL}/tickets/${ticketId}`, {
+            headers: getHeaders(),
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || 'Failed to fetch ticket');
+        }
+        return mapTicketToFrontend(await response.json());
+    },
+
+    updateTicketStatus: async (
+        ticketId: string,
+        status: string,
+        options?: {
+            notes?: string;
+            paymentReference?: string;
+            appealReason?: string;
+            cancelledReason?: string;
+        },
+    ) => {
+        const response = await fetch(`${API_BASE_URL}/tickets/${ticketId}/status`, {
+            method: 'PUT',
+            headers: getHeaders(),
+            body: JSON.stringify({
+                status: status.toUpperCase(),
+                notes: options?.notes,
+                payment_reference: options?.paymentReference,
+                appeal_reason: options?.appealReason,
+                cancelled_reason: options?.cancelledReason,
+            }),
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || 'Failed to update ticket status');
+        }
+        return mapTicketToFrontend(await response.json());
+    },
+
+    getAllTickets: async (statusFilter?: string) => {
+        const params = statusFilter ? `?status=${statusFilter.toUpperCase()}` : '';
+        const response = await fetch(`${API_BASE_URL}/tickets${params}`, {
+            headers: getHeaders(),
+        });
+        if (!response.ok) return [];
+        const data = await response.json();
+        return data.map(mapTicketToFrontend);
+    },
 };
+

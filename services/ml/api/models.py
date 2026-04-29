@@ -5,7 +5,7 @@ import uuid
 from sqlalchemy import Column, DateTime, Enum, Float, ForeignKey, Index, JSON, String, Text, event, func, inspect
 from sqlalchemy.orm import relationship
 
-from .constants import ReportStatusEnum, RoleEnum, SmsNotificationStatusEnum, StatusChangeSourceEnum, StatusEnum
+from .constants import ReportStatusEnum, RoleEnum, SmsNotificationStatusEnum, StatusChangeSourceEnum, StatusEnum, TicketStatusEnum
 from .database import Base
 
 
@@ -77,7 +77,12 @@ class Report(Base):
     user = relationship("User", back_populates="reports")
     evidence = relationship("Evidence", back_populates="report")
     inference_log = relationship("InferenceLog", back_populates="report", uselist=False)
-    ticket = relationship("TrafficTicket", back_populates="report", uselist=False)
+    ticket = relationship(
+        "TrafficTicket",
+        back_populates="report",
+        uselist=False,
+        foreign_keys="TrafficTicket.report_id",
+    )
 
 
 class EvidenceReport(Base):
@@ -122,6 +127,12 @@ class EvidenceReport(Base):
         back_populates="report",
         cascade="all, delete-orphan",
         order_by="SmsNotification.attempted_at",
+    )
+    ticket = relationship(
+        "TrafficTicket",
+        back_populates="evidence_report",
+        uselist=False,
+        foreign_keys="TrafficTicket.evidence_report_id",
     )
 
     def set_status(
@@ -221,18 +232,147 @@ class InferenceLog(Base):
 
 
 class TrafficTicket(Base):
+    """Enforcement ticket attached to a validated traffic violation report.
+
+    Lifecycle: DRAFT → ISSUED → NOTIFIED → PAID/OVERDUE → APPEALED → CANCELLED → CLOSED
+    See TicketStatusEnum and TICKET_STATUS_TRANSITIONS for the full state machine.
+
+    Business rules:
+    - A ticket can only be created after the parent report reaches VALIDATED status.
+    - A report (legacy or evidence) may have at most one *active* ticket
+      (i.e. not CANCELLED and not CLOSED).
+    - All status transitions are recorded in the ticket_status_history table
+      via SQLAlchemy event listeners.
+    """
+
     __tablename__ = "traffic_tickets"
+    __table_args__ = (
+        Index("ix_traffic_tickets_ticket_number", "ticket_number", unique=True),
+        Index("ix_traffic_tickets_status", "status"),
+        Index("ix_traffic_tickets_evidence_report_id", "evidence_report_id"),
+        Index("ix_traffic_tickets_report_status", "report_id", "status"),
+    )
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    report_id = Column(String, ForeignKey("reports.id"), unique=True)
-    officer_id = Column(String, ForeignKey("users.id"), index=True)
-    issued_at = Column(DateTime, default=func.now())
-    created_at = Column(DateTime, default=func.now())
-    penal_code = Column(String)
-    fine_amount = Column(Float)
 
-    report = relationship("Report", back_populates="ticket")
-    officer = relationship("User")
+    # Human-readable ticket number, e.g. TKT-2026-A1B2C3D4
+    ticket_number = Column(String, unique=True, nullable=False)
+
+    # FK to legacy Report (nullable — a ticket may belong to an EvidenceReport instead).
+    report_id = Column(String, ForeignKey("reports.id"), nullable=True, unique=True)
+    # FK to EvidenceReport (nullable — a ticket may belong to a legacy Report instead).
+    evidence_report_id = Column(
+        String, ForeignKey("evidence_reports.id"), nullable=True, unique=True,
+    )
+
+    officer_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+
+    # --- Lifecycle status ---
+    # Default is DRAFT; transitions are governed by TICKET_STATUS_TRANSITIONS.
+    status = Column(
+        Enum(TicketStatusEnum, **ENUM_KWARGS),
+        nullable=False,
+        default=TicketStatusEnum.DRAFT,
+        index=True,
+    )
+
+    # --- Violation details (snapshot at issuance time) ---
+    penal_code = Column(String, nullable=False)
+    fine_amount = Column(Float, nullable=False)
+    violation_type = Column(String, nullable=True)  # Copied from report's final violation type
+    vehicle_plate = Column(String, nullable=True)   # Copied from report/inference at issuance
+
+    # --- Offender information (for future notification & tracking) ---
+    offender_name = Column(String, nullable=True)
+    offender_contact = Column(String, nullable=True)
+
+    # --- Payment tracking ---
+    due_date = Column(DateTime, nullable=True)           # When the fine must be paid by
+    paid_at = Column(DateTime, nullable=True)            # When payment was recorded
+    payment_reference = Column(String, nullable=True)    # External payment transaction ref
+
+    # --- Appeal tracking ---
+    appeal_reason = Column(Text, nullable=True)          # Offender-supplied reason for appeal
+    appealed_at = Column(DateTime, nullable=True)        # When the appeal was filed
+
+    # --- Cancellation tracking ---
+    cancelled_at = Column(DateTime, nullable=True)       # When the ticket was cancelled
+    cancelled_reason = Column(Text, nullable=True)       # Reason for cancellation
+
+    # --- General ---
+    notes = Column(Text, nullable=True)                  # Free-form officer notes
+    issued_at = Column(DateTime, nullable=True)          # When the ticket was formally issued
+    created_at = Column(DateTime, nullable=False, default=func.now())
+    updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
+
+    # --- Relationships ---
+    report = relationship("Report", back_populates="ticket", foreign_keys=[report_id])
+    evidence_report = relationship(
+        "EvidenceReport", back_populates="ticket", foreign_keys=[evidence_report_id],
+    )
+    officer = relationship("User", foreign_keys=[officer_id])
+    status_history = relationship(
+        "TicketStatusHistory",
+        back_populates="ticket",
+        cascade="all, delete-orphan",
+        order_by="TicketStatusHistory.changed_at",
+    )
+
+    def set_status(
+        self,
+        new_status: TicketStatusEnum,
+        *,
+        notes: str | None = None,
+        source: StatusChangeSourceEnum = StatusChangeSourceEnum.SYSTEM,
+        changed_by_user_id: str | None = None,
+        details: dict | None = None,
+    ) -> None:
+        """Set the ticket status and store context for the event listener.
+
+        The actual TicketStatusHistory row is created by the SQLAlchemy
+        ``after_insert`` / ``after_update`` event listeners below.
+        """
+        self._pending_ticket_status_context = {
+            "notes": notes,
+            "change_source": source,
+            "changed_by_user_id": changed_by_user_id,
+            "details": details or {},
+        }
+        self.status = new_status
+
+
+class TicketStatusHistory(Base):
+    """Audit log for every TrafficTicket status transition.
+
+    Automatically populated by SQLAlchemy event listeners on TrafficTicket.
+    """
+
+    __tablename__ = "ticket_status_history"
+    __table_args__ = (
+        Index("ix_ticket_status_history_ticket_changed_at", "ticket_id", "changed_at"),
+        Index("ix_ticket_status_history_new_status_changed_at", "new_status", "changed_at"),
+    )
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    ticket_id = Column(
+        String, ForeignKey("traffic_tickets.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    previous_status = Column(Enum(TicketStatusEnum, **ENUM_KWARGS), nullable=True)
+    new_status = Column(Enum(TicketStatusEnum, **ENUM_KWARGS), nullable=False, index=True)
+    changed_by_user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    change_source = Column(
+        Enum(StatusChangeSourceEnum, **ENUM_KWARGS),
+        nullable=False,
+        default=StatusChangeSourceEnum.SYSTEM,
+        index=True,
+    )
+    notes = Column(Text, nullable=True)
+    details = Column(JSON, default=dict)
+    changed_at = Column(DateTime, nullable=False, default=func.now(), index=True)
+
+    ticket = relationship("TrafficTicket", back_populates="status_history")
+    changed_by_user = relationship("User")
 
 
 class SmsNotification(Base):
@@ -346,3 +486,57 @@ def _log_report_status_change(_mapper, connection, target: EvidenceReport) -> No
     )
     if hasattr(target, "_pending_status_change_context"):
         delattr(target, "_pending_status_change_context")
+
+
+# ---------------------------------------------------------------------------
+# TrafficTicket status-change event listeners (mirrors the EvidenceReport pattern)
+# ---------------------------------------------------------------------------
+
+
+@event.listens_for(TrafficTicket, "after_insert")
+def _log_initial_ticket_status(_mapper, connection, target: TrafficTicket) -> None:
+    """Record the initial status of a newly created ticket."""
+    context = getattr(target, "_pending_ticket_status_context", None) or {}
+    connection.execute(
+        TicketStatusHistory.__table__.insert().values(
+            id=str(uuid.uuid4()),
+            ticket_id=target.id,
+            previous_status=None,
+            new_status=target.status,
+            changed_by_user_id=context.get("changed_by_user_id"),
+            change_source=context.get("change_source", StatusChangeSourceEnum.SYSTEM),
+            notes=context.get("notes"),
+            details=context.get("details", {}),
+            changed_at=func.now(),
+        )
+    )
+    if hasattr(target, "_pending_ticket_status_context"):
+        delattr(target, "_pending_ticket_status_context")
+
+
+@event.listens_for(TrafficTicket, "after_update")
+def _log_ticket_status_change(_mapper, connection, target: TrafficTicket) -> None:
+    """Record every status transition on an existing ticket."""
+    status_history = inspect(target).attrs.status.history
+    if not status_history.has_changes():
+        return
+
+    previous_status = status_history.deleted[0] if status_history.deleted else None
+    new_status = status_history.added[0] if status_history.added else target.status
+    context = getattr(target, "_pending_ticket_status_context", None) or {}
+
+    connection.execute(
+        TicketStatusHistory.__table__.insert().values(
+            id=str(uuid.uuid4()),
+            ticket_id=target.id,
+            previous_status=previous_status,
+            new_status=new_status,
+            changed_by_user_id=context.get("changed_by_user_id"),
+            change_source=context.get("change_source", StatusChangeSourceEnum.SYSTEM),
+            notes=context.get("notes"),
+            details=context.get("details", {}),
+            changed_at=func.now(),
+        )
+    )
+    if hasattr(target, "_pending_ticket_status_context"):
+        delattr(target, "_pending_ticket_status_context")

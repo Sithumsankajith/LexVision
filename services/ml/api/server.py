@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import inspect
 
 from .database import engine, Base, SessionLocal
-from .routers import admin, auth, citizen_reports, evidence_reports, reports, users
+from .routers import admin, auth, citizen_reports, evidence_reports, reports, tickets, users
 from . import models
 
 # Keep SQLite zero-config for local demos; PostgreSQL should be migrated explicitly.
@@ -75,6 +75,7 @@ app.include_router(auth.router)
 app.include_router(citizen_reports.router)
 app.include_router(evidence_reports.router)
 app.include_router(reports.router)
+app.include_router(tickets.router)
 app.include_router(admin.router)
 app.include_router(users.router)
 

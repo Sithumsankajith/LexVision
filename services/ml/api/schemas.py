@@ -222,21 +222,110 @@ class ReportStatusUpdate(BaseModel):
     notes: Optional[str] = None
 
 # --- Ticket Schemas ---
-class TicketCreate(BaseModel):
-    report_id: str
-    penal_code: str
-    fine_amount: float
 
-class TicketResponse(BaseModel):
-    id: str
-    report_id: str
-    officer_id: str
-    issued_at: datetime
-    created_at: datetime
+class TicketCreate(BaseModel):
+    """Create a new enforcement ticket.
+
+    Exactly one of ``report_id`` or ``evidence_report_id`` must be provided.
+    The referenced report must be in VALIDATED status.
+    """
+
+    report_id: Optional[str] = None
+    evidence_report_id: Optional[str] = None
     penal_code: str
     fine_amount: float
+    violation_type: Optional[str] = None
+    vehicle_plate: Optional[str] = None
+    offender_name: Optional[str] = None
+    offender_contact: Optional[str] = None
+    notes: Optional[str] = None
+    # If True, the ticket is created directly in ISSUED status (skipping DRAFT).
+    issue_immediately: bool = True
+
+
+class TicketStatusUpdate(BaseModel):
+    """Advance the ticket through its lifecycle.
+
+    The ``status`` field must be a valid next state according to
+    TICKET_STATUS_TRANSITIONS. Depending on the target status,
+    additional fields may be required:
+    - PAID: ``payment_reference`` should be provided.
+    - APPEALED: ``appeal_reason`` should be provided.
+    - CANCELLED: ``cancelled_reason`` should be provided.
+    """
+
+    status: str  # TicketStatusEnum value — validated at the route level
+    notes: Optional[str] = None
+    payment_reference: Optional[str] = None
+    appeal_reason: Optional[str] = None
+    cancelled_reason: Optional[str] = None
+
+
+class TicketStatusHistoryResponse(BaseModel):
+    """Single audit entry for a ticket status transition."""
+
+    id: str
+    previous_status: Optional[str] = None
+    new_status: str
+    change_source: str
+    notes: Optional[str] = None
+    details: Optional[dict] = None
+    changed_at: datetime
+
     class Config:
         from_attributes = True
+
+
+class TicketResponse(BaseModel):
+    """Full ticket representation including lifecycle metadata."""
+
+    id: str
+    ticket_number: str
+    report_id: Optional[str] = None
+    evidence_report_id: Optional[str] = None
+    officer_id: str
+    status: str
+    penal_code: str
+    fine_amount: float
+    violation_type: Optional[str] = None
+    vehicle_plate: Optional[str] = None
+    offender_name: Optional[str] = None
+    offender_contact: Optional[str] = None
+    due_date: Optional[datetime] = None
+    paid_at: Optional[datetime] = None
+    payment_reference: Optional[str] = None
+    appeal_reason: Optional[str] = None
+    appealed_at: Optional[datetime] = None
+    cancelled_at: Optional[datetime] = None
+    cancelled_reason: Optional[str] = None
+    notes: Optional[str] = None
+    issued_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+    status_history: List[TicketStatusHistoryResponse] = []
+
+    class Config:
+        from_attributes = True
+
+
+class TicketSummaryResponse(BaseModel):
+    """Lightweight ticket representation for list views."""
+
+    id: str
+    ticket_number: str
+    report_id: Optional[str] = None
+    evidence_report_id: Optional[str] = None
+    status: str
+    penal_code: str
+    fine_amount: float
+    violation_type: Optional[str] = None
+    vehicle_plate: Optional[str] = None
+    issued_at: Optional[datetime] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
 
 # --- Reward Schemas ---
 class RewardResponse(BaseModel):

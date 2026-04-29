@@ -5,9 +5,10 @@ from datetime import datetime
 from typing import List
 
 from .. import models, schemas
+from ..constants import StatusChangeSourceEnum, TicketStatusEnum
 from ..database import get_db
 from ..dependencies import get_current_active_user, get_citizen, get_police, log_audit_action
-from ..tracking import is_valid_report_status_transition
+from ..tracking import is_valid_report_status_transition, apply_ticket_status, is_valid_ticket_status_transition
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -121,6 +122,16 @@ def update_report_status(report_id: str, update: schemas.ReportStatusUpdate, db:
 
 @router.post("/{report_id}/ticket", response_model=schemas.TicketResponse)
 def issue_ticket(report_id: str, ticket_data: schemas.TicketCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_police)):
+    """Issue a ticket for a validated legacy Report.
+
+    This is the backward-compatible endpoint. It delegates to the new
+    ticket lifecycle logic, creating the ticket directly in ISSUED status.
+
+    Business rules:
+    1. Report must be in VALIDATED status (police validation required).
+    2. No other active ticket may exist for this report.
+    3. Issuance is transactional — all-or-nothing.
+    """
     report = db.query(models.Report).filter(models.Report.id == report_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
@@ -128,23 +139,103 @@ def issue_ticket(report_id: str, ticket_data: schemas.TicketCreate, db: Session 
     if report.status != models.StatusEnum.VALIDATED:
         raise HTTPException(status_code=400, detail="Report must be VALIDATED before issuing a ticket")
         
-    existing_ticket = db.query(models.TrafficTicket).filter(models.TrafficTicket.report_id == report_id).first()
+    # Rule 2: no duplicate active tickets.
+    existing_ticket = db.query(models.TrafficTicket).filter(
+        models.TrafficTicket.report_id == report_id,
+        models.TrafficTicket.status.notin_([
+            TicketStatusEnum.CANCELLED,
+            TicketStatusEnum.CLOSED,
+        ]),
+    ).first()
     if existing_ticket:
-        raise HTTPException(status_code=400, detail="Ticket already issued for this report")
+        raise HTTPException(status_code=400, detail="An active ticket already exists for this report")
+
+    # Snapshot violation/plate info from the report.
+    violation_type = (
+        ticket_data.violation_type
+        or report.violation_type
+        or report.inferred_violation_type
+        or report.claimed_violation_type
+    )
+    vehicle_plate = ticket_data.vehicle_plate
+    if not vehicle_plate and report.inference_log:
+        vehicle_plate = report.inference_log.ocr_text
 
     new_ticket = models.TrafficTicket(
+        ticket_number=f"TKT-{datetime.now().year}-{str(uuid.uuid4())[:8].upper()}",
         report_id=report_id,
         officer_id=current_user.id,
         penal_code=ticket_data.penal_code,
-        fine_amount=ticket_data.fine_amount
+        fine_amount=ticket_data.fine_amount,
+        violation_type=violation_type,
+        vehicle_plate=vehicle_plate,
+        offender_name=ticket_data.offender_name,
+        offender_contact=ticket_data.offender_contact,
+        notes=ticket_data.notes,
+        issued_at=datetime.utcnow(),
     )
+
+    # Set status to ISSUED with full audit context.
+    source = (
+        StatusChangeSourceEnum.ADMIN
+        if current_user.role == models.RoleEnum.ADMIN
+        else StatusChangeSourceEnum.POLICE
+    )
+    apply_ticket_status(
+        new_ticket,
+        TicketStatusEnum.ISSUED,
+        notes="Ticket issued via legacy report endpoint.",
+        source=source,
+        changed_by_user_id=current_user.id,
+        details={
+            "penal_code": ticket_data.penal_code,
+            "fine_amount": ticket_data.fine_amount,
+        },
+    )
+
     db.add(new_ticket)
     db.commit()
     db.refresh(new_ticket)
 
-    log_audit_action(db, current_user.id, "TICKET_GENERATION", "Ticket", new_ticket.id, details={"penal_code": ticket_data.penal_code, "fine": ticket_data.fine_amount})
+    log_audit_action(
+        db,
+        current_user.id,
+        "TICKET_GENERATION",
+        "TrafficTicket",
+        new_ticket.id,
+        details={
+            "ticket_number": new_ticket.ticket_number,
+            "penal_code": ticket_data.penal_code,
+            "fine": ticket_data.fine_amount,
+        },
+    )
 
-    return new_ticket
+    # Re-fetch with status_history loaded.
+    return (
+        db.query(models.TrafficTicket)
+        .options(joinedload(models.TrafficTicket.status_history))
+        .filter(models.TrafficTicket.id == new_ticket.id)
+        .first()
+    )
+
+
+@router.get("/{report_id}/ticket", response_model=schemas.TicketResponse)
+def get_report_ticket(
+    report_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_police),
+):
+    """Retrieve the ticket associated with a legacy Report."""
+    ticket = (
+        db.query(models.TrafficTicket)
+        .options(joinedload(models.TrafficTicket.status_history))
+        .filter(models.TrafficTicket.report_id == report_id)
+        .first()
+    )
+    if ticket is None:
+        raise HTTPException(status_code=404, detail="No ticket found for this report")
+    return ticket
+
 
 @router.get("/{report_id}/evidence", response_model=List[schemas.EvidenceSchema])
 def get_report_evidence(report_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_citizen)):
