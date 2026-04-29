@@ -162,7 +162,7 @@ def issue_ticket(report_id: str, ticket_data: schemas.TicketCreate, db: Session 
         vehicle_plate = report.inference_log.ocr_text
 
     new_ticket = models.TrafficTicket(
-        ticket_number=f"TKT-{datetime.now().year}-{str(uuid.uuid4())[:8].upper()}",
+        ticket_number=f"TKT-{datetime.now().year}-{uuid.uuid4().hex[:12].upper()}",
         report_id=report_id,
         officer_id=current_user.id,
         penal_code=ticket_data.penal_code,

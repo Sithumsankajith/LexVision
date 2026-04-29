@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Column, DateTime, Enum, Float, ForeignKey, Index, JSON, String, Text, event, func, inspect
+from sqlalchemy import Column, DateTime, Enum, Float, ForeignKey, Index, JSON, String, Text, event, func, inspect, text
 from sqlalchemy.orm import relationship
 
 from .constants import ReportStatusEnum, RoleEnum, SmsNotificationStatusEnum, StatusChangeSourceEnum, StatusEnum, TicketStatusEnum
@@ -251,6 +251,20 @@ class TrafficTicket(Base):
         Index("ix_traffic_tickets_status", "status"),
         Index("ix_traffic_tickets_evidence_report_id", "evidence_report_id"),
         Index("ix_traffic_tickets_report_status", "report_id", "status"),
+        Index(
+            "ix_unique_active_legacy_ticket",
+            "report_id",
+            unique=True,
+            postgresql_where=text("status NOT IN ('CANCELLED', 'CLOSED')"),
+            sqlite_where=text("status NOT IN ('CANCELLED', 'CLOSED')"),
+        ),
+        Index(
+            "ix_unique_active_evidence_ticket",
+            "evidence_report_id",
+            unique=True,
+            postgresql_where=text("status NOT IN ('CANCELLED', 'CLOSED')"),
+            sqlite_where=text("status NOT IN ('CANCELLED', 'CLOSED')"),
+        ),
     )
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -259,10 +273,10 @@ class TrafficTicket(Base):
     ticket_number = Column(String, unique=True, nullable=False)
 
     # FK to legacy Report (nullable — a ticket may belong to an EvidenceReport instead).
-    report_id = Column(String, ForeignKey("reports.id"), nullable=True, unique=True)
+    report_id = Column(String, ForeignKey("reports.id"), nullable=True)
     # FK to EvidenceReport (nullable — a ticket may belong to a legacy Report instead).
     evidence_report_id = Column(
-        String, ForeignKey("evidence_reports.id"), nullable=True, unique=True,
+        String, ForeignKey("evidence_reports.id"), nullable=True,
     )
 
     officer_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)

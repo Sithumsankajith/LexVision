@@ -35,8 +35,8 @@ router = APIRouter(prefix="/api/tickets", tags=["tickets"])
 
 
 def _generate_ticket_number() -> str:
-    """Generate a human-readable ticket number: TKT-YYYY-XXXXXXXX."""
-    return f"TKT-{datetime.now().year}-{str(uuid.uuid4())[:8].upper()}"
+    """Generate a human-readable ticket number: TKT-YYYY-XXXXXXXXXXXX."""
+    return f"TKT-{datetime.now().year}-{uuid.uuid4().hex[:12].upper()}"
 
 
 def _ticket_query(db: Session):
