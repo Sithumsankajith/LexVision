@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 import argparse
+import importlib.metadata
 import os
+import platform
+import random
 from pathlib import Path
 from typing import Any
 
 os.environ.setdefault("TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD", "1")
 
+import numpy as np
+import torch
 from ultralytics import YOLO
 
+from augmentations import patch_ultralytics_albumentations
 from common import (
     DEFAULT_RESULTS_DIR,
     MODELS_DIR,
@@ -30,18 +36,59 @@ from common import (
 )
 
 
-def _add_shared_arguments(parser: argparse.ArgumentParser, *, include_version: bool = True) -> argparse.ArgumentParser:
+def _add_shared_arguments(
+    parser: argparse.ArgumentParser,
+    *,
+    target: TrainingTarget | None = None,
+    include_version: bool = True,
+) -> argparse.ArgumentParser:
     if include_version:
         parser.add_argument("--version", type=str, help="Run version tag used in the output folder name.")
     parser.add_argument("--dataset", type=str, default=None, help="Path to a dataset directory or its data.yaml file.")
     parser.add_argument("--base-model", type=str, default=None, help="Base YOLO weights to fine-tune.")
     parser.add_argument("--epochs", type=int, default=50, help="Number of training epochs.")
-    parser.add_argument("--imgsz", type=int, default=640, help="Training/evaluation image size.")
+    parser.add_argument(
+        "--imgsz",
+        type=int,
+        default=target.default_imgsz if target else 640,
+        choices=list(target.supported_imgsz) if target and target.supported_imgsz else None,
+        help="Training/evaluation image size.",
+    )
     parser.add_argument("--batch", type=int, default=-1, help="Batch size. Use -1 for Ultralytics auto-batch.")
     parser.add_argument("--device", type=str, default="", help="Device to use, for example `cpu` or `cuda:0`.")
     parser.add_argument("--workers", type=int, default=4, help="Number of dataloader workers.")
-    parser.add_argument("--patience", type=int, default=20, help="Early stopping patience.")
+    parser.add_argument(
+        "--patience",
+        type=int,
+        default=target.default_patience if target else 20,
+        help="Early stopping patience.",
+    )
     parser.add_argument("--seed", type=int, default=42, help="Training seed.")
+    parser.add_argument("--optimizer", type=str, default="auto", help="Optimizer to use, for example `auto`, `SGD`, or `AdamW`.")
+    parser.add_argument("--lr0", type=float, default=0.01, help="Initial learning rate.")
+    parser.add_argument("--lrf", type=float, default=0.01, help="Final learning-rate multiplier.")
+    parser.add_argument("--weight-decay", type=float, default=0.0005, help="Weight decay.")
+    parser.add_argument("--warmup-epochs", type=float, default=3.0, help="Warmup epochs.")
+    parser.add_argument("--close-mosaic", type=int, default=10, help="Disable mosaic for the final N epochs.")
+    parser.add_argument(
+        "--cos-lr",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Use cosine learning-rate scheduling.",
+    )
+    parser.add_argument(
+        "--deterministic",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable deterministic training for reproducibility.",
+    )
+    parser.add_argument(
+        "--multi-scale",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable multiscale training.",
+    )
+    parser.add_argument("--save-period", type=int, default=-1, help="Save an intermediate checkpoint every N epochs.")
     parser.add_argument(
         "--eval-splits",
         type=str,
@@ -50,7 +97,12 @@ def _add_shared_arguments(parser: argparse.ArgumentParser, *, include_version: b
     )
     parser.add_argument("--conf", type=float, default=0.25, help="Confidence threshold used for evaluation.")
     parser.add_argument("--iou", type=float, default=0.7, help="IoU threshold used for evaluation.")
-    parser.add_argument("--plots", action="store_true", help="Persist Ultralytics evaluation plots.")
+    parser.add_argument(
+        "--plots",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Persist Ultralytics training/evaluation plots such as confusion matrices and PR curves.",
+    )
     parser.add_argument(
         "--output-dir",
         type=str,
@@ -63,7 +115,7 @@ def _add_shared_arguments(parser: argparse.ArgumentParser, *, include_version: b
 def create_train_parser(target_key: str) -> argparse.ArgumentParser:
     target = resolve_target(target_key)
     parser = argparse.ArgumentParser(description=f"Train and evaluate the {target.display_name} pipeline.")
-    _add_shared_arguments(parser)
+    _add_shared_arguments(parser, target=target)
     parser.add_argument("--name", type=str, default=None, help="Optional explicit run name.")
     parser.add_argument("--exist-ok", action="store_true", help="Reuse the same output directory if it already exists.")
     parser.add_argument("--cache", type=str, default=None, help="Ultralytics cache mode, for example `ram` or `disk`.")
@@ -81,7 +133,12 @@ def create_eval_parser() -> argparse.ArgumentParser:
     parser.add_argument("--eval-splits", type=str, default="val,test", help="Comma-separated dataset splits to evaluate.")
     parser.add_argument("--conf", type=float, default=0.25, help="Confidence threshold used for evaluation.")
     parser.add_argument("--iou", type=float, default=0.7, help="IoU threshold used for evaluation.")
-    parser.add_argument("--plots", action="store_true", help="Persist Ultralytics evaluation plots.")
+    parser.add_argument(
+        "--plots",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Persist Ultralytics evaluation plots.",
+    )
     parser.add_argument(
         "--output-dir",
         type=str,
@@ -95,6 +152,34 @@ def create_eval_parser() -> argparse.ArgumentParser:
 def _parse_splits(raw_value: str) -> list[str]:
     requested = [item.strip() for item in raw_value.split(",") if item.strip()]
     return requested or ["val"]
+
+
+def _set_global_seed(seed: int, deterministic: bool) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    if hasattr(torch, "use_deterministic_algorithms"):
+        torch.use_deterministic_algorithms(deterministic, warn_only=True)
+    if hasattr(torch.backends, "cudnn"):
+        torch.backends.cudnn.deterministic = deterministic
+        torch.backends.cudnn.benchmark = not deterministic
+
+
+def _capture_runtime_versions() -> dict[str, Any]:
+    packages = {}
+    for package_name in ("ultralytics", "torch", "torchvision", "numpy", "albumentations"):
+        try:
+            packages[package_name] = importlib.metadata.version(package_name)
+        except importlib.metadata.PackageNotFoundError:
+            packages[package_name] = None
+
+    return {
+        "python": platform.python_version(),
+        "platform": platform.platform(),
+        "packages": packages,
+    }
 
 
 def _evaluation_directory(base_output_dir: Path, run_name: str) -> Path:
@@ -177,6 +262,16 @@ def _build_training_kwargs(args: argparse.Namespace, target: TrainingTarget, dat
         "workers": args.workers,
         "patience": args.patience,
         "seed": args.seed,
+        "deterministic": args.deterministic,
+        "optimizer": args.optimizer,
+        "lr0": args.lr0,
+        "lrf": args.lrf,
+        "weight_decay": args.weight_decay,
+        "warmup_epochs": args.warmup_epochs,
+        "close_mosaic": args.close_mosaic,
+        "cos_lr": args.cos_lr,
+        "multi_scale": args.multi_scale,
+        "save_period": args.save_period,
     }
 
     if args.batch > 0:
@@ -196,8 +291,13 @@ def run_training_pipeline(target_key: str, args: argparse.Namespace) -> dict[str
     output_dir = Path(args.output_dir).resolve() if args.output_dir else MODELS_DIR
     ensure_directory(output_dir)
     dataset_summary = inspect_dataset(dataset_yaml)
+    _set_global_seed(args.seed, args.deterministic)
 
     training_payload = _build_training_kwargs(args, target, dataset_yaml, output_dir, run_name)
+    traffic_augmentation = None
+    if not args.disable_augment:
+        traffic_augmentation = patch_ultralytics_albumentations(target.key, target.traffic_augmentation_profile)
+
     trainer = YOLO(training_payload["base_model"])
     trainer.train(**training_payload["kwargs"])
 
@@ -230,12 +330,35 @@ def run_training_pipeline(target_key: str, args: argparse.Namespace) -> dict[str
         "workers": args.workers,
         "patience": args.patience,
         "seed": args.seed,
+        "deterministic": args.deterministic,
+        "optimizer": args.optimizer,
+        "lr0": safe_float(args.lr0, digits=6),
+        "lrf": safe_float(args.lrf, digits=6),
+        "weight_decay": safe_float(args.weight_decay, digits=6),
+        "warmup_epochs": safe_float(args.warmup_epochs, digits=4),
+        "close_mosaic": args.close_mosaic,
+        "cos_lr": args.cos_lr,
+        "multi_scale": args.multi_scale,
+        "save_period": args.save_period,
         "augmentations": None if args.disable_augment else target.default_train_overrides,
+        "traffic_augmentation": traffic_augmentation,
+        "effective_train_kwargs": training_payload["kwargs"],
+        "effective_eval_kwargs": {
+            "splits": _parse_splits(args.eval_splits),
+            "imgsz": args.imgsz,
+            "device": args.device or None,
+            "conf": safe_float(args.conf),
+            "iou": safe_float(args.iou),
+            "plots": args.plots,
+        },
+        "runtime_versions": _capture_runtime_versions(),
     }
 
     reports_dir = ensure_directory(run_directory / "reports")
     report_json_path = reports_dir / "training_summary.json"
     report_markdown_path = reports_dir / "training_summary.md"
+    hyperparameters_path = reports_dir / "hyperparameters.json"
+    version_metadata_path = reports_dir / "model_version_metadata.json"
 
     summary = build_summary_payload(
         target=target,
@@ -249,9 +372,59 @@ def run_training_pipeline(target_key: str, args: argparse.Namespace) -> dict[str
         report_markdown_path=report_markdown_path,
         run_directory=run_directory,
     )
+    hyperparameters_payload = {
+        "generated_at": utc_timestamp(),
+        "run_name": run_name,
+        "target": target.key,
+        "dataset": dataset_summary["data_yaml"],
+        "base_model": training_summary["base_model"],
+        "train_kwargs": training_payload["kwargs"],
+        "eval_kwargs": training_summary["effective_eval_kwargs"],
+        "traffic_augmentation": traffic_augmentation,
+    }
+    version_metadata_payload = {
+        "generated_at": utc_timestamp(),
+        "model_version": args.version or target.default_version,
+        "run_name": run_name,
+        "target": target.key,
+        "display_name": target.display_name,
+        "base_model": training_summary["base_model"],
+        "dataset_name": dataset_summary["dataset_name"],
+        "dataset_yaml": dataset_summary["data_yaml"],
+        "seed": args.seed,
+        "deterministic": args.deterministic,
+        "weights": {
+            "best": to_relative(best_weights_path if best_weights_path.exists() else selected_weights),
+            "last": to_relative(last_weights_path) if last_weights_path.exists() else None,
+        },
+        "hyperparameters": {
+            "optimizer": args.optimizer,
+            "imgsz": args.imgsz,
+            "epochs": args.epochs,
+            "patience": args.patience,
+            "lr0": safe_float(args.lr0, digits=6),
+            "lrf": safe_float(args.lrf, digits=6),
+            "weight_decay": safe_float(args.weight_decay, digits=6),
+            "warmup_epochs": safe_float(args.warmup_epochs, digits=4),
+            "close_mosaic": args.close_mosaic,
+            "cos_lr": args.cos_lr,
+            "multi_scale": args.multi_scale,
+            "augmentations": target.default_train_overrides if not args.disable_augment else None,
+            "traffic_augmentation": traffic_augmentation,
+        },
+        "runtime_versions": training_summary["runtime_versions"],
+    }
+    summary["artifacts"]["reports"].extend(
+        [
+            to_relative(hyperparameters_path),
+            to_relative(version_metadata_path),
+        ]
+    )
 
     write_json(report_json_path, summary)
     write_text(report_markdown_path, render_report_markdown(summary))
+    write_json(hyperparameters_path, hyperparameters_payload)
+    write_json(version_metadata_path, version_metadata_payload)
     write_json(run_directory / "metrics_metadata.json", _build_legacy_metrics_payload(summary))
     return summary
 

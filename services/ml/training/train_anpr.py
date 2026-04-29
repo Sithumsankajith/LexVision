@@ -3,7 +3,16 @@ from pipeline import create_train_parser, run_training_pipeline
 
 def main() -> None:
     parser = create_train_parser("anpr")
-    parser.set_defaults(version="v9.0.0")
+    parser.set_defaults(
+        version="v10.0.0",
+        imgsz=1280,
+        patience=40,
+        plots=True,
+        seed=42,
+        optimizer="auto",
+        cos_lr=True,
+        deterministic=True,
+    )
     args = parser.parse_args()
     summary = run_training_pipeline("anpr", args)
 

@@ -3,6 +3,7 @@ torch
 torchvision
 torchaudio
 opencv-python
+albumentations>=1.3,<2
 easyocr
 pandas
 matplotlib
