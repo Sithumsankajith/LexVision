@@ -1,249 +1,497 @@
-import os
-import time
-import json
 import base64
 import logging
+import os
+import re
 import tempfile
-from datetime import datetime
-from uuid import uuid4
+import time
+from pathlib import Path
 
+import cv2
 import numpy as np
 from sqlalchemy.orm import Session
-from .database import SessionLocal
-from .models import Report, Evidence, StatusEnum, InferenceLog, AuditLog
 
-# Configure logging
+from .database import SessionLocal
+from .models import AuditLog, Evidence, InferenceLog, Report, StatusEnum
+
+# Configure logging once for the background worker entrypoint.
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- Lazy-loaded ML models ---
-_yolo_model = None
-_ocr_pipeline = None
+BASE_DIR = Path(__file__).resolve().parents[1]
+MODELS_DIR = BASE_DIR / "models"
+TEMP_DIR = BASE_DIR / "temp" / "anpr_crops"
+ANPR_MODEL_PATH = MODELS_DIR / "anpr_best.pt"
+PLATE_CLASS_NAME = "License_Plate"
+ANPR_MODEL_VERSION = f"{ANPR_MODEL_PATH.name}|easyocr"
+QUALITY_THRESHOLD = 0.15
 
-def _get_yolo_model():
-    """Lazy-load YOLOv8n pretrained model (downloads ~6MB on first use)."""
-    global _yolo_model
-    if _yolo_model is None:
-        from ultralytics import YOLO
-        logger.info("Loading YOLOv8n pretrained model...")
+_plate_detector = None
+_plate_detector_load_attempted = False
+_ocr_reader = None
+_ocr_reader_load_attempted = False
 
-        # Check for custom helmet model first
-        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        custom_model = os.path.join(base_dir, "models", "helmet_v1.0.0", "weights", "best.pt")
-
-        if os.path.exists(custom_model):
-            logger.info(f"Using custom model: {custom_model}")
-            _yolo_model = YOLO(custom_model)
-        else:
-            logger.info("Custom model not found, using pretrained YOLOv8s (COCO)")
-            _yolo_model = YOLO("yolov8s.pt")
-
-        logger.info("YOLO model loaded.")
-    return _yolo_model
-
-
-def _get_ocr_pipeline():
-    """Lazy-load OCR pipeline."""
-    global _ocr_pipeline
-    if _ocr_pipeline is None:
-        import sys
-        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-        from inference.ocr_pipeline import OCRPipeline
-        _ocr_pipeline = OCRPipeline()
-        logger.info("OCR pipeline initialized.")
-    return _ocr_pipeline
-
-
-def _decode_evidence_image(evidence: Evidence) -> str | None:
-    """Decode base64 evidence URL to a temporary image file. Returns file path."""
-    if not evidence or not evidence.url:
-        return None
-
-    try:
-        url = evidence.url
-        if url.startswith("data:image"):
-            # Strip the data URI prefix: "data:image/png;base64,..."
-            header, b64data = url.split(",", 1)
-            img_bytes = base64.b64decode(b64data)
-
-            # Determine extension
-            ext = ".jpg"
-            if "png" in header:
-                ext = ".png"
-
-            tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
-            tmp.write(img_bytes)
-            tmp.close()
-            return tmp.name
-        elif os.path.exists(url):
-            return url
-        else:
-            logger.warning(f"Evidence URL is not a base64 data URI or file path: {url[:50]}...")
-            return None
-    except Exception as e:
-        logger.error(f"Failed to decode evidence image: {e}")
-        return None
-
-
-# COCO class names relevant to traffic violations
-VEHICLE_CLASSES = {"car", "motorcycle", "bus", "truck", "bicycle"}
-PERSON_CLASS = "person"
-
-# Violation type mapping based on detected objects
 VIOLATION_MAP = {
     "helmet": "no-helmet",
     "red-light": "red-light-violation",
     "white-line": "white-line-crossing",
 }
 
+# A permissive matcher for common Sri Lankan private-vehicle layouts once OCR
+# noise has been normalized. This accepts compact forms like ABC1234 and
+# province-prefixed variants like WPABC1234.
+SRI_LANKAN_PLATE_REGEX = re.compile(r"^(?P<prefix>[A-Z]{2,5})(?P<number>\d{4})$")
 
-def _run_yolo_detection(image_path: str) -> dict:
-    """
-    Run YOLOv8 detection on an image.
-    Returns detection results with bboxes, classes, and confidences.
-    """
-    import cv2
+LETTER_TO_DIGIT_MAP = str.maketrans(
+    {
+        "O": "0",
+        "Q": "0",
+        "D": "0",
+        "I": "1",
+        "L": "1",
+        "Z": "2",
+        "S": "5",
+        "B": "8",
+        "G": "6",
+    }
+)
+DIGIT_TO_LETTER_MAP = str.maketrans(
+    {
+        "0": "O",
+        "1": "I",
+        "2": "Z",
+        "5": "S",
+        "6": "G",
+        "8": "B",
+    }
+)
 
-    model = _get_yolo_model()
-    results = model.predict(source=image_path, verbose=False, device="cpu")
 
-    detections = []
-    max_confidence = 0.0
-    detected_classes = set()
-    has_person = False
-    has_vehicle = False
+def _relative_to_base(path: Path | None) -> str | None:
+    if path is None:
+        return None
+    try:
+        return str(path.resolve().relative_to(BASE_DIR.resolve()))
+    except ValueError:
+        return str(path.resolve())
 
-    for result in results:
-        boxes = result.boxes
-        for box in boxes:
-            cls_id = int(box.cls[0])
-            cls_name = result.names[cls_id]
-            conf = float(box.conf[0])
-            xyxy = box.xyxy[0].tolist()
 
-            detections.append({
-                "class": cls_name,
-                "confidence": round(conf, 4),
-                "bbox": {
-                    "x1": round(xyxy[0], 1),
-                    "y1": round(xyxy[1], 1),
-                    "x2": round(xyxy[2], 1),
-                    "y2": round(xyxy[3], 1)
-                }
-            })
+def _get_plate_detector():
+    """Load the dedicated ANPR detector once and keep a safe fallback if missing."""
+    global _plate_detector, _plate_detector_load_attempted
 
-            detected_classes.add(cls_name)
-            if conf > max_confidence:
-                max_confidence = conf
+    if _plate_detector is not None:
+        return _plate_detector
+    if _plate_detector_load_attempted:
+        return None
 
-            if cls_name == PERSON_CLASS:
-                has_person = True
-            if cls_name in VEHICLE_CLASSES:
-                has_vehicle = True
+    _plate_detector_load_attempted = True
+    if not ANPR_MODEL_PATH.exists():
+        logger.warning("ANPR model not found at %s. Plate detection will fall back to manual review.", ANPR_MODEL_PATH)
+        return None
 
+    from ultralytics import YOLO
+
+    logger.info("Loading ANPR plate detector from %s", ANPR_MODEL_PATH)
+    _plate_detector = YOLO(str(ANPR_MODEL_PATH))
+    logger.info("ANPR plate detector ready.")
+    return _plate_detector
+
+
+def _get_ocr_reader():
+    """Lazy-load EasyOCR and keep the worker operational if it is unavailable."""
+    global _ocr_reader, _ocr_reader_load_attempted
+
+    if _ocr_reader is not None:
+        return _ocr_reader
+    if _ocr_reader_load_attempted:
+        return None
+
+    _ocr_reader_load_attempted = True
+    try:
+        import easyocr
+    except ImportError:
+        logger.warning("EasyOCR is not installed. OCR will be skipped and reports will remain under manual review.")
+        return None
+
+    logger.info("Initializing EasyOCR reader for ANPR...")
+    _ocr_reader = easyocr.Reader(["en"], gpu=False, verbose=False)
+    logger.info("EasyOCR reader ready.")
+    return _ocr_reader
+
+
+def _decode_evidence_image(evidence: Evidence) -> str | None:
+    """Decode a base64 evidence URL to a temporary image file and return its path."""
+    if not evidence or not evidence.url:
+        return None
+
+    try:
+        url = evidence.url
+        if url.startswith("data:image"):
+            header, b64data = url.split(",", 1)
+            img_bytes = base64.b64decode(b64data)
+            ext = ".png" if "png" in header else ".jpg"
+
+            tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
+            tmp.write(img_bytes)
+            tmp.close()
+            return tmp.name
+
+        if os.path.exists(url):
+            return url
+
+        logger.warning("Evidence URL is not a base64 data URI or file path: %s...", url[:50])
+        return None
+    except Exception as exc:
+        logger.error("Failed to decode evidence image: %s", exc)
+        return None
+
+
+def _empty_plate_detection(status: str) -> dict:
     return {
-        "detections": detections,
-        "max_confidence": max_confidence,
-        "detected_classes": list(detected_classes),
-        "has_person": has_person,
-        "has_vehicle": has_vehicle,
-        "num_detections": len(detections)
+        "detections": [],
+        "detected_classes": [],
+        "best_detection": None,
+        "max_confidence": 0.0,
+        "num_detections": 0,
+        "status": status,
     }
 
 
-def _run_ocr(image_path: str) -> dict:
-    """Run OCR pipeline on an image to extract license plate text."""
-    pipeline = _get_ocr_pipeline()
-    return pipeline.extract_text(image_path)
-
-
-def _determine_violation_type(report_violation: str, yolo_results: dict) -> str:
+def _run_plate_detection(image_path: str) -> dict:
     """
-    Determine the final violation type based on YOLO detections.
-    We respect the user's reported violation type as Ground Truth.
-    Object detection alone cannot infer the state of traffic lights or line boundaries.
+    Detect license plates using the dedicated YOLO model and return every box,
+    plus the highest-confidence detection for downstream cropping.
+    """
+    model = _get_plate_detector()
+    if model is None:
+        return _empty_plate_detection("model_unavailable")
+
+    try:
+        results = model.predict(source=image_path, verbose=False, device="cpu")
+    except Exception as exc:
+        logger.error("Plate detection failed for %s: %s", image_path, exc)
+        return _empty_plate_detection("detection_error")
+
+    detections: list[dict] = []
+    for result in results:
+        boxes = getattr(result, "boxes", None)
+        if boxes is None:
+            continue
+
+        for box in boxes:
+            cls_id = int(box.cls[0]) if getattr(box, "cls", None) is not None else 0
+            if isinstance(result.names, dict):
+                cls_name = result.names.get(cls_id, PLATE_CLASS_NAME)
+            elif isinstance(result.names, list) and 0 <= cls_id < len(result.names):
+                cls_name = result.names[cls_id]
+            else:
+                cls_name = PLATE_CLASS_NAME
+            conf = float(box.conf[0])
+            xyxy = box.xyxy[0].tolist()
+            detections.append(
+                {
+                    "class": cls_name,
+                    "confidence": round(conf, 4),
+                    "bbox": {
+                        "x1": round(xyxy[0], 1),
+                        "y1": round(xyxy[1], 1),
+                        "x2": round(xyxy[2], 1),
+                        "y2": round(xyxy[3], 1),
+                    },
+                }
+            )
+
+    if not detections:
+        return _empty_plate_detection("no_plate_detected")
+
+    best_detection = max(detections, key=lambda item: item["confidence"])
+    return {
+        "detections": detections,
+        "detected_classes": sorted({item["class"] for item in detections}),
+        "best_detection": best_detection,
+        "max_confidence": best_detection["confidence"],
+        "num_detections": len(detections),
+        "status": "success",
+    }
+
+
+def _crop_highest_confidence_plate(
+    image_path: str, detection: dict, report_id: str
+) -> tuple[np.ndarray | None, str | None]:
+    """Crop the best plate region and persist it for later debugging/review."""
+    if not detection:
+        return None, None
+
+    image = cv2.imread(image_path)
+    if image is None:
+        logger.error("Could not load evidence image for cropping: %s", image_path)
+        return None, None
+
+    bbox = detection["bbox"]
+    height, width = image.shape[:2]
+    x1 = max(0, int(bbox["x1"]) - 4)
+    y1 = max(0, int(bbox["y1"]) - 4)
+    x2 = min(width, int(bbox["x2"]) + 4)
+    y2 = min(height, int(bbox["y2"]) + 4)
+
+    if x2 <= x1 or y2 <= y1:
+        logger.warning("Detected plate bbox is invalid for report %s: %s", report_id, bbox)
+        return None, None
+
+    crop = image[y1:y2, x1:x2]
+    if crop.size == 0:
+        logger.warning("Plate crop is empty for report %s", report_id)
+        return None, None
+
+    TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    crop_path = TEMP_DIR / f"{report_id}_{int(time.time() * 1000)}.png"
+    if not cv2.imwrite(str(crop_path), crop):
+        logger.warning("Failed to persist plate crop for report %s", report_id)
+        return crop, None
+    return crop, _relative_to_base(crop_path)
+
+
+def _preprocess_plate_crop(crop):
+    """
+    Enhance a detected plate crop before OCR.
+    Steps: grayscale -> resize -> denoise -> adaptive threshold -> sharpening.
+    """
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if len(crop.shape) == 3 else crop
+
+    target_width = max(320, gray.shape[1] * 2)
+    scale = target_width / max(gray.shape[1], 1)
+    resized = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+
+    denoised = cv2.fastNlMeansDenoising(resized, None, 15, 7, 21)
+    thresholded = cv2.adaptiveThreshold(
+        denoised,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY,
+        31,
+        11,
+    )
+    sharpen_kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]], dtype=np.float32)
+    sharpened = cv2.filter2D(thresholded, -1, sharpen_kernel)
+    return sharpened
+
+
+def _normalize_sri_lankan_plate(raw_text: str | None) -> tuple[str | None, str]:
+    """Normalize OCR output into a compact Sri Lankan plate candidate."""
+    if not raw_text:
+        return None, "no_text_detected"
+
+    compact = re.sub(r"[^A-Z0-9]", "", raw_text.upper())
+    if not compact:
+        return None, "no_text_detected"
+
+    if len(compact) < 6:
+        return compact, "invalid_sri_lankan_format"
+
+    prefix = compact[:-4].translate(DIGIT_TO_LETTER_MAP)
+    suffix = compact[-4:].translate(LETTER_TO_DIGIT_MAP)
+    candidate = f"{prefix}{suffix}"
+
+    match = SRI_LANKAN_PLATE_REGEX.match(candidate)
+    if not match:
+        return candidate, "invalid_sri_lankan_format"
+
+    normalized = f"{match.group('prefix')}-{match.group('number')}"
+    if normalized.replace("-", "") == compact:
+        return normalized, "valid_sri_lankan_format"
+    return normalized, "normalized_sri_lankan_format"
+
+
+def _empty_ocr_result(status: str) -> dict:
+    return {
+        "plate_text": None,
+        "plate_confidence": 0.0,
+        "validation_status": status,
+        "raw_text": None,
+        "ocr_candidates": [],
+    }
+
+
+def _run_plate_ocr(crop) -> dict:
+    """Run OCR only on a cropped plate region after dedicated preprocessing."""
+    reader = _get_ocr_reader()
+    if reader is None:
+        return _empty_ocr_result("ocr_unavailable")
+
+    try:
+        processed = _preprocess_plate_crop(crop)
+        results = reader.readtext(processed, detail=1, paragraph=False)
+    except Exception as exc:
+        logger.error("Plate OCR failed: %s", exc)
+        return _empty_ocr_result("ocr_error")
+
+    candidates = []
+    for _, text, confidence in results:
+        normalized_text, validation_status = _normalize_sri_lankan_plate(text)
+        candidates.append(
+            {
+                "raw_text": text.strip().upper(),
+                "plate_text": normalized_text,
+                "confidence": round(float(confidence), 4),
+                "validation_status": validation_status,
+            }
+        )
+
+    if not candidates:
+        return _empty_ocr_result("no_text_detected")
+
+    def _candidate_rank(candidate: dict) -> tuple[int, float]:
+        is_valid = candidate["validation_status"] in {"valid_sri_lankan_format", "normalized_sri_lankan_format"}
+        return (1 if is_valid else 0, candidate["confidence"])
+
+    best_candidate = max(candidates, key=_candidate_rank)
+    return {
+        "plate_text": best_candidate["plate_text"],
+        "plate_confidence": best_candidate["confidence"],
+        "validation_status": best_candidate["validation_status"],
+        "raw_text": best_candidate["raw_text"],
+        "ocr_candidates": candidates,
+    }
+
+
+def _build_anpr_result(report_id: str, image_path: str | None) -> dict:
+    """
+    Execute the full ANPR flow:
+    detect plate -> crop best region -> preprocess -> OCR -> normalize/validate.
+    """
+    result = {
+        "plate_text": None,
+        "plate_confidence": 0.0,
+        "bbox": None,
+        "crop_path": None,
+        "validation_status": "no_image",
+        "detections": [],
+        "detected_classes": [],
+        "num_detections": 0,
+        "detection_confidence": 0.0,
+        "raw_text": None,
+        "ocr_candidates": [],
+    }
+
+    if not image_path:
+        return result
+
+    detection_result = _run_plate_detection(image_path)
+    result.update(
+        {
+            "detections": detection_result["detections"],
+            "detected_classes": detection_result["detected_classes"],
+            "num_detections": detection_result["num_detections"],
+            "detection_confidence": detection_result["max_confidence"],
+            "validation_status": detection_result["status"],
+        }
+    )
+
+    best_detection = detection_result["best_detection"]
+    if best_detection is None:
+        logger.info("No plate detected for report %s. Forwarding for manual review.", report_id)
+        return result
+
+    result["bbox"] = best_detection["bbox"]
+    crop, crop_path = _crop_highest_confidence_plate(image_path, best_detection, report_id)
+    result["crop_path"] = crop_path
+    if crop is None:
+        result["validation_status"] = "crop_failed"
+        return result
+
+    ocr_result = _run_plate_ocr(crop)
+    result.update(
+        {
+            "plate_text": ocr_result["plate_text"],
+            "plate_confidence": ocr_result["plate_confidence"],
+            "validation_status": ocr_result["validation_status"],
+            "raw_text": ocr_result["raw_text"],
+            "ocr_candidates": ocr_result["ocr_candidates"],
+        }
+    )
+    return result
+
+
+def _determine_violation_type(report_violation: str) -> str:
+    """
+    Keep the current report-violation mapping stable for the rest of the backend.
     """
     return VIOLATION_MAP.get(report_violation, report_violation)
 
 
+def _cleanup_temporary_evidence(image_path: str | None) -> None:
+    if image_path and image_path.startswith(tempfile.gettempdir()):
+        try:
+            os.unlink(image_path)
+        except OSError:
+            logger.warning("Failed to remove temporary evidence file: %s", image_path)
+
+
 def attempt_inference(report: Report, db: Session, attempt: int = 1):
-    """Run real ML inference on a report's evidence."""
-    logger.info(f"Starting inference job for report {report.id} (Attempt {attempt})")
+    """Run ANPR inference on a report's evidence while preserving the API contract."""
+    logger.info("Starting inference job for report %s (Attempt %s)", report.id, attempt)
     start_time = time.time()
 
-    # 1. Status Transition
     if report.status == StatusEnum.SUBMITTED:
         report.status = StatusEnum.AI_PROCESSING
         db.commit()
 
-    # 2. Get evidence image
     evidence = db.query(Evidence).filter(Evidence.report_id == report.id).first()
     image_path = _decode_evidence_image(evidence) if evidence else None
+    anpr_result = _build_anpr_result(report.id, image_path)
 
-    yolo_results = {"detections": [], "max_confidence": 0.0, "detected_classes": [],
-                    "has_person": False, "has_vehicle": False, "num_detections": 0}
-    ocr_result = {"text": None, "confidence": 0.0, "status": "no_image"}
+    _cleanup_temporary_evidence(image_path)
 
-    if image_path:
-        try:
-            # 3. Run YOLO Object Detection
-            logger.info(f"Running YOLO detection on {image_path}")
-            yolo_results = _run_yolo_detection(image_path)
-            logger.info(f"YOLO detected {yolo_results['num_detections']} objects: {yolo_results['detected_classes']}")
-
-            # 4. Run OCR for License Plate
-            logger.info(f"Running OCR on {image_path}")
-            ocr_result = _run_ocr(image_path)
-            logger.info(f"OCR result: {ocr_result.get('text', 'N/A')} (conf: {ocr_result.get('confidence', 0):.2f})")
-        except Exception as e:
-            logger.error(f"ML inference error: {e}")
-        finally:
-            # Clean up temp file
-            if image_path and image_path.startswith(tempfile.gettempdir()):
-                try:
-                    os.unlink(image_path)
-                except:
-                    pass
-
-    # 5. Calculate quality score
-    yolo_conf = yolo_results["max_confidence"]
-    ocr_conf = ocr_result.get("confidence", 0.0)
-    bbox_clarity = min(1.0, yolo_results["num_detections"] / 3) if yolo_results["num_detections"] > 0 else 0.0
-    quality_score = (yolo_conf * 0.4) + (ocr_conf * 0.4) + (bbox_clarity * 0.2)
-
+    bbox_clarity = 1.0 if anpr_result["bbox"] else 0.0
+    quality_score = (
+        anpr_result["detection_confidence"] * 0.4
+        + anpr_result["plate_confidence"] * 0.4
+        + bbox_clarity * 0.2
+    )
     latency = time.time() - start_time
+    detected_violation = _determine_violation_type(report.violation_type)
 
-    # 6. Determine violation type from AI
-    detected_violation = _determine_violation_type(report.violation_type, yolo_results)
+    bbox_payload = {
+        "detections": anpr_result["detections"],
+        "detected_classes": anpr_result["detected_classes"],
+        "quality_score": round(quality_score, 4),
+        "bbox": anpr_result["bbox"],
+        "crop_path": anpr_result["crop_path"],
+        "plate_text": anpr_result["plate_text"],
+        "plate_confidence": round(anpr_result["plate_confidence"], 4),
+        "validation_status": anpr_result["validation_status"],
+        "raw_text": anpr_result["raw_text"],
+        "ocr_candidates": anpr_result["ocr_candidates"],
+    }
 
-    # 7. Create inference log
-    ocr_text = ocr_result.get("text")
     inference_log = InferenceLog(
         report_id=report.id,
-        model_version="yolov8s|easyocr",
-        bbox_coordinates={
-            "detections": yolo_results["detections"],
-            "quality_score": round(quality_score, 4),
-            "detected_classes": yolo_results["detected_classes"]
-        },
-        confidence=round(yolo_conf, 4) if yolo_conf > 0 else round(quality_score, 4),
-        ocr_text=ocr_text,
-        ocr_confidence=round(ocr_conf, 4),
-        inference_latency=round(latency, 4)
+        model_version=ANPR_MODEL_VERSION,
+        bbox_coordinates=bbox_payload,
+        confidence=round(anpr_result["detection_confidence"], 4)
+        if anpr_result["detection_confidence"] > 0
+        else round(quality_score, 4),
+        ocr_text=anpr_result["plate_text"],
+        ocr_confidence=round(anpr_result["plate_confidence"], 4),
+        inference_latency=round(latency, 4),
     )
     db.add(inference_log)
 
-    # 8. Set status based on quality
-    QUALITY_THRESHOLD = 0.15  # Lower threshold since pretrained model may have lower confidence on traffic images
-    # If YOLO didn't detect anything, and OCR confidence is terrible or text is None, reject it
-    if quality_score < QUALITY_THRESHOLD and yolo_results["num_detections"] == 0 and (ocr_conf == 0.0 or not ocr_text):
+    # Safe fallback: if the worker cannot extract a usable plate candidate, keep
+    # the report available for manual review instead of hard-rejecting it.
+    if not image_path:
         report.status = StatusEnum.REJECTED
-        inference_log.bbox_coordinates["filtering"] = "Rejected: no relevant objects or text detected."
+        inference_log.bbox_coordinates["filtering"] = "Rejected: no usable evidence image found."
     else:
         report.status = StatusEnum.UNDER_REVIEW
         report.violation_type = detected_violation
+        if anpr_result["bbox"] is None:
+            inference_log.bbox_coordinates["filtering"] = "No plate detected; forwarded to manual review."
+        elif not anpr_result["plate_text"]:
+            inference_log.bbox_coordinates["filtering"] = "Plate detected but OCR/validation failed; forwarded to manual review."
+        elif quality_score < QUALITY_THRESHOLD:
+            inference_log.bbox_coordinates["filtering"] = "Low-confidence plate read; forwarded to manual review."
 
-    # 9. Audit log
     audit = AuditLog(
         user_id=report.user_id,
         action="INFERENCE_COMPLETION",
@@ -251,18 +499,26 @@ def attempt_inference(report: Report, db: Session, attempt: int = 1):
         details={
             "latency_seconds": round(latency, 4),
             "quality_score": round(quality_score, 4),
-            "yolo_detections": yolo_results["num_detections"],
-            "ocr_text": ocr_text,
+            "plate_detections": anpr_result["num_detections"],
+            "ocr_text": anpr_result["plate_text"],
+            "validation_status": anpr_result["validation_status"],
             "detected_violation": detected_violation,
             "threshold_met": quality_score >= QUALITY_THRESHOLD,
-            "attempt": attempt
-        }
+            "attempt": attempt,
+        },
     )
     db.add(audit)
     db.commit()
-    logger.info(f"Inference complete for {report.id} - Latency: {latency:.2f}s | "
-                f"YOLO: {yolo_results['num_detections']} objects | OCR: {ocr_text or 'N/A'} | "
-                f"Quality: {quality_score:.4f} | Status: {report.status}")
+
+    logger.info(
+        "Inference complete for %s | plate_text=%s | det_conf=%.4f | ocr_conf=%.4f | validation=%s | report_status=%s",
+        report.id,
+        anpr_result["plate_text"] or "N/A",
+        anpr_result["detection_confidence"],
+        anpr_result["plate_confidence"],
+        anpr_result["validation_status"],
+        report.status,
+    )
 
 
 def run_inference(report_id: str, max_retries: int = 2):
@@ -271,21 +527,21 @@ def run_inference(report_id: str, max_retries: int = 2):
     try:
         report = db.query(Report).filter(Report.id == report_id).first()
         if not report:
-            logger.error(f"Report {report_id} not found.")
+            logger.error("Report %s not found.", report_id)
             return
 
         for attempt in range(1, max_retries + 1):
             try:
                 attempt_inference(report, db, attempt)
                 break
-            except Exception as e:
-                logger.warning(f"Inference Attempt {attempt} failed for {report_id}: {str(e)}")
+            except Exception as exc:
+                logger.warning("Inference attempt %s failed for %s: %s", attempt, report_id, exc)
                 db.rollback()
                 if attempt == max_retries:
-                    logger.error(f"Max retries reached for {report_id}. Marking as REJECTED.")
+                    logger.error("Max retries reached for %s. Marking as REJECTED.", report_id)
                     report.status = StatusEnum.REJECTED
                     db.commit()
-                    raise e
+                    raise
                 time.sleep(2)
     finally:
         db.close()
