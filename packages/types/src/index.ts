@@ -118,11 +118,14 @@ export interface TrafficTicket {
   id: string;
   ticketNumber: string;
   reportId?: string | null;
-  evidenceReportId?: string | null;
+  evidenceReportId?: string;
   officerId: string;
   status: TicketStatus;
+  fineRuleId?: string;
+  fineRuleVersion?: number;
   penalCode: string;
   fineAmount: number;
+  fineOverrideReason?: string;
   violationType?: string | null;
   vehiclePlate?: string | null;
   offenderName?: string | null;
@@ -144,11 +147,24 @@ export interface TrafficTicket {
 /** Single audit entry for a ticket status transition. */
 export interface TicketStatusHistoryEntry {
   id: string;
-  previousStatus?: TicketStatus | null;
+  previousStatus?: TicketStatus;
   newStatus: TicketStatus;
-  changeSource: ReportStatusSource;
-  notes?: string | null;
-  details?: Record<string, unknown> | null;
+  changeSource: string;
+  notes?: string;
+  details?: Record<string, any>;
   changedAt: string;
 }
 
+export interface FineRule {
+  id: string;
+  violationType: string;
+  penalCode: string;
+  fineAmount: number;
+  currency: string;
+  description?: string;
+  severity?: string;
+  active: boolean;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}

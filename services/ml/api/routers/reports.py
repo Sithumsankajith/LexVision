@@ -161,12 +161,52 @@ def issue_ticket(report_id: str, ticket_data: schemas.TicketCreate, db: Session 
     if not vehicle_plate and report.inference_log:
         vehicle_plate = report.inference_log.ocr_text
 
+    # --- Process Fine Rule / Override ---
+    final_penal_code = ticket_data.penal_code
+    final_fine_amount = ticket_data.fine_amount
+    fine_rule_id = None
+    fine_rule_version = None
+
+    if final_penal_code is not None or final_fine_amount is not None:
+        if not ticket_data.fine_override_reason:
+            raise HTTPException(
+                status_code=400,
+                detail="fine_override_reason is required when manually providing penal_code or fine_amount.",
+            )
+        if final_penal_code is None or final_fine_amount is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Both penal_code and fine_amount must be provided when overriding.",
+            )
+    else:
+        if not violation_type:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot determine fine rule because violation_type is missing.",
+            )
+        rule = db.query(models.FineRule).filter(
+            models.FineRule.violation_type == violation_type,
+            models.FineRule.active == True
+        ).first()
+        if not rule:
+            raise HTTPException(
+                status_code=400,
+                detail=f"No active fine rule configured for violation type: {violation_type}",
+            )
+        final_penal_code = rule.penal_code
+        final_fine_amount = rule.fine_amount
+        fine_rule_id = rule.id
+        fine_rule_version = rule.version
+
     new_ticket = models.TrafficTicket(
         ticket_number=f"TKT-{datetime.now().year}-{uuid.uuid4().hex[:12].upper()}",
         report_id=report_id,
         officer_id=current_user.id,
-        penal_code=ticket_data.penal_code,
-        fine_amount=ticket_data.fine_amount,
+        fine_rule_id=fine_rule_id,
+        fine_rule_version=fine_rule_version,
+        penal_code=final_penal_code,
+        fine_amount=final_fine_amount,
+        fine_override_reason=ticket_data.fine_override_reason,
         violation_type=violation_type,
         vehicle_plate=vehicle_plate,
         offender_name=ticket_data.offender_name,
@@ -184,12 +224,14 @@ def issue_ticket(report_id: str, ticket_data: schemas.TicketCreate, db: Session 
     apply_ticket_status(
         new_ticket,
         TicketStatusEnum.ISSUED,
-        notes="Ticket issued via legacy report endpoint.",
+        notes="Legacy ticket issued directly.",
         source=source,
         changed_by_user_id=current_user.id,
         details={
-            "penal_code": ticket_data.penal_code,
-            "fine_amount": ticket_data.fine_amount,
+            "penal_code": final_penal_code,
+            "fine_amount": final_fine_amount,
+            "override_reason": ticket_data.fine_override_reason,
+            "fine_rule_id": fine_rule_id,
         },
     )
 
@@ -205,8 +247,12 @@ def issue_ticket(report_id: str, ticket_data: schemas.TicketCreate, db: Session 
         new_ticket.id,
         details={
             "ticket_number": new_ticket.ticket_number,
-            "penal_code": ticket_data.penal_code,
-            "fine": ticket_data.fine_amount,
+            "status": new_ticket.status.value,
+            "penal_code": new_ticket.penal_code,
+            "fine_amount": new_ticket.fine_amount,
+            "fine_override_reason": new_ticket.fine_override_reason,
+            "report_id": new_ticket.report_id,
+            "legacy_endpoint": True,
         },
     )
 

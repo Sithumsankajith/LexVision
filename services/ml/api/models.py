@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Column, DateTime, Enum, Float, ForeignKey, Index, JSON, String, Text, event, func, inspect, text
+from sqlalchemy import Boolean, Column, DateTime, Enum, Float, ForeignKey, Index, Integer, JSON, String, Text, event, func, inspect, text
 from sqlalchemy.orm import relationship
 
 from .constants import ReportStatusEnum, RoleEnum, SmsNotificationStatusEnum, StatusChangeSourceEnum, StatusEnum, TicketStatusEnum
@@ -231,6 +231,27 @@ class InferenceLog(Base):
     report = relationship("Report", back_populates="inference_log")
 
 
+class FineRule(Base):
+    """Engine rule defining default penalties for specific violations."""
+
+    __tablename__ = "fine_rules"
+    __table_args__ = (
+        Index("ix_fine_rules_violation_type", "violation_type"),
+    )
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    violation_type = Column(String, nullable=False, index=True)
+    penal_code = Column(String, nullable=False)
+    fine_amount = Column(Float, nullable=False)
+    currency = Column(String, nullable=False, default="LKR")
+    description = Column(Text, nullable=True)
+    severity = Column(String, nullable=True)  # e.g., LOW, MEDIUM, HIGH
+    active = Column(Boolean, nullable=False, default=True)
+    version = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime, nullable=False, default=func.now())
+    updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
+
+
 class TrafficTicket(Base):
     """Enforcement ticket attached to a validated traffic violation report.
 
@@ -291,8 +312,11 @@ class TrafficTicket(Base):
     )
 
     # --- Violation details (snapshot at issuance time) ---
+    fine_rule_id = Column(String, ForeignKey("fine_rules.id"), nullable=True)
+    fine_rule_version = Column(Integer, nullable=True)
     penal_code = Column(String, nullable=False)
     fine_amount = Column(Float, nullable=False)
+    fine_override_reason = Column(Text, nullable=True) # Required if penal_code/fine_amount differ from the rule
     violation_type = Column(String, nullable=True)  # Copied from report's final violation type
     vehicle_plate = Column(String, nullable=True)   # Copied from report/inference at issuance
 
@@ -320,6 +344,7 @@ class TrafficTicket(Base):
     updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
     # --- Relationships ---
+    fine_rule = relationship("FineRule")
     report = relationship("Report", back_populates="ticket", foreign_keys=[report_id])
     evidence_report = relationship(
         "EvidenceReport", back_populates="ticket", foreign_keys=[evidence_report_id],

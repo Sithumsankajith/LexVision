@@ -221,6 +221,36 @@ class ReportStatusUpdate(BaseModel):
     status: StatusEnum
     notes: Optional[str] = None
 
+# --- Fine Rule Schemas ---
+class FineRuleBase(BaseModel):
+    violation_type: str
+    penal_code: str
+    fine_amount: float
+    currency: Optional[str] = "LKR"
+    description: Optional[str] = None
+    severity: Optional[str] = None
+    active: Optional[bool] = True
+
+class FineRuleCreate(FineRuleBase):
+    pass
+
+class FineRuleUpdate(BaseModel):
+    penal_code: Optional[str] = None
+    fine_amount: Optional[float] = None
+    currency: Optional[str] = None
+    description: Optional[str] = None
+    severity: Optional[str] = None
+    active: Optional[bool] = None
+
+class FineRuleResponse(FineRuleBase):
+    id: str
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
 # --- Ticket Schemas ---
 
 class TicketCreate(BaseModel):
@@ -228,12 +258,15 @@ class TicketCreate(BaseModel):
 
     Exactly one of ``report_id`` or ``evidence_report_id`` must be provided.
     The referenced report must be in VALIDATED status.
+    If ``penal_code`` and ``fine_amount`` are provided, ``fine_override_reason`` must also be provided.
+    Otherwise, the default fine rule for the violation type will be used.
     """
 
     report_id: Optional[str] = None
     evidence_report_id: Optional[str] = None
-    penal_code: str
-    fine_amount: float
+    penal_code: Optional[str] = None
+    fine_amount: Optional[float] = None
+    fine_override_reason: Optional[str] = None
     violation_type: Optional[str] = None
     vehicle_plate: Optional[str] = None
     offender_name: Optional[str] = None
@@ -285,8 +318,11 @@ class TicketResponse(BaseModel):
     evidence_report_id: Optional[str] = None
     officer_id: str
     status: str
+    fine_rule_id: Optional[str] = None
+    fine_rule_version: Optional[int] = None
     penal_code: str
     fine_amount: float
+    fine_override_reason: Optional[str] = None
     violation_type: Optional[str] = None
     vehicle_plate: Optional[str] = None
     offender_name: Optional[str] = None

@@ -18,7 +18,7 @@ import {
 import { Button, Input } from '@lexvision/ui';
 import { Panel, Badge } from '@lexvision/ui';
 import { mockDb } from '@lexvision/api-client';
-import type { Report } from '@lexvision/types';
+import type { Report, FineRule } from '@lexvision/types';
 
 const formatViolation = (value?: string | null, emptyLabel = 'Pending police validation') => value ? value.replace(/-/g, ' ') : emptyLabel;
 
@@ -32,8 +32,11 @@ export const ViolationDetails: React.FC = () => {
 
     // Ticket issuance state
     const [showTicketForm, setShowTicketForm] = useState(false);
-    const [penalCode, setPenalCode] = useState('MV-ACT-2007-S129');
-    const [fineAmount, setFineAmount] = useState('2500');
+    const [fineRule, setFineRule] = useState<FineRule | null>(null);
+    const [isOverride, setIsOverride] = useState(false);
+    const [penalCode, setPenalCode] = useState('');
+    const [fineAmount, setFineAmount] = useState('');
+    const [overrideReason, setOverrideReason] = useState('');
     const [ticketIssued, setTicketIssued] = useState(false);
     const [ticketError, setTicketError] = useState('');
 
@@ -60,7 +63,7 @@ export const ViolationDetails: React.FC = () => {
             if (updated) {
                 setReport(updated);
                 if (status === 'verified' && updated.source !== 'evidence-report') {
-                    setShowTicketForm(true);
+                    openTicketForm(updated);
                 } else if (status !== 'verified') {
                     setShowTicketForm(false);
                 }
@@ -74,12 +77,33 @@ export const ViolationDetails: React.FC = () => {
         }
     };
 
+    const openTicketForm = async (currentReport: Report) => {
+        setShowTicketForm(true);
+        if (currentReport.finalViolationType) {
+            try {
+                const rule = await mockDb.getFineRuleByViolation(currentReport.finalViolationType);
+                if (rule) {
+                    setFineRule(rule);
+                    setPenalCode(rule.penalCode);
+                    setFineAmount(rule.fineAmount.toString());
+                }
+            } catch (err) {
+                console.error("Failed to load fine rule", err);
+            }
+        }
+    };
+
     const handleIssueTicket = async () => {
         if (!report) return;
         setActionLoading(true);
         setTicketError('');
         try {
-            await mockDb.issueTicket(report.id, penalCode, parseFloat(fineAmount));
+            await mockDb.issueTicket(
+                report.id,
+                isOverride ? penalCode : null,
+                isOverride ? parseFloat(fineAmount) : null,
+                { overrideReason: isOverride ? overrideReason : undefined }
+            );
             setTicketIssued(true);
             setShowTicketForm(false);
         } catch (e: any) {
@@ -280,7 +304,7 @@ export const ViolationDetails: React.FC = () => {
                                     <div>
                                         <div style={{ fontWeight: '700', color: '#10b981', fontSize: '0.875rem' }}>Ticket Issued Successfully</div>
                                         <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
-                                            Penal Code: {penalCode} | Fine: Rs. {fineAmount}
+                                            Penal Code: {isOverride ? penalCode : fineRule?.penalCode} | Fine: Rs. {isOverride ? fineAmount : fineRule?.fineAmount}
                                         </div>
                                     </div>
                                 </div>
@@ -326,23 +350,61 @@ export const ViolationDetails: React.FC = () => {
                                     flexDirection: 'column',
                                     gap: 'var(--space-3)'
                                 }}>
-                                    <div style={{ fontWeight: '700', fontSize: '0.875rem', color: 'var(--color-text)' }}>
-                                        <ClipboardCheck size={16} style={{ verticalAlign: 'text-bottom', marginRight: '4px' }} />
-                                        Issue Traffic Ticket
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div style={{ fontWeight: '700', fontSize: '0.875rem', color: 'var(--color-text)' }}>
+                                            <ClipboardCheck size={16} style={{ verticalAlign: 'text-bottom', marginRight: '4px' }} />
+                                            Issue Traffic Ticket
+                                        </div>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', cursor: 'pointer' }}>
+                                            <input 
+                                                type="checkbox" 
+                                                checked={isOverride} 
+                                                onChange={(e) => setIsOverride(e.target.checked)} 
+                                            />
+                                            Manual Override
+                                        </label>
                                     </div>
-                                    <Input
-                                        label="Penal Code"
-                                        value={penalCode}
-                                        onChange={(e) => setPenalCode(e.target.value)}
-                                        fullWidth
-                                    />
-                                    <Input
-                                        label="Fine Amount (Rs.)"
-                                        type="number"
-                                        value={fineAmount}
-                                        onChange={(e) => setFineAmount(e.target.value)}
-                                        fullWidth
-                                    />
+                                    
+                                    {!isOverride && fineRule && (
+                                        <div style={{ padding: '8px', backgroundColor: 'var(--color-bg-secondary)', borderRadius: '4px', fontSize: '0.85rem' }}>
+                                            <div style={{ marginBottom: '4px' }}><strong>Default Rule Applied:</strong> {fineRule.description}</div>
+                                            <div><strong>Penal Code:</strong> {fineRule.penalCode}</div>
+                                            <div><strong>Fine Amount:</strong> {fineRule.currency} {fineRule.fineAmount}</div>
+                                        </div>
+                                    )}
+
+                                    {(!fineRule && !isOverride) && (
+                                        <div style={{ color: '#ef4444', fontSize: '0.85rem' }}>
+                                            No default fine rule found for this violation. You must override.
+                                        </div>
+                                    )}
+
+                                    {isOverride && (
+                                        <>
+                                            <Input
+                                                label="Penal Code"
+                                                value={penalCode}
+                                                onChange={(e) => setPenalCode(e.target.value)}
+                                                fullWidth
+                                            />
+                                            <Input
+                                                label="Fine Amount (Rs.)"
+                                                type="number"
+                                                value={fineAmount}
+                                                onChange={(e) => setFineAmount(e.target.value)}
+                                                fullWidth
+                                            />
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                <label style={{ fontSize: '0.875rem', fontWeight: '500' }}>Override Reason <span style={{ color: '#ef4444' }}>*</span></label>
+                                                <textarea
+                                                    value={overrideReason}
+                                                    onChange={(e) => setOverrideReason(e.target.value)}
+                                                    placeholder="Required justification for changing the default rule..."
+                                                    style={{ width: '100%', padding: '8px', border: '1px solid var(--color-border)', borderRadius: '4px', resize: 'vertical', minHeight: '60px', backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}
+                                                />
+                                            </div>
+                                        </>
+                                    )}
                                     {ticketError && (
                                         <div style={{ color: '#ef4444', fontSize: '0.8rem', padding: '4px 0' }}>{ticketError}</div>
                                     )}
@@ -351,7 +413,11 @@ export const ViolationDetails: React.FC = () => {
                                         fullWidth
                                         leftIcon={actionLoading ? <Loader2 size={16} className="spin" /> : <ClipboardCheck size={16} />}
                                         onClick={handleIssueTicket}
-                                        disabled={actionLoading || !penalCode || !fineAmount}
+                                        disabled={
+                                            actionLoading || 
+                                            (!isOverride && !fineRule) || 
+                                            (isOverride && (!penalCode || !fineAmount || !overrideReason.trim()))
+                                        }
                                     >
                                         {actionLoading ? 'Issuing...' : 'Confirm & Issue Ticket'}
                                     </Button>
@@ -439,7 +505,7 @@ export const ViolationDetails: React.FC = () => {
                                             variant="primary"
                                             fullWidth
                                             leftIcon={<ClipboardCheck size={18} />}
-                                            onClick={() => setShowTicketForm(true)}
+                                            onClick={() => openTicketForm(report)}
                                         >
                                             Issue Traffic Ticket
                                         </Button>

@@ -167,33 +167,36 @@ const mapBackendTicketStatus = (status: string): TicketStatus =>
                             status === 'CANCELLED' ? 'cancelled' :
                                 'closed';
 
-const mapTicketToFrontend = (b: any): TrafficTicket => ({
-    id: b.id,
-    ticketNumber: b.ticket_number,
-    reportId: b.report_id || null,
-    evidenceReportId: b.evidence_report_id || null,
-    officerId: b.officer_id,
-    status: mapBackendTicketStatus(b.status),
-    penalCode: b.penal_code,
-    fineAmount: b.fine_amount,
-    violationType: b.violation_type || null,
-    vehiclePlate: b.vehicle_plate || null,
-    offenderName: b.offender_name || null,
-    offenderContact: b.offender_contact || null,
-    dueDate: b.due_date || null,
-    paidAt: b.paid_at || null,
-    paymentReference: b.payment_reference || null,
-    appealReason: b.appeal_reason || null,
-    appealedAt: b.appealed_at || null,
-    cancelledAt: b.cancelled_at || null,
-    cancelledReason: b.cancelled_reason || null,
-    notes: b.notes || null,
-    issuedAt: b.issued_at || null,
-    createdAt: b.created_at,
-    updatedAt: b.updated_at || b.created_at,
-    statusHistory: (b.status_history || []).map((entry: any): TicketStatusHistoryEntry => ({
+const mapTicketToFrontend = (ticket: any): TrafficTicket => ({
+    id: ticket.id,
+    ticketNumber: ticket.ticket_number,
+    reportId: ticket.report_id,
+    evidenceReportId: ticket.evidence_report_id,
+    officerId: ticket.officer_id,
+    status: ticket.status.toLowerCase() as TrafficTicket['status'],
+    fineRuleId: ticket.fine_rule_id,
+    fineRuleVersion: ticket.fine_rule_version,
+    penalCode: ticket.penal_code,
+    fineAmount: ticket.fine_amount,
+    fineOverrideReason: ticket.fine_override_reason,
+    violationType: ticket.violation_type,
+    vehiclePlate: ticket.vehicle_plate || null,
+    offenderName: ticket.offender_name || null,
+    offenderContact: ticket.offender_contact || null,
+    dueDate: ticket.due_date || null,
+    paidAt: ticket.paid_at || null,
+    paymentReference: ticket.payment_reference || null,
+    appealReason: ticket.appeal_reason || null,
+    appealedAt: ticket.appealed_at || null,
+    cancelledAt: ticket.cancelled_at || null,
+    cancelledReason: ticket.cancelled_reason || null,
+    notes: ticket.notes || null,
+    issuedAt: ticket.issued_at || null,
+    createdAt: ticket.created_at,
+    updatedAt: ticket.updated_at || ticket.created_at,
+    statusHistory: (ticket.status_history || []).map((entry: any): TicketStatusHistoryEntry => ({
         id: entry.id,
-        previousStatus: entry.previous_status ? mapBackendTicketStatus(entry.previous_status) : null,
+        previousStatus: entry.previous_status ? mapBackendTicketStatus(entry.previous_status) : undefined,
         newStatus: mapBackendTicketStatus(entry.new_status),
         changeSource: mapBackendStatusSource(entry.change_source),
         notes: entry.notes || null,
@@ -201,6 +204,22 @@ const mapTicketToFrontend = (b: any): TrafficTicket => ({
         changedAt: entry.changed_at,
     })),
 });
+
+const mapFineRuleToFrontend = (rule: any) => {
+    return {
+        id: rule.id,
+        violationType: rule.violation_type,
+        penalCode: rule.penal_code,
+        fineAmount: rule.fine_amount,
+        currency: rule.currency,
+        description: rule.description,
+        severity: rule.severity,
+        active: rule.active,
+        version: rule.version,
+        createdAt: rule.created_at,
+        updatedAt: rule.updated_at,
+    };
+};
 
 export const mockDb = {
     createReport: async (reportData: Omit<Report, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'trackingId'>): Promise<Report> => {
@@ -535,21 +554,43 @@ export const mockDb = {
         return response.json();
     },
 
+    // --- Fine Rules Engine Methods ---
+    getFineRules: async () => {
+        const response = await fetch(`${API_BASE_URL}/fine-rules`, {
+            headers: getHeaders(),
+        });
+        if (!response.ok) throw new Error('Failed to fetch fine rules');
+        const data = await response.json();
+        return data.map(mapFineRuleToFrontend);
+    },
+
+    getFineRuleByViolation: async (violationType: string) => {
+        const response = await fetch(`${API_BASE_URL}/fine-rules/${violationType}`, {
+            headers: getHeaders(),
+        });
+        if (!response.ok) {
+            if (response.status === 404) return null;
+            throw new Error('Failed to fetch fine rule');
+        }
+        const data = await response.json();
+        return mapFineRuleToFrontend(data);
+    },
+
     issueTicket: async (
         reportId: string,
-        penalCode: string,
-        fineAmount: number,
+        penalCode: string | null,
+        fineAmount: number | null,
         options?: {
             evidenceReportId?: string;
             violationType?: string;
             vehiclePlate?: string;
             offenderName?: string;
+            offenderContact?: string;
             notes?: string;
             issueImmediately?: boolean;
+            overrideReason?: string;
         },
     ) => {
-        // Determine which endpoint to use: legacy report or new tickets API.
-        // If an evidenceReportId is provided, use the new /api/tickets endpoint.
         const useNewApi = !!options?.evidenceReportId;
 
         const payload = useNewApi
@@ -557,6 +598,7 @@ export const mockDb = {
                 evidence_report_id: options!.evidenceReportId,
                 penal_code: penalCode,
                 fine_amount: fineAmount,
+                fine_override_reason: options?.overrideReason,
                 violation_type: options?.violationType,
                 vehicle_plate: options?.vehiclePlate,
                 offender_name: options?.offenderName,
@@ -567,6 +609,7 @@ export const mockDb = {
                 report_id: reportId,
                 penal_code: penalCode,
                 fine_amount: fineAmount,
+                fine_override_reason: options?.overrideReason,
                 violation_type: options?.violationType,
                 vehicle_plate: options?.vehiclePlate,
                 offender_name: options?.offenderName,

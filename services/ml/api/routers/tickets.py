@@ -166,6 +166,44 @@ def create_ticket(
         if not vehicle_plate_snapshot:
             vehicle_plate_snapshot = evidence_report.vehicle_plate
 
+    # --- Process Fine Rule / Override ---
+    final_penal_code = ticket_data.penal_code
+    final_fine_amount = ticket_data.fine_amount
+    fine_rule_id = None
+    fine_rule_version = None
+
+    if final_penal_code is not None or final_fine_amount is not None:
+        if not ticket_data.fine_override_reason:
+            raise HTTPException(
+                status_code=400,
+                detail="fine_override_reason is required when manually providing penal_code or fine_amount.",
+            )
+        if final_penal_code is None or final_fine_amount is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Both penal_code and fine_amount must be provided when overriding.",
+            )
+    else:
+        # Fetch default fine rule
+        if not violation_type_snapshot:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot determine fine rule because violation_type is missing.",
+            )
+        rule = db.query(models.FineRule).filter(
+            models.FineRule.violation_type == violation_type_snapshot,
+            models.FineRule.active == True
+        ).first()
+        if not rule:
+            raise HTTPException(
+                status_code=400,
+                detail=f"No active fine rule configured for violation type: {violation_type_snapshot}",
+            )
+        final_penal_code = rule.penal_code
+        final_fine_amount = rule.fine_amount
+        fine_rule_id = rule.id
+        fine_rule_version = rule.version
+
     # --- Ensure no duplicate active ticket ---
     _assert_no_active_ticket_for_report(
         db,
@@ -186,8 +224,11 @@ def create_ticket(
         report_id=ticket_data.report_id,
         evidence_report_id=ticket_data.evidence_report_id,
         officer_id=current_user.id,
-        penal_code=ticket_data.penal_code,
-        fine_amount=ticket_data.fine_amount,
+        fine_rule_id=fine_rule_id,
+        fine_rule_version=fine_rule_version,
+        penal_code=final_penal_code,
+        fine_amount=final_fine_amount,
+        fine_override_reason=ticket_data.fine_override_reason,
         violation_type=violation_type_snapshot,
         vehicle_plate=vehicle_plate_snapshot,
         offender_name=ticket_data.offender_name,
@@ -204,8 +245,10 @@ def create_ticket(
         source=_status_source_for_user(current_user),
         changed_by_user_id=current_user.id,
         details={
-            "penal_code": ticket_data.penal_code,
-            "fine_amount": ticket_data.fine_amount,
+            "penal_code": final_penal_code,
+            "fine_amount": final_fine_amount,
+            "override_reason": ticket_data.fine_override_reason,
+            "fine_rule_id": fine_rule_id,
         },
     )
 
@@ -225,6 +268,7 @@ def create_ticket(
             "status": new_ticket.status.value,
             "penal_code": new_ticket.penal_code,
             "fine_amount": new_ticket.fine_amount,
+            "fine_override_reason": new_ticket.fine_override_reason,
             "report_id": new_ticket.report_id,
             "evidence_report_id": new_ticket.evidence_report_id,
         },
