@@ -18,7 +18,7 @@ import {
 import { Button, Input } from '@lexvision/ui';
 import { Panel, Badge } from '@lexvision/ui';
 import { mockDb } from '@lexvision/api-client';
-import type { Report, FineRule } from '@lexvision/types';
+import type { Report, FineRule, TrafficTicket } from '@lexvision/types';
 
 const formatViolation = (value?: string | null, emptyLabel = 'Pending police validation') => value ? value.replace(/-/g, ' ') : emptyLabel;
 
@@ -37,17 +37,31 @@ export const ViolationDetails: React.FC = () => {
     const [penalCode, setPenalCode] = useState('');
     const [fineAmount, setFineAmount] = useState('');
     const [overrideReason, setOverrideReason] = useState('');
-    const [ticketIssued, setTicketIssued] = useState(false);
+    const [ticket, setTicket] = useState<TrafficTicket | null>(null);
+    const [ticketLoading, setTicketLoading] = useState(false);
     const [ticketError, setTicketError] = useState('');
 
     useEffect(() => {
         const fetchReport = async () => {
             if (id) {
-                const data = await mockDb.getReportById(id);
-                setReport(data);
-                // If report is already verified, check for ticket
-                if (data && data.status === 'verified') {
-                    setTicketIssued(false); // Will be set when ticket issued within session
+                try {
+                    const data = await mockDb.getReportById(id);
+                    setReport(data);
+                    
+                    // If report is already verified or closed, check for ticket
+                    if (data && (data.status === 'verified' || data.status === 'closed')) {
+                        setTicketLoading(true);
+                        try {
+                            const existingTicket = await mockDb.getTicketForReport(data.id, data.source);
+                            setTicket(existingTicket);
+                        } catch (err) {
+                            console.error("Failed to load ticket", err);
+                        } finally {
+                            setTicketLoading(false);
+                        }
+                    }
+                } catch (e) {
+                    console.error("Failed to load case", e);
                 }
             }
             setLoading(false);
@@ -98,13 +112,18 @@ export const ViolationDetails: React.FC = () => {
         setActionLoading(true);
         setTicketError('');
         try {
-            await mockDb.issueTicket(
+            const newTicket = await mockDb.issueTicket(
                 report.id,
                 isOverride ? penalCode : null,
                 isOverride ? parseFloat(fineAmount) : null,
-                { overrideReason: isOverride ? overrideReason : undefined }
+                { 
+                    overrideReason: isOverride ? overrideReason : undefined,
+                    evidenceReportId: report.source === 'evidence-report' ? report.id : undefined,
+                    violationType: report.finalViolationType || undefined,
+                    vehiclePlate: report.vehicle?.plate || report.aiAnalysis?.detectedPlate || undefined,
+                }
             );
-            setTicketIssued(true);
+            setTicket(newTicket);
             setShowTicketForm(false);
         } catch (e: any) {
             setTicketError(e.message || 'Failed to issue ticket');
@@ -290,7 +309,12 @@ export const ViolationDetails: React.FC = () => {
                             )}
 
                             {/* Ticket success banner */}
-                            {ticketIssued && (
+                            {ticketLoading && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: 'var(--color-text-secondary)', padding: 'var(--space-2) 0' }}>
+                                    <Loader2 size={16} className="spin" /> Checking ticket status...
+                                </div>
+                            )}
+                            {ticket && (
                                 <div style={{
                                     padding: 'var(--space-4)',
                                     backgroundColor: 'rgba(16, 185, 129, 0.1)',
@@ -300,11 +324,17 @@ export const ViolationDetails: React.FC = () => {
                                     alignItems: 'center',
                                     gap: 'var(--space-3)'
                                 }}>
-                                    <ClipboardCheck size={20} color="#10b981" />
-                                    <div>
-                                        <div style={{ fontWeight: '700', color: '#10b981', fontSize: '0.875rem' }}>Ticket Issued Successfully</div>
-                                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
-                                            Penal Code: {isOverride ? penalCode : fineRule?.penalCode} | Fine: Rs. {isOverride ? fineAmount : fineRule?.fineAmount}
+                                    <ClipboardCheck size={24} color="#10b981" style={{ alignSelf: 'flex-start', marginTop: '2px' }} />
+                                    <div style={{ width: '100%' }}>
+                                        <div style={{ fontWeight: '700', color: '#10b981', fontSize: '1rem', marginBottom: '8px' }}>Fine Issued</div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.85rem', color: 'var(--color-text)' }}>
+                                            <div><strong>Ticket Number:</strong> {ticket.ticketNumber}</div>
+                                            <div><strong>Status:</strong> <Badge variant="neutral">{ticket.status.toUpperCase()}</Badge></div>
+                                            <div><strong>Penal Code:</strong> {ticket.penalCode}</div>
+                                            <div><strong>Fine Amount:</strong> Rs. {ticket.fineAmount}</div>
+                                            <div><strong>Due Date:</strong> {ticket.dueDate ? new Date(ticket.dueDate).toLocaleDateString() : 'Pending'}</div>
+                                            <div><strong>Payment Status:</strong> {ticket.paidAt ? 'Paid' : 'Unpaid'}</div>
+                                            {ticket.appealReason && <div style={{ gridColumn: '1 / -1' }}><strong>Appeal Status:</strong> {ticket.status === 'appealed' ? 'Under Review' : 'Resolved'}</div>}
                                         </div>
                                     </div>
                                 </div>
@@ -339,7 +369,7 @@ export const ViolationDetails: React.FC = () => {
                             )}
 
                             {/* Ticket Issuance Form */}
-                            {showTicketForm && !ticketIssued && !isEvidenceReport && (
+                            {showTicketForm && !ticket && !isEvidenceReport && (
                                 <div style={{
                                     padding: 'var(--space-4)',
                                     backgroundColor: 'rgba(59, 130, 246, 0.05)',
@@ -465,7 +495,7 @@ export const ViolationDetails: React.FC = () => {
                                 )}
 
                                 {/* Re-open AI-rejected case for manual review */}
-                                {isRejected && !ticketIssued && (
+                                {isRejected && !ticket && (
                                     <>
                                         <Button
                                             variant="primary"
@@ -490,7 +520,7 @@ export const ViolationDetails: React.FC = () => {
                                 )}
 
                                 {/* Issue ticket for verified cases */}
-                                {isVerified && !showTicketForm && !ticketIssued && (
+                                {isVerified && !showTicketForm && !ticket && (
                                     isEvidenceReport ? (
                                         <Button
                                             variant="outline"
