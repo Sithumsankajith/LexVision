@@ -235,9 +235,6 @@ class FineRule(Base):
     """Engine rule defining default penalties for specific violations."""
 
     __tablename__ = "fine_rules"
-    __table_args__ = (
-        Index("ix_fine_rules_violation_type", "violation_type"),
-    )
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     violation_type = Column(String, nullable=False, index=True)
@@ -269,7 +266,6 @@ class TrafficTicket(Base):
     __tablename__ = "traffic_tickets"
     __table_args__ = (
         Index("ix_traffic_tickets_ticket_number", "ticket_number", unique=True),
-        Index("ix_traffic_tickets_status", "status"),
         Index("ix_traffic_tickets_evidence_report_id", "evidence_report_id"),
         Index("ix_traffic_tickets_report_status", "report_id", "status"),
         Index(
@@ -291,7 +287,7 @@ class TrafficTicket(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
 
     # Human-readable ticket number, e.g. TKT-2026-A1B2C3D4
-    ticket_number = Column(String, unique=True, nullable=False)
+    ticket_number = Column(String, nullable=False)
 
     # FK to legacy Report (nullable — a ticket may belong to an EvidenceReport instead).
     report_id = Column(String, ForeignKey("reports.id"), nullable=True)
