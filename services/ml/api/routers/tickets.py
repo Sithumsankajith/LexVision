@@ -17,6 +17,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -25,6 +26,7 @@ from ..constants import StatusChangeSourceEnum, TicketStatusEnum
 from ..database import get_db
 from ..dependencies import get_police, log_audit_action
 from ..tracking import apply_ticket_status, is_valid_ticket_status_transition
+from ..services.pdf_generator import generate_ticket_pdf
 
 router = APIRouter(prefix="/api/tickets", tags=["tickets"])
 
@@ -452,3 +454,26 @@ def update_ticket_status(
     return _ticket_query(db).filter(
         models.TrafficTicket.id == ticket.id,
     ).first()
+
+@router.get("/{ticket_id}/notice.pdf")
+def download_ticket_notice_pdf(
+    ticket_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_police),
+):
+    """Generate and download a secure PDF notice for the ticket."""
+    ticket = _ticket_query(db).filter(
+        models.TrafficTicket.id == ticket_id,
+    ).first()
+    if ticket is None:
+        raise HTTPException(status_code=404, detail="Ticket not found.")
+
+    pdf_bytes = bytes(generate_ticket_pdf(ticket))
+    
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="notice_{ticket.ticket_number}.pdf"'
+        }
+    )

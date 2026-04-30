@@ -160,3 +160,28 @@ def test_audit_history_created_for_status_mutation(client, police_token, mock_va
     statuses = [h["new_status"] for h in history]
     assert "ISSUED" in statuses
     assert "NOTIFIED" in statuses
+
+def test_generate_pdf_success_as_police(client, police_token, mock_validated_report, fine_rule):
+    headers = {"Authorization": f"Bearer {police_token}"}
+    create_response = client.post("/api/tickets", json={"evidence_report_id": mock_validated_report.id}, headers=headers)
+    ticket_id = create_response.json()["id"]
+
+    pdf_response = client.get(f"/api/tickets/{ticket_id}/notice.pdf", headers=headers)
+    assert pdf_response.status_code == 200
+    assert pdf_response.headers["Content-Type"] == "application/pdf"
+    assert "attachment; filename=" in pdf_response.headers["Content-Disposition"]
+    assert b"%PDF" in pdf_response.content
+
+def test_generate_pdf_unauthorized_for_citizen(client, police_token, citizen_token, mock_validated_report, fine_rule):
+    headers_police = {"Authorization": f"Bearer {police_token}"}
+    create_response = client.post("/api/tickets", json={"evidence_report_id": mock_validated_report.id}, headers=headers_police)
+    ticket_id = create_response.json()["id"]
+
+    headers_citizen = {"Authorization": f"Bearer {citizen_token}"}
+    pdf_response = client.get(f"/api/tickets/{ticket_id}/notice.pdf", headers=headers_citizen)
+    assert pdf_response.status_code in [401, 403]
+
+def test_generate_pdf_not_found(client, police_token):
+    headers = {"Authorization": f"Bearer {police_token}"}
+    pdf_response = client.get("/api/tickets/invalid-id/notice.pdf", headers=headers)
+    assert pdf_response.status_code == 404

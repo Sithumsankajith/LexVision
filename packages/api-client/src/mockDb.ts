@@ -733,5 +733,24 @@ export const mockDb = {
         const data = await response.json();
         return data.map(mapTicketToFrontend);
     },
+
+    downloadTicketNoticePdf: async (ticketId: string, ticketNumber: string) => {
+        const response = await fetch(`${API_BASE_URL}/tickets/${ticketId}/notice.pdf`, {
+            headers: getHeaders(),
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || 'Failed to download PDF notice');
+        }
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `notice_${ticketNumber}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+    },
 };
 

@@ -13,7 +13,8 @@ import {
     Image as ImageIcon,
     FileText,
     ClipboardCheck,
-    Loader2
+    Loader2,
+    Download
 } from 'lucide-react';
 import { Button, Input } from '@lexvision/ui';
 import { Panel, Badge } from '@lexvision/ui';
@@ -335,6 +336,20 @@ export const ViolationDetails: React.FC = () => {
                                             <div><strong>Due Date:</strong> {ticket.dueDate ? new Date(ticket.dueDate).toLocaleDateString() : 'Pending'}</div>
                                             <div><strong>Payment Status:</strong> {ticket.paidAt ? 'Paid' : 'Unpaid'}</div>
                                             {ticket.appealReason && <div style={{ gridColumn: '1 / -1' }}><strong>Appeal Status:</strong> {ticket.status === 'appealed' ? 'Under Review' : 'Resolved'}</div>}
+                                        </div>
+                                        <div style={{ marginTop: 'var(--space-3)' }}>
+                                            <Button 
+                                                variant="outline" 
+                                                size="sm" 
+                                                leftIcon={<Download size={14} />}
+                                                onClick={() => {
+                                                    mockDb.downloadTicketNoticePdf(ticket.id, ticket.ticketNumber).catch(err => {
+                                                        alert(err.message || 'Failed to download PDF notice');
+                                                    });
+                                                }}
+                                            >
+                                                Download Notice (PDF)
+                                            </Button>
                                         </div>
                                     </div>
                                 </div>
