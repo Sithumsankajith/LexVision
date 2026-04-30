@@ -6,6 +6,7 @@ import {
     Settings,
     Users,
     Shield,
+    Scale,
     Bell,
     LogOut
 } from 'lucide-react';
@@ -32,6 +33,7 @@ export const DashboardLayout: React.FC = () => {
         if (location.pathname === '/dashboard') return 'Dashboard';
         if (location.pathname.startsWith('/dashboard/reports')) return 'Reports Management';
         if (location.pathname.startsWith('/dashboard/users')) return 'User Management';
+        if (location.pathname.startsWith('/dashboard/rules')) return 'Fine Rules Engine';
         if (location.pathname.startsWith('/dashboard/settings')) return 'Settings';
         return 'Admin Portal';
     };
@@ -69,6 +71,12 @@ export const DashboardLayout: React.FC = () => {
                 to="/dashboard/users"
                 icon={<Users size={20} />}
                 label="Users"
+            />
+            <SidebarItem
+                as={NavLink}
+                to="/dashboard/rules"
+                icon={<Scale size={20} />}
+                label="Fine Rules"
             />
             <SidebarItem
                 as={NavLink}

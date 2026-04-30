@@ -576,6 +576,47 @@ export const mockDb = {
         return mapFineRuleToFrontend(data);
     },
 
+    createFineRule: async (ruleData: { violationType: string; penalCode: string; fineAmount: number; currency: string; description?: string; active: boolean }) => {
+        const payload = {
+            violation_type: ruleData.violationType,
+            penal_code: ruleData.penalCode,
+            fine_amount: ruleData.fineAmount,
+            currency: ruleData.currency,
+            description: ruleData.description,
+            active: ruleData.active,
+        };
+        const response = await fetch(`${API_BASE_URL}/fine-rules`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || 'Failed to create fine rule');
+        }
+        return mapFineRuleToFrontend(await response.json());
+    },
+
+    updateFineRule: async (ruleId: string, ruleData: { penalCode?: string; fineAmount?: number; currency?: string; description?: string; active?: boolean }) => {
+        const payload = {
+            penal_code: ruleData.penalCode,
+            fine_amount: ruleData.fineAmount,
+            currency: ruleData.currency,
+            description: ruleData.description,
+            active: ruleData.active,
+        };
+        const response = await fetch(`${API_BASE_URL}/fine-rules/${ruleId}`, {
+            method: 'PUT',
+            headers: getHeaders(),
+            body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || 'Failed to update fine rule');
+        }
+        return mapFineRuleToFrontend(await response.json());
+    },
+
     issueTicket: async (
         reportId: string,
         penalCode: string | null,

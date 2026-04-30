@@ -44,6 +44,59 @@ def seed_rewards():
 
 seed_rewards()
 
+# Seed default fine rules
+def seed_fine_rules():
+    db = SessionLocal()
+    try:
+        if "fine_rules" not in inspect(engine).get_table_names():
+            return
+        
+        default_rules = [
+            {
+                "violation_type": "helmet",
+                "penal_code": "MVA-123",
+                "fine_amount": 2500,
+                "description": "Riding a motorcycle without a protective helmet."
+            },
+            {
+                "violation_type": "red-light",
+                "penal_code": "MVA-456",
+                "fine_amount": 5000,
+                "description": "Failing to obey a red traffic light signal."
+            },
+            {
+                "violation_type": "white-line",
+                "penal_code": "MVA-789",
+                "fine_amount": 3000,
+                "description": "Crossing the continuous white line on the road."
+            }
+        ]
+
+        for rule_data in default_rules:
+            # Check if an active rule for this violation type already exists
+            existing = db.query(models.FineRule).filter(
+                models.FineRule.violation_type == rule_data["violation_type"],
+                models.FineRule.active == True
+            ).first()
+
+            if not existing:
+                new_rule = models.FineRule(
+                    violation_type=rule_data["violation_type"],
+                    penal_code=rule_data["penal_code"],
+                    fine_amount=rule_data["fine_amount"],
+                    currency="LKR",
+                    description=rule_data["description"],
+                    active=True,
+                    version=1
+                )
+                db.add(new_rule)
+        
+        db.commit()
+    finally:
+        db.close()
+
+seed_fine_rules()
+
 app = FastAPI(title="LexVision Core API", version="1.0.0")
 
 app.add_middleware(
