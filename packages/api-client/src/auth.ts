@@ -1,6 +1,7 @@
 const SESSION_KEY = 'lexvision_user_session';
 const CITIZEN_SESSION_KEY = 'lexvision_citizen_session';
 const API_BASE_URL = 'http://localhost:8000/api';
+const DEMO_FIREBASE_UID_PREFIX = 'demo-otp:';
 
 export interface UserSession {
     id: string;
@@ -53,6 +54,7 @@ const buildCitizenSession = (exchange: CitizenTokenExchange): CitizenSession => 
     created_at: exchange.citizen.created_at,
     token: exchange.access_token,
 });
+
 
 export const auth = {
     /**
@@ -165,6 +167,35 @@ export const auth = {
         return session;
     },
 
+    /**
+     * Temporary development/demo-only citizen login path.
+     * The backend must explicitly enable this route, and it must never be used in production.
+     */
+    loginCitizenWithDemoOtp: async (
+        phoneNumber: string,
+        options: CitizenLoginOptions = {},
+    ): Promise<CitizenTokenExchange> => {
+        const response = await fetch(`${API_BASE_URL}/auth/citizen/demo-login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone_number: phoneNumber.trim() }),
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            if (response.status === 404) {
+                throw new Error(errorData.detail || 'Demo citizen OTP login is disabled for this backend environment.');
+            }
+            throw new Error(errorData.detail || 'Demo citizen session creation failed.');
+        }
+
+        const exchange = await response.json();
+        if (options.persistSession) {
+            auth.setCitizenSession(exchange);
+        }
+        return exchange;
+    },
+
     getCitizenSession: (): CitizenSession | null => {
         try {
             const data = localStorage.getItem(CITIZEN_SESSION_KEY);
@@ -206,5 +237,13 @@ export const auth = {
 
     isCitizenAuthenticated: (): boolean => {
         return auth.getCitizenSession() !== null;
+    },
+
+    isDemoCitizenSession: (session: CitizenSession | null = auth.getCitizenSession()): boolean => {
+        return Boolean(session && session.firebase_uid.startsWith(DEMO_FIREBASE_UID_PREFIX));
+    },
+
+    isClientOnlyDemoCitizenSession: (session: CitizenSession | null = auth.getCitizenSession()): boolean => {
+        return Boolean(session && session.firebase_uid.startsWith(DEMO_FIREBASE_UID_PREFIX) && session.token.endsWith('.demo'));
     },
 };

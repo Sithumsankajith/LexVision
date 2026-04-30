@@ -1,3 +1,5 @@
+import os
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -11,6 +13,25 @@ from ..firebase_admin import FirebaseAdminConfigError, get_firebase_admin_status
 import bcrypt
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+DEMO_FIREBASE_UID_PREFIX = "demo-otp:"
+
+
+def _is_demo_citizen_login_enabled() -> bool:
+    """
+    Temporary development/demo-only guard for simulated citizen OTP login.
+    This must remain disabled for production deployments.
+    """
+    return os.getenv("DEMO_OTP_ENABLED", "false").lower() == "true"
+
+
+def _normalize_demo_phone_number(phone_number: str) -> str:
+    stripped = phone_number.strip()
+    if not stripped.startswith("+") or not stripped[1:].isdigit():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Enter a valid phone number in international format, for example +94771234567.",
+        )
+    return stripped
 
 def verify_password(plain_password, hashed_password):
     return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
@@ -107,6 +128,49 @@ def login_citizen_with_firebase(
         details={
             "firebase_uid": citizen.firebase_uid,
             "phone_number": citizen.phone_number,
+        },
+    )
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "citizen": citizen,
+    }
+
+
+@router.post("/citizen/demo-login", response_model=schemas.CitizenAuthResponse)
+def login_citizen_with_demo_otp(
+    payload: schemas.DemoCitizenAuthRequest,
+    db: Session = Depends(get_db),
+):
+    if not _is_demo_citizen_login_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Demo citizen OTP login is disabled for this backend environment.",
+        )
+
+    normalized_phone_number = _normalize_demo_phone_number(payload.phone_number)
+    citizen = get_or_create_citizen_account(
+        db,
+        firebase_uid=f"{DEMO_FIREBASE_UID_PREFIX}{normalized_phone_number}",
+        phone_number=normalized_phone_number,
+    )
+
+    from ..dependencies import ACCESS_TOKEN_EXPIRE_MINUTES
+
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_citizen_access_token(citizen, expires_delta=access_token_expires)
+
+    log_audit_action(
+        db,
+        None,
+        "CITIZEN_DEMO_LOGIN_SUCCESS",
+        "Citizen",
+        citizen.id,
+        details={
+            "firebase_uid": citizen.firebase_uid,
+            "phone_number": citizen.phone_number,
+            "mode": "demo",
         },
     )
 

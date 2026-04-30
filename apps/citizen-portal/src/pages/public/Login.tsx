@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { auth, type CitizenOtpReadiness } from '@lexvision/api-client';
 import { CitizenOtpLoginModal, type CitizenOtpVerificationResult } from '@/components/CitizenOtpLoginModal';
+import { isDemoOtpEnabled } from '@/lib/demoOtp';
 import styles from './Login.module.css';
 
 /* ── Types ──────────────────────────────────────────────────── */
@@ -55,6 +56,7 @@ export const Login: React.FC = () => {
     const fromPath = navigationState?.from?.pathname || '/portal';
     const fromState = navigationState?.from?.state;
     const isFinalSubmitLogin = navigationState?.intent === 'final-report-submit';
+    const demoOtpEnabled = isDemoOtpEnabled();
 
     // Shared UI state
     const [activeTab, setActiveTab] = useState<LoginTab>(isFinalSubmitLogin ? 'phone' : 'email');
@@ -79,7 +81,7 @@ export const Login: React.FC = () => {
     /* ── Effects ─────────────────────────────────────────────── */
     React.useEffect(() => {
         if (auth.isCitizenAuthenticated()) {
-            navigate(fromPath, { replace: true, state: fromState });
+            navigate(auth.isDemoCitizenSession() ? '/portal' : fromPath, { replace: true, state: fromState });
             return;
         }
         if (auth.isAuthenticated()) {
@@ -96,12 +98,18 @@ export const Login: React.FC = () => {
     }, [fromPath, fromState, isFinalSubmitLogin, navigate]);
 
     React.useEffect(() => {
+        if (demoOtpEnabled) {
+            setOtpReadiness(null);
+            setReadinessError(null);
+            return;
+        }
+
         let mounted = true;
         auth.getCitizenOtpReadiness()
             .then((r) => { if (mounted) setOtpReadiness(r); })
             .catch((e: unknown) => { if (mounted) setReadinessError(getErrorMessage(e, 'Unable to load OTP readiness.')); });
         return () => { mounted = false; };
-    }, []);
+    }, [demoOtpEnabled]);
 
     /* ── Handlers ────────────────────────────────────────────── */
     const redirectByRole = (role: string) => {
@@ -144,6 +152,12 @@ export const Login: React.FC = () => {
         setError(null);
         setIsLoading(true);
         try {
+            if (result.provider === 'demo') {
+                await auth.loginCitizenWithDemoOtp(result.phoneNumber, { persistSession: true });
+                navigate('/portal', { replace: true });
+                return;
+            }
+
             await auth.loginCitizenWithFirebaseToken(result.idToken, { persistSession: true });
             navigate(fromPath, { replace: true, state: fromState });
         } catch (err: unknown) {
@@ -317,6 +331,10 @@ export const Login: React.FC = () => {
                     {/* ── Phone OTP Tab ──────────────────────────── */}
                     {activeTab === 'phone' && (
                         <div className={styles.tabContent} key="phone-tab">
+                            {demoOtpEnabled && (
+                                <div className={styles.demoBadge}>Demo mode: OTP is simulated</div>
+                            )}
+
                             <button
                                 type="button"
                                 className={styles.ctaButton}
@@ -339,7 +357,7 @@ export const Login: React.FC = () => {
                                     onClick={() => setShowReadiness(!showReadiness)}
                                 >
                                     <div className={styles.readinessHeader}>
-                                        {otpReadiness?.backend_configured ? (
+                                        {demoOtpEnabled || otpReadiness?.backend_configured ? (
                                             <ShieldCheck size={15} className={styles.readinessSuccessIcon} />
                                         ) : (
                                             <TriangleAlert size={15} className={styles.readinessWarningIcon} />
@@ -351,7 +369,18 @@ export const Login: React.FC = () => {
 
                                 {showReadiness && (
                                     <div className={styles.readinessBody}>
-                                        {readinessError ? (
+                                        {demoOtpEnabled ? (
+                                            <>
+                                                <p className={styles.readinessSummary}>
+                                                    Demo OTP is enabled for this local/demo build. No SMS provider will be contacted.
+                                                </p>
+                                                <ul className={styles.requirementsList}>
+                                                    <li>Enter a valid E.164 mobile number, such as +94771234567.</li>
+                                                    <li>Use the fixed demo code 123456 on the verification step.</li>
+                                                    <li>This temporary login path must remain disabled in production.</li>
+                                                </ul>
+                                            </>
+                                        ) : readinessError ? (
                                             <p className={styles.readinessError}>{readinessError}</p>
                                         ) : otpReadiness ? (
                                             <>
@@ -409,6 +438,7 @@ export const Login: React.FC = () => {
                         ? 'Complete Firebase phone verification to continue with your saved evidence submission.'
                         : 'Verify your phone number to open your citizen reports.'
                 }
+                enableDemoOtp={demoOtpEnabled && !isFinalSubmitLogin}
             />
         </div>
     );

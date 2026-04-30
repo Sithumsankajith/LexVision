@@ -9,12 +9,20 @@ import {
     getFirebaseConfigErrorMessage,
     isFirebaseConfigError,
 } from '@/lib/firebase';
+import {
+    buildDemoFirebaseUid,
+    buildDemoIdToken,
+    getDemoOtpCode,
+    isDemoOtpEnabled,
+    validateDemoOtp,
+} from '@/lib/demoOtp';
 import styles from './CitizenOtpLoginModal.module.css';
 
 export interface CitizenOtpVerificationResult {
     idToken: string;
     phoneNumber: string;
     uid: string;
+    provider: 'firebase' | 'demo';
 }
 
 interface CitizenOtpLoginModalProps {
@@ -24,6 +32,7 @@ interface CitizenOtpLoginModalProps {
     title?: string;
     description?: string;
     initialPhoneNumber?: string;
+    enableDemoOtp?: boolean;
 }
 
 const DEFAULT_PHONE_PREFIX = '+94';
@@ -100,20 +109,23 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
     title = 'Verify Your Phone Number',
     description = 'Enter a mobile number in international format to receive a one-time password from Firebase Authentication.',
     initialPhoneNumber = DEFAULT_PHONE_PREFIX,
+    enableDemoOtp = false,
 }) => {
     const recaptchaContainerRef = useRef<HTMLDivElement>(null);
     const verifierRef = useRef<RecaptchaVerifier | null>(null);
     const [phoneNumber, setPhoneNumber] = useState(initialPhoneNumber);
     const [otpCode, setOtpCode] = useState('');
     const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
+    const [isDemoOtpStepReady, setIsDemoOtpStepReady] = useState(false);
     const [isSendingOtp, setIsSendingOtp] = useState(false);
     const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
     const [isCompletingSubmit, setIsCompletingSubmit] = useState(false);
     const [verifiedResult, setVerifiedResult] = useState<CitizenOtpVerificationResult | null>(null);
     const [statusMessage, setStatusMessage] = useState<string | null>(null);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const demoOtpEnabled = enableDemoOtp && isDemoOtpEnabled();
     const isBusy = isSendingOtp || isVerifyingOtp || isCompletingSubmit;
-    const currentStep = verifiedResult ? 3 : confirmationResult ? 2 : 1;
+    const currentStep = verifiedResult ? 3 : (confirmationResult || isDemoOtpStepReady) ? 2 : 1;
 
     const teardownRecaptcha = useCallback(() => {
         verifierRef.current?.clear();
@@ -127,6 +139,7 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
     const resetFlow = useCallback(() => {
         setOtpCode('');
         setConfirmationResult(null);
+        setIsDemoOtpStepReady(false);
         setVerifiedResult(null);
         setStatusMessage(null);
         setErrorMessage(null);
@@ -198,6 +211,16 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
         setIsSendingOtp(true);
 
         try {
+            if (demoOtpEnabled) {
+                // Temporary local/demo-only OTP bypass. Keep the real Firebase integration in place for production.
+                setPhoneNumber(normalizedPhoneNumber);
+                setOtpCode('');
+                setConfirmationResult(null);
+                setIsDemoOtpStepReady(true);
+                setStatusMessage(`Demo OTP sent. Use ${getDemoOtpCode()}.`);
+                return;
+            }
+
             const verifier = await ensureRecaptchaVerifier();
             const auth = await ensureFirebaseAuthReady();
             const result = await signInWithPhoneNumber(auth, normalizedPhoneNumber, verifier);
@@ -219,13 +242,19 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
         setErrorMessage(null);
         setStatusMessage(null);
 
-        if (!confirmationResult) {
+        if (!confirmationResult && !isDemoOtpStepReady) {
             setErrorMessage('Send an OTP first before entering the verification code.');
             return;
         }
 
-        if (!otpCode.trim() || otpCode.trim().length < 6) {
+        const trimmedOtpCode = otpCode.trim();
+        if (!trimmedOtpCode || trimmedOtpCode.length < 6) {
             setErrorMessage('Enter the 6-digit OTP you received.');
+            return;
+        }
+
+        if (demoOtpEnabled && isDemoOtpStepReady && !validateDemoOtp(trimmedOtpCode)) {
+            setErrorMessage(`Invalid demo OTP. Use ${getDemoOtpCode()}.`);
             return;
         }
 
@@ -233,20 +262,37 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
         setIsVerifyingOtp(true);
 
         try {
-            const credential = await confirmationResult.confirm(otpCode.trim());
-            const idToken = await credential.user.getIdToken();
-            const verifiedPhoneNumber = credential.user.phoneNumber || phoneNumber;
-            const result = {
-                idToken,
-                phoneNumber: verifiedPhoneNumber,
-                uid: credential.user.uid,
-            };
+            let result: CitizenOtpVerificationResult;
+
+            if (demoOtpEnabled && isDemoOtpStepReady) {
+
+                result = {
+                    idToken: buildDemoIdToken(phoneNumber),
+                    phoneNumber,
+                    uid: buildDemoFirebaseUid(phoneNumber),
+                    provider: 'demo',
+                };
+            } else {
+                if (!confirmationResult) {
+                    throw new Error('Send an OTP first before entering the verification code.');
+                }
+
+                const credential = await confirmationResult.confirm(trimmedOtpCode);
+                const idToken = await credential.user.getIdToken();
+                const verifiedPhoneNumber = credential.user.phoneNumber || phoneNumber;
+                result = {
+                    idToken,
+                    phoneNumber: verifiedPhoneNumber,
+                    uid: credential.user.uid,
+                    provider: 'firebase',
+                };
+            }
 
             setVerifiedResult(result);
-            setStatusMessage('Phone number verified. Finalizing your report submission...');
+            setStatusMessage(result.provider === 'demo' ? 'Demo OTP verified. Creating your citizen session...' : 'Phone number verified. Finalizing your report submission...');
             setIsCompletingSubmit(true);
 
-            // Return the Firebase ID token so later work can exchange it with the backend.
+            // Return the verification payload so the caller can either create a demo session or exchange the real Firebase token.
             await onVerified(result);
 
             onClose();
@@ -269,6 +315,7 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
     const handleRequestNewCode = () => {
         setOtpCode('');
         setConfirmationResult(null);
+        setIsDemoOtpStepReady(false);
         setVerifiedResult(null);
         setStatusMessage(null);
         setErrorMessage(null);
@@ -309,6 +356,9 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
                             <ShieldCheck size={16} />
                             <span>Citizen Verification</span>
                         </div>
+                        {demoOtpEnabled && (
+                            <div className={styles.demoBadge}>Demo mode: OTP is simulated</div>
+                        )}
                         <h2 id="citizen-otp-title" className={styles.title}>{title}</h2>
                         <p className={styles.description}>{description}</p>
                     </div>
@@ -354,10 +404,13 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
                         )}
 
                         <div className={styles.infoBox}>
-                            Use your Sri Lankan mobile number in international format, such as <strong>+94771234567</strong>.
+                            {demoOtpEnabled
+                                ? <>Use your Sri Lankan mobile number in international format, such as <strong>+94771234567</strong>. No SMS will be sent in demo mode.</>
+                                : <>Use your Sri Lankan mobile number in international format, such as <strong>+94771234567</strong>.</>
+                            }
                         </div>
 
-                        {!confirmationResult ? (
+                        {!confirmationResult && !isDemoOtpStepReady ? (
                             <form className={styles.form} onSubmit={handleSendOtp}>
                                 <Input
                                     id="citizen-otp-phone"
@@ -370,12 +423,19 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
                                     required
                                     disabled={isBusy}
                                 />
-                                <p className={styles.hint}>We will send the OTP directly to this number.</p>
+                                <p className={styles.hint}>
+                                    {demoOtpEnabled
+                                        ? 'Demo mode will simulate OTP delivery for this number.'
+                                        : 'We will send the OTP directly to this number.'
+                                    }
+                                </p>
 
-                                <div className={styles.recaptchaShell}>
-                                    <label className={styles.recaptchaLabel}>Security Check</label>
-                                    <div ref={recaptchaContainerRef} className={styles.recaptchaMount} />
-                                </div>
+                                {!demoOtpEnabled && (
+                                    <div className={styles.recaptchaShell}>
+                                        <label className={styles.recaptchaLabel}>Security Check</label>
+                                        <div ref={recaptchaContainerRef} className={styles.recaptchaMount} />
+                                    </div>
+                                )}
 
                                 <div className={styles.actions}>
                                     <Button type="button" variant="secondary" onClick={onClose} fullWidth disabled={isBusy}>

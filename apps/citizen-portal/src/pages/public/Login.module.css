@@ -509,6 +509,21 @@
     margin-top: 1rem;
 }
 
+.demoBadge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 0.625rem 0.875rem;
+    border-radius: 10px;
+    border: 1px solid rgba(180, 83, 9, 0.18);
+    background: #fff7ed;
+    color: #b45309;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    margin-bottom: 0.875rem;
+}
+
 /* ── Divider ──────────────────────────────────────────────────── */
 .divider {
     display: flex;

@@ -39,6 +39,10 @@ class FirebaseCitizenAuthRequest(BaseModel):
     id_token: str
 
 
+class DemoCitizenAuthRequest(BaseModel):
+    phone_number: str
+
+
 class CitizenResponse(BaseModel):
     id: str
     firebase_uid: str

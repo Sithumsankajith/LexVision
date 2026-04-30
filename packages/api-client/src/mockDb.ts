@@ -2,6 +2,7 @@ import type { CitizenReportDetail, Report, ReportStatusHistoryEntry, ReportStatu
 import { auth } from './auth';
 
 const API_BASE_URL = 'http://localhost:8000/api';
+const DEMO_CITIZEN_REPORTS_KEY = 'lexvision_demo_citizen_reports';
 
 interface CitizenReportPayload {
     violationType: Report['violationType'];
@@ -18,6 +19,10 @@ interface CitizenReportPayload {
     vehicle: Report['vehicle'];
 }
 
+interface DemoCitizenReportRecord extends CitizenReportDetail {
+    phoneNumber: string;
+}
+
 const getHeaders = (token?: string) => {
     const session = auth.getSession();
     const headers: Record<string, string> = {
@@ -28,6 +33,65 @@ const getHeaders = (token?: string) => {
         headers['Authorization'] = `Bearer ${bearerToken}`;
     }
     return headers;
+};
+
+const readDemoCitizenReports = (): DemoCitizenReportRecord[] => {
+    try {
+        const stored = localStorage.getItem(DEMO_CITIZEN_REPORTS_KEY);
+        return stored ? JSON.parse(stored) : [];
+    } catch {
+        return [];
+    }
+};
+
+const writeDemoCitizenReports = (reports: DemoCitizenReportRecord[]) => {
+    localStorage.setItem(DEMO_CITIZEN_REPORTS_KEY, JSON.stringify(reports));
+};
+
+const buildDemoCitizenReport = (reportData: CitizenReportPayload): DemoCitizenReportRecord => {
+    const session = auth.getCitizenSession();
+    const phoneNumber = session?.phone_number;
+    if (!phoneNumber) {
+        throw new Error('Please verify your phone number before submitting a demo report.');
+    }
+
+    const now = new Date().toISOString();
+    const reportId = globalThis.crypto?.randomUUID?.() || `demo-report-${Date.now()}`;
+    const trackingId = `DEMO-${Date.now()}`;
+
+    return {
+        id: reportId,
+        trackingId,
+        source: 'evidence-report',
+        citizen: { phone: phoneNumber },
+        phoneNumber,
+        violationType: reportData.violationType,
+        claimedViolationType: reportData.violationType,
+        inferredViolationType: null,
+        finalViolationType: null,
+        datetime: reportData.datetime,
+        location: reportData.location,
+        evidence: reportData.evidence.map((e, index) => ({
+            id: e.id || `demo-file-${index}`,
+            type: e.type,
+            url: e.url,
+            name: e.name,
+            size: e.size,
+        })),
+        vehicle: reportData.vehicle,
+        status: 'submitted',
+        createdAt: now,
+        updatedAt: now,
+        notes: 'Saved locally in demo mode.',
+        statusHistory: [{
+            id: `${reportId}-submitted`,
+            previousStatus: null,
+            newStatus: 'submitted',
+            notes: 'Report submitted in local demo mode.',
+            changedAt: now,
+            source: 'citizen',
+        }],
+    };
 };
 
 const mapBackendStatus = (status: string): Report['status'] =>
@@ -252,7 +316,25 @@ export const mockDb = {
     },
 
     submitCitizenReportWithFirebase: async (firebaseIdToken: string, reportData: CitizenReportPayload): Promise<Report> => {
+        if (firebaseIdToken.startsWith('demo-otp:')) {
+            throw new Error('Demo OTP login can open the citizen portal, but report submission still requires the real OTP backend.');
+        }
+
         const citizenAuth = await auth.loginCitizenWithFirebaseToken(firebaseIdToken, { persistSession: true });
+        return mockDb.submitCitizenReport(reportData, citizenAuth.access_token);
+    },
+
+    /**
+     * Submits a citizen evidence report with an already verified LexVision citizen session.
+     * This is used to avoid forcing an extra OTP/login step when the citizen is already signed in.
+     */
+    submitCitizenReport: async (reportData: CitizenReportPayload, citizenToken?: string): Promise<Report> => {
+        if (!citizenToken && auth.isClientOnlyDemoCitizenSession()) {
+            const report = buildDemoCitizenReport(reportData);
+            const reports = readDemoCitizenReports();
+            writeDemoCitizenReports([report, ...reports]);
+            return report;
+        }
 
         const payload = {
             violation_type: reportData.violationType,
@@ -275,7 +357,7 @@ export const mockDb = {
 
         const response = await fetch(`${API_BASE_URL}/citizen-reports`, {
             method: 'POST',
-            headers: getHeaders(citizenAuth.access_token),
+            headers: getHeaders(citizenToken || requireCitizenSessionToken()),
             body: JSON.stringify(payload),
         });
 
@@ -292,6 +374,11 @@ export const mockDb = {
     },
 
     getCitizenMyReports: async (): Promise<Report[]> => {
+        if (auth.isClientOnlyDemoCitizenSession()) {
+            const phoneNumber = auth.getCitizenSession()?.phone_number;
+            return readDemoCitizenReports().filter((report) => report.phoneNumber === phoneNumber);
+        }
+
         const token = requireCitizenSessionToken();
         const response = await fetch(`${API_BASE_URL}/citizen-reports/me`, {
             headers: getHeaders(token),
@@ -325,6 +412,11 @@ export const mockDb = {
     },
 
     getCitizenMyReportById: async (reportId: string): Promise<CitizenReportDetail | null> => {
+        if (auth.isClientOnlyDemoCitizenSession()) {
+            const phoneNumber = auth.getCitizenSession()?.phone_number;
+            return readDemoCitizenReports().find((report) => report.id === reportId && report.phoneNumber === phoneNumber) || null;
+        }
+
         const token = requireCitizenSessionToken();
         const response = await fetch(`${API_BASE_URL}/citizen-reports/me/${reportId}`, {
             headers: getHeaders(token),
@@ -357,10 +449,14 @@ export const mockDb = {
             }
 
             const citizenResponse = await fetch(`${API_BASE_URL}/citizen-reports/tracking/${trackingId}`);
-            if (!citizenResponse.ok) return null;
+            if (!citizenResponse.ok) {
+                return readDemoCitizenReports().find((report) => report.trackingId === trackingId) || null;
+            }
             const citizenData = await citizenResponse.json();
             return mapCitizenReportToFrontend(citizenData);
-        } catch { return null; }
+        } catch {
+            return readDemoCitizenReports().find((report) => report.trackingId === trackingId) || null;
+        }
     },
 
     getReportById: async (id: string): Promise<Report | null> => {
@@ -753,4 +849,3 @@ export const mockDb = {
         document.body.removeChild(a);
     },
 };
-

@@ -53,6 +53,19 @@
     font-weight: 700;
 }
 
+.demoBadge {
+    display: inline-flex;
+    align-items: center;
+    margin-bottom: var(--space-3);
+    padding: 6px 10px;
+    border-radius: var(--radius-full);
+    border: 1px solid rgba(180, 83, 9, 0.18);
+    background: #fff7ed;
+    color: #b45309;
+    font-size: var(--text-sm);
+    font-weight: 700;
+}
+
 .title {
     font-size: var(--text-2xl);
     margin-bottom: var(--space-2);

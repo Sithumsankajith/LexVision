@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Camera, MapPin, Radio, Upload, X, CheckCircle, FileText, ArrowRight, ArrowLeft, Locate, Loader2 } from 'lucide-react';
 import { Stepper, Button, Card, Input, Select } from '@lexvision/ui';
-import { mockDb } from '@lexvision/api-client';
+import { auth, mockDb } from '@lexvision/api-client';
 import type { ViolationType } from '@lexvision/types';
 import { CitizenOtpLoginModal, type CitizenOtpVerificationResult } from '@/components/CitizenOtpLoginModal';
 import {
@@ -263,6 +263,8 @@ export const ReportWizard: React.FC = () => {
 
     const [errors, setErrors] = useState<Record<string, string>>({});
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const citizenSession = auth.getCitizenSession();
+    const hasReusableCitizenSession = Boolean(citizenSession);
 
     useEffect(() => {
         let active = true;
@@ -446,6 +448,12 @@ export const ReportWizard: React.FC = () => {
             await savePendingReportDraft(formData).catch((error) => {
                 console.error('Failed to persist the report draft before OTP verification', error);
             });
+
+            if (hasReusableCitizenSession) {
+                await submitCitizenReportWithExistingSession();
+                return;
+            }
+
             setIsOtpModalOpen(true);
             return;
         }
@@ -456,11 +464,17 @@ export const ReportWizard: React.FC = () => {
         }
     };
 
-    const submitCitizenReport = async (verificationResult: CitizenOtpVerificationResult) => {
-        setIsSubmitting(true);
-        try {
-            // Convert files to base64 so they can be saved and viewed across browsers
-            const evidencePayload = await Promise.all(
+    const buildCitizenReportPayload = async () => {
+        return {
+            violationType: formData.violationType as ViolationType,
+            datetime: `${formData.date}T${formData.time}`,
+            location: {
+                lat: formData.lat,
+                lng: formData.lng,
+                address: formData.location,
+                city: formData.city,
+            },
+            evidence: await Promise.all(
                 formData.evidenceFiles.map(async (f, i) => ({
                     id: `ev-${i}`,
                     type: f.type.startsWith('video') ? ('video' as const) : ('image' as const),
@@ -469,24 +483,22 @@ export const ReportWizard: React.FC = () => {
                     size: f.size,
                     mimeType: f.type || undefined,
                 }))
-            );
+            ),
+            vehicle: {
+                plate: formData.vehiclePlate,
+                type: formData.vehicleType,
+                notes: formData.description,
+            },
+        };
+    };
 
-            const report = await mockDb.submitCitizenReportWithFirebase(verificationResult.idToken, {
-                violationType: formData.violationType as ViolationType,
-                datetime: `${formData.date}T${formData.time}`,
-                location: {
-                    lat: formData.lat,
-                    lng: formData.lng,
-                    address: formData.location,
-                    city: formData.city,
-                },
-                evidence: evidencePayload,
-                vehicle: {
-                    plate: formData.vehiclePlate,
-                    type: formData.vehicleType,
-                    notes: formData.description,
-                },
-            });
+    const finalizeCitizenReportSubmission = async (
+        submitRequest: (payload: Awaited<ReturnType<typeof buildCitizenReportPayload>>) => Promise<{ trackingId: string }>
+    ) => {
+        setIsSubmitting(true);
+        try {
+            const payload = await buildCitizenReportPayload();
+            const report = await submitRequest(payload);
             await clearPendingReportDraft().catch(() => undefined);
             setSubmittedId(report.trackingId);
         } catch (error: unknown) {
@@ -501,6 +513,16 @@ export const ReportWizard: React.FC = () => {
         } finally {
             setIsSubmitting(false);
         }
+    };
+
+    const submitCitizenReport = async (verificationResult: CitizenOtpVerificationResult) => {
+        await finalizeCitizenReportSubmission((payload) =>
+            mockDb.submitCitizenReportWithFirebase(verificationResult.idToken, payload)
+        );
+    };
+
+    const submitCitizenReportWithExistingSession = async () => {
+        await finalizeCitizenReportSubmission((payload) => mockDb.submitCitizenReport(payload));
     };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -522,7 +544,7 @@ export const ReportWizard: React.FC = () => {
             <div className={`container ${styles.successContainer}`}>
                 <CheckCircle size={80} className={styles.successIcon} />
                 <h1>Report Submitted Successfully!</h1>
-                <p>Your OTP-verified report has been received and linked to your verified phone number.</p>
+                <p>Your report has been received and linked to your citizen account.</p>
 
                 <div className={styles.trackingBox}>
                     <span>Report Reference Number:</span>
@@ -763,7 +785,10 @@ export const ReportWizard: React.FC = () => {
                                 color: 'var(--color-text-secondary)',
                             }}
                         >
-                            You can complete the entire report first. When you press the final submit button, a phone OTP dialog will open to verify your number before the report is sent.
+                            {hasReusableCitizenSession
+                                ? 'You are already signed in with a verified citizen session. Final submit will use your current login and will not ask for another OTP.'
+                                : 'You can complete the entire report first. When you press the final submit button, phone verification will be required before the report is sent.'
+                            }
                         </div>
 
                         <div className="form-grid form-grid--2-col">
@@ -819,7 +844,7 @@ export const ReportWizard: React.FC = () => {
                     isLoading={isSubmitting}
                     rightIcon={currentStep === 4 ? undefined : <ArrowRight size={16} />}
                 >
-                    {currentStep === 4 ? 'Verify Phone & Submit' : 'Next Step'}
+                    {currentStep === 4 ? (hasReusableCitizenSession ? 'Submit Report' : 'Verify Phone & Submit') : 'Next Step'}
                 </Button>
             </div>
 
