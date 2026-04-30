@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 
 from .database import engine, Base, SessionLocal
 from .routers import admin, auth, citizen_reports, evidence_reports, reports, tickets, users, fine_rules
@@ -9,6 +9,21 @@ from . import models
 # Keep SQLite zero-config for local demos; PostgreSQL should be migrated explicitly.
 if engine.dialect.name == "sqlite":
     Base.metadata.create_all(bind=engine)
+
+
+def ensure_sqlite_schema_compatibility():
+    if engine.dialect.name != "sqlite":
+        return
+
+    with engine.begin() as connection:
+        inspector = inspect(connection)
+        inference_log_columns = {column["name"] for column in inspector.get_columns("inference_logs")} if "inference_logs" in inspector.get_table_names() else set()
+        if "inference_logs" in inspector.get_table_names() and "evidence_report_id" not in inference_log_columns:
+            connection.execute(text("ALTER TABLE inference_logs ADD COLUMN evidence_report_id VARCHAR"))
+            connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_inference_logs_evidence_report_id ON inference_logs (evidence_report_id)"))
+
+
+ensure_sqlite_schema_compatibility()
 
 # Seed initial rewards if they don't exist
 def seed_rewards():

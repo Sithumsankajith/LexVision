@@ -166,7 +166,11 @@ def create_ticket(
         if not violation_type_snapshot:
             violation_type_snapshot = evidence_report.violation_type
         if not vehicle_plate_snapshot:
-            vehicle_plate_snapshot = evidence_report.vehicle_plate
+            vehicle_plate_snapshot = (
+                evidence_report.inference_log.ocr_text
+                if evidence_report.inference_log and evidence_report.inference_log.ocr_text
+                else evidence_report.vehicle_plate
+            )
 
     # --- Process Fine Rule / Override ---
     final_penal_code = ticket_data.penal_code

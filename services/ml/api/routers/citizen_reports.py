@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 
 from .. import models, schemas
@@ -11,18 +11,22 @@ from ..database import get_db
 from ..dependencies import get_current_citizen_account, log_audit_action
 from ..sms import SmsSendRequest, dispatch_sms, render_sms_template
 from ..tracking import apply_evidence_report_status
+from ..tasks import submit_inference_task
 
 router = APIRouter(prefix="/api/citizen-reports", tags=["citizen-reports"])
 
 
 def _citizen_report_query(db: Session):
-    return db.query(models.EvidenceReport)
+    return db.query(models.EvidenceReport).options(
+        joinedload(models.EvidenceReport.inference_log),
+    )
 
 
 @router.post("", response_model=schemas.CitizenEvidenceReportResponse)
 @router.post("/", include_in_schema=False)
 def create_citizen_report(
     report_data: schemas.CitizenEvidenceReportCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_citizen: models.Citizen = Depends(get_current_citizen_account),
 ):
@@ -65,7 +69,10 @@ def create_citizen_report(
 
     saved_report = (
         db.query(models.EvidenceReport)
-        .options(joinedload(models.EvidenceReport.files))
+        .options(
+            joinedload(models.EvidenceReport.files),
+            joinedload(models.EvidenceReport.inference_log),
+        )
         .filter(models.EvidenceReport.id == new_report.id)
         .first()
     )
@@ -104,6 +111,10 @@ def create_citizen_report(
         ),
     )
 
+    # Run the same AI enrichment path used by legacy reports so police can
+    # review citizen submissions with helmet + ANPR context in the queue.
+    submit_inference_task(saved_report.id, background_tasks, report_kind="evidence")
+
     return saved_report
 
 
@@ -114,6 +125,7 @@ def get_current_citizen_reports(
 ):
     return (
         _citizen_report_query(db)
+        .options(joinedload(models.EvidenceReport.files))
         .filter(models.EvidenceReport.citizen_id == current_citizen.id)
         .order_by(models.EvidenceReport.created_at.desc())
         .all()
@@ -131,6 +143,7 @@ def get_current_citizen_report_detail(
         .options(
             joinedload(models.EvidenceReport.files),
             joinedload(models.EvidenceReport.status_history),
+            joinedload(models.EvidenceReport.inference_log),
         )
         .filter(
             models.EvidenceReport.id == report_id,
@@ -149,7 +162,10 @@ def get_current_citizen_report_detail(
 def get_citizen_report_by_tracking_id(tracking_id: str, db: Session = Depends(get_db)):
     report = (
         _citizen_report_query(db)
-        .options(joinedload(models.EvidenceReport.files))
+        .options(
+            joinedload(models.EvidenceReport.files),
+            joinedload(models.EvidenceReport.inference_log),
+        )
         .filter(models.EvidenceReport.tracking_id == tracking_id)
         .first()
     )

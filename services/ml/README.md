@@ -30,6 +30,11 @@ pip install -r requirements.txt
 4. Run `training/evaluate_model.py` against a saved `.pt` file whenever you want a standalone validation or test report.
 5. Use code in `inference/` and `api/` to serve predictions and OCR.
 
+For the live citizen-report AI pipeline, the API worker looks for:
+- `HELMET_MODEL_PATH`: optional absolute/relative path to the helmet detector weights.
+- `ANPR_MODEL_PATH`: optional absolute/relative path to the number-plate detector weights.
+If unset, it falls back to `services/ml/models/helmet_best.pt` and `services/ml/models/anpr_best.pt`.
+
 ### Training Outputs
 Every training run now saves:
 

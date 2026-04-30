@@ -76,7 +76,12 @@ class Report(Base):
 
     user = relationship("User", back_populates="reports")
     evidence = relationship("Evidence", back_populates="report")
-    inference_log = relationship("InferenceLog", back_populates="report", uselist=False)
+    inference_log = relationship(
+        "InferenceLog",
+        back_populates="report",
+        uselist=False,
+        foreign_keys="InferenceLog.report_id",
+    )
     ticket = relationship(
         "TrafficTicket",
         back_populates="report",
@@ -127,6 +132,12 @@ class EvidenceReport(Base):
         back_populates="report",
         cascade="all, delete-orphan",
         order_by="SmsNotification.attempted_at",
+    )
+    inference_log = relationship(
+        "InferenceLog",
+        back_populates="evidence_report",
+        uselist=False,
+        foreign_keys="InferenceLog.evidence_report_id",
     )
     ticket = relationship(
         "TrafficTicket",
@@ -219,7 +230,8 @@ class InferenceLog(Base):
     __tablename__ = "inference_logs"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    report_id = Column(String, ForeignKey("reports.id"), unique=True, index=True)
+    report_id = Column(String, ForeignKey("reports.id"), unique=True, index=True, nullable=True)
+    evidence_report_id = Column(String, ForeignKey("evidence_reports.id"), unique=True, index=True, nullable=True)
     model_version = Column(String)
     bbox_coordinates = Column(JSON)
     confidence = Column(Float)
@@ -228,7 +240,8 @@ class InferenceLog(Base):
     inference_latency = Column(Float)
     timestamp = Column(DateTime, default=func.now())
 
-    report = relationship("Report", back_populates="inference_log")
+    report = relationship("Report", back_populates="inference_log", foreign_keys=[report_id])
+    evidence_report = relationship("EvidenceReport", back_populates="inference_log", foreign_keys=[evidence_report_id])
 
 
 class FineRule(Base):

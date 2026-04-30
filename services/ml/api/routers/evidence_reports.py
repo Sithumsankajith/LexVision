@@ -19,6 +19,7 @@ def _staff_report_query(db: Session):
     return db.query(models.EvidenceReport).options(
         joinedload(models.EvidenceReport.files),
         joinedload(models.EvidenceReport.citizen),
+        joinedload(models.EvidenceReport.inference_log),
     )
 
 

@@ -131,6 +131,7 @@ class CitizenEvidenceReportResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     files: List[CitizenEvidenceFileResponse] = []
+    inference_log: Optional["InferenceLogResponse"] = None
 
     class Config:
         from_attributes = True
@@ -180,7 +181,8 @@ class EvidenceSchema(BaseModel):
 # --- Inference Log Schema (must be before ReportResponse) ---
 class InferenceLogResponse(BaseModel):
     id: str
-    report_id: str
+    report_id: Optional[str] = None
+    evidence_report_id: Optional[str] = None
     model_version: str
     bbox_coordinates: Any
     confidence: float
