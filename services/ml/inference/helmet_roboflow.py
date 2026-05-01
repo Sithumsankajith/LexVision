@@ -1,21 +1,37 @@
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
 from typing import Any
 
-from dotenv import dotenv_values, load_dotenv
+try:
+    from services.ml.api.env import (
+        ROBOFLOW_DEFAULT_API_URL,
+        ROBOFLOW_DEFAULT_MODEL_ID,
+        get_env_value,
+        get_roboflow_config,
+        load_service_env,
+    )
+except ModuleNotFoundError as exc:
+    if exc.name not in {"services", "services.ml", "services.ml.api", "services.ml.api.env"}:
+        raise
+    from api.env import (
+        ROBOFLOW_DEFAULT_API_URL,
+        ROBOFLOW_DEFAULT_MODEL_ID,
+        get_env_value,
+        get_roboflow_config,
+        load_service_env,
+    )
 
 
 logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 ENV_PATH = BASE_DIR / ".env"
-load_dotenv(dotenv_path=ENV_PATH)
+load_service_env()
 
-ROBOFLOW_API_URL = os.getenv("ROBOFLOW_API_URL", "https://serverless.roboflow.com")
-ROBOFLOW_HELMET_MODEL_ID = os.getenv("ROBOFLOW_HELMET_MODEL_ID", "helmet-detection-yolov8/1")
+ROBOFLOW_API_URL = ROBOFLOW_DEFAULT_API_URL
+ROBOFLOW_HELMET_MODEL_ID = ROBOFLOW_DEFAULT_MODEL_ID
 HIGH_CONFIDENCE_THRESHOLD = 0.8
 MEDIUM_CONFIDENCE_THRESHOLD = 0.5
 
@@ -41,16 +57,7 @@ _client_signature: tuple[str, str] | None = None
 
 
 def _env_setting(name: str, default: str | None = None) -> str | None:
-    runtime_value = os.getenv(name)
-    if isinstance(runtime_value, str) and runtime_value.strip():
-        return runtime_value.strip()
-
-    file_values = dotenv_values(ENV_PATH) if ENV_PATH.exists() else {}
-    file_value = file_values.get(name)
-    if isinstance(file_value, str) and file_value.strip():
-        return file_value.strip()
-
-    return default
+    return get_env_value(name, default)
 
 
 def _confidence_level(score: float) -> str:
@@ -139,8 +146,10 @@ def _get_client():
     )
     _client_signature = signature
     _client_error = None
+    safe_config = get_roboflow_config()
     logger.info(
-        "Roboflow helmet client initialized for %s using %s.",
+        "Roboflow helmet client initialized | api_key=%s | model_id=%s | api_url=%s",
+        safe_config["api_key_masked"] or "<missing>",
         _env_setting("ROBOFLOW_HELMET_MODEL_ID", ROBOFLOW_HELMET_MODEL_ID),
         api_url,
     )

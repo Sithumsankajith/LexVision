@@ -688,6 +688,19 @@ export const mockDb = {
         } catch { return null; }
     },
 
+    rerunEvidenceReportInference: async (reportId: string): Promise<Report> => {
+        const response = await fetch(`${API_BASE_URL}/evidence-reports/${reportId}/rerun-inference`, {
+            method: 'POST',
+            headers: getHeaders(),
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || 'Failed to re-run AI analysis');
+        }
+        const data = await response.json();
+        return mapCitizenReportToFrontend(data);
+    },
+
     // --- User & Reward Methods ---
     getProfile: async () => {
         const response = await fetch(`${API_BASE_URL}/users/me`, {

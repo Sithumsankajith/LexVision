@@ -10,6 +10,7 @@ import {
     XCircle,
     PlayCircle,
     BrainCircuit,
+    RefreshCcw,
     Image as ImageIcon,
     FileText,
     ClipboardCheck,
@@ -114,29 +115,38 @@ export const ViolationDetails: React.FC = () => {
     const [ticketLoading, setTicketLoading] = useState(false);
     const [ticketError, setTicketError] = useState('');
     const [imageNaturalSize, setImageNaturalSize] = useState({ width: 0, height: 0 });
+    const [rerunLoading, setRerunLoading] = useState(false);
+    const [rerunError, setRerunError] = useState('');
+
+    const loadReportDetails = async (reportId: string) => {
+        try {
+            const data = await mockDb.getReportById(reportId);
+            setReport(data);
+
+            if (data && (data.status === 'verified' || data.status === 'closed')) {
+                setTicketLoading(true);
+                try {
+                    const existingTicket = await mockDb.getTicketForReport(data.id, data.source);
+                    setTicket(existingTicket);
+                } catch (err) {
+                    console.error("Failed to load ticket", err);
+                } finally {
+                    setTicketLoading(false);
+                }
+            } else {
+                setTicket(null);
+            }
+            return data;
+        } catch (e) {
+            console.error("Failed to load case", e);
+            return null;
+        }
+    };
 
     useEffect(() => {
         const fetchReport = async () => {
             if (id) {
-                try {
-                    const data = await mockDb.getReportById(id);
-                    setReport(data);
-                    
-                    // If report is already verified or closed, check for ticket
-                    if (data && (data.status === 'verified' || data.status === 'closed')) {
-                        setTicketLoading(true);
-                        try {
-                            const existingTicket = await mockDb.getTicketForReport(data.id, data.source);
-                            setTicket(existingTicket);
-                        } catch (err) {
-                            console.error("Failed to load ticket", err);
-                        } finally {
-                            setTicketLoading(false);
-                        }
-                    }
-                } catch (e) {
-                    console.error("Failed to load case", e);
-                }
+                await loadReportDetails(id);
             }
             setLoading(false);
         };
@@ -206,6 +216,23 @@ export const ViolationDetails: React.FC = () => {
         }
     };
 
+    const handleRerunInference = async () => {
+        if (!report || report.source !== 'evidence-report') {
+            return;
+        }
+
+        setRerunLoading(true);
+        setRerunError('');
+        try {
+            const updated = await mockDb.rerunEvidenceReportInference(report.id);
+            setReport(updated);
+        } catch (e: any) {
+            setRerunError(e.message || 'Failed to re-run AI analysis');
+        } finally {
+            setRerunLoading(false);
+        }
+    };
+
     if (loading) return <div style={{ padding: '2rem', textAlign: 'center' }}>Loading Case...</div>;
     if (!report) return <div style={{ padding: '2rem', textAlign: 'center' }}>Case not found.</div>;
 
@@ -230,6 +257,7 @@ export const ViolationDetails: React.FC = () => {
     const isRejected = report.status === 'rejected';
     const isClosed = report.status === 'closed';
     const isResolved = isVerified || isRejected;
+    const canRerunAiAnalysis = isEvidenceReport && !!aiSummary?.error && !isVerified && !isClosed;
 
     return (
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
@@ -401,6 +429,22 @@ export const ViolationDetails: React.FC = () => {
                                     {!aiSummary && (
                                         <div style={{ color: 'var(--color-text-secondary)', fontSize: '0.8rem' }}>
                                             Safe fallback: no AI summary was returned, so officer review must rely on the original evidence.
+                                        </div>
+                                    )}
+                                    {canRerunAiAnalysis && (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginTop: '6px' }}>
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={handleRerunInference}
+                                                disabled={rerunLoading}
+                                            >
+                                                {rerunLoading ? <Loader2 size={14} className="spin" /> : <RefreshCcw size={14} />}
+                                                {' '}Re-run AI Analysis
+                                            </Button>
+                                            {rerunError && (
+                                                <span style={{ color: '#b91c1c', fontSize: '0.8rem' }}>{rerunError}</span>
+                                            )}
                                         </div>
                                     )}
                                 </div>

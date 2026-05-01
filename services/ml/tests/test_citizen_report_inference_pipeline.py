@@ -150,3 +150,81 @@ def test_police_evidence_report_detail_exposes_ai_summary(client, police_token, 
     assert payload["ai_summary"]["manual_review_required"] is False
     assert payload["ai_summary"]["detected_classes"] == ["no_helmet"]
     assert payload["ai_summary"]["detections"][0]["class"] == "no_helmet"
+
+
+def test_police_can_rerun_evidence_report_inference(client, police_token, db_session, citizen_user, monkeypatch):
+    report = models.EvidenceReport(
+        citizen_id=citizen_user.id,
+        tracking_id="EV-RERUN-001",
+        violation_type="helmet",
+        incident_at=datetime(2026, 5, 1, 9, 0, 0, tzinfo=timezone.utc),
+        location_lat=6.9271,
+        location_lng=79.8612,
+        location_address="Colombo, Sri Lanka",
+        location_city="Colombo",
+        status=ReportStatusEnum.UNDER_REVIEW,
+    )
+    db_session.add(report)
+    db_session.flush()
+    db_session.add(
+        models.InferenceLog(
+            evidence_report_id=report.id,
+            model_version="helmet-detection-yolov8/1|anpr_best.pt|easyocr",
+            bbox_coordinates={
+                "claimed_violation_type": "helmet",
+                "violation_provider": "roboflow",
+                "violation_detection_status": "configuration_error",
+                "violation_error": "ROBOFLOW_API_KEY is not set.",
+                "needs_manual_review": True,
+            },
+            confidence=0.0,
+            ocr_text=None,
+            ocr_confidence=0.0,
+            inference_latency=0.42,
+        )
+    )
+    db_session.commit()
+
+    def fake_attempt_inference(target_report, db, report_kind="evidence", attempt=1):
+        inference_log = db.query(models.InferenceLog).filter_by(evidence_report_id=target_report.id).one()
+        inference_log.model_version = "helmet-detection-yolov8/1|anpr_best.pt|easyocr"
+        inference_log.bbox_coordinates = {
+            "claimed_violation_type": "helmet",
+            "inferred_violation_type": "no-helmet",
+            "has_helmet_violation": True,
+            "violation_provider": "roboflow",
+            "violation_confidence": 0.91,
+            "violation_confidence_level": "high",
+            "needs_manual_review": False,
+            "violation_detected_classes": ["no_helmet"],
+            "violation_detections": [
+                {
+                    "class": "no_helmet",
+                    "normalized_class": "no-helmet",
+                    "confidence": 0.91,
+                    "confidence_level": "high",
+                    "bbox": {"x": 144, "y": 168, "width": 86, "height": 102},
+                }
+            ],
+        }
+        inference_log.confidence = 0.91
+        inference_log.ocr_text = "WP-1234"
+        inference_log.ocr_confidence = 0.88
+        inference_log.timestamp = datetime.utcnow()
+        db.commit()
+
+    monkeypatch.setattr("api.routers.evidence_reports.attempt_inference", fake_attempt_inference)
+
+    response = client.post(
+        f"/api/evidence-reports/{report.id}/rerun-inference",
+        headers={"Authorization": f"Bearer {police_token}"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ai_summary"] is not None
+    assert payload["ai_summary"]["provider"] == "roboflow"
+    assert payload["ai_summary"]["model_id"] == "helmet-detection-yolov8/1"
+    assert payload["ai_summary"]["error"] is None
+    assert payload["ai_summary"]["has_helmet_violation"] is True
+    assert payload["ai_summary"]["confidence"] == 0.91

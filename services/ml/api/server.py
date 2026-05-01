@@ -1,10 +1,20 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import inspect, text
 
+from .env import load_service_env, log_roboflow_config
+
+
+load_service_env()
+
 from .database import engine, Base, SessionLocal
 from .routers import admin, auth, citizen_reports, evidence_reports, reports, tickets, users, fine_rules
 from . import models
+
+
+logger = logging.getLogger(__name__)
 
 # Keep SQLite zero-config for local demos; PostgreSQL should be migrated explicitly.
 if engine.dialect.name == "sqlite":
@@ -113,6 +123,11 @@ def seed_fine_rules():
 seed_fine_rules()
 
 app = FastAPI(title="LexVision Core API", version="1.0.0")
+
+
+@app.on_event("startup")
+def log_backend_startup_configuration():
+    log_roboflow_config(context="backend startup", target_logger=logger)
 
 app.add_middleware(
     CORSMiddleware,

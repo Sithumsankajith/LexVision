@@ -12,6 +12,7 @@ from ..dependencies import get_police, log_audit_action
 from ..presenters import present_evidence_report, present_evidence_reports
 from ..sms import SmsSendRequest, dispatch_sms, render_status_change_sms_template
 from ..tracking import apply_evidence_report_status, is_valid_report_status_transition
+from ..worker import attempt_inference
 
 router = APIRouter(prefix="/api/evidence-reports", tags=["evidence-reports"])
 
@@ -123,3 +124,48 @@ def update_evidence_report_status(
     )
 
     return present_evidence_report(saved_report)
+
+
+@router.post("/{report_id}/rerun-inference", response_model=schemas.StaffEvidenceReportResponse)
+def rerun_evidence_report_inference(
+    report_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_police),
+):
+    report = _staff_report_query(db).filter(models.EvidenceReport.id == report_id).first()
+    if report is None:
+        raise HTTPException(status_code=404, detail="Evidence report not found")
+
+    if report.status in {models.ReportStatusEnum.VALIDATED, models.ReportStatusEnum.CLOSED}:
+        raise HTTPException(
+            status_code=409,
+            detail="Inference can only be re-run for reports that are still pending police review.",
+        )
+
+    try:
+        attempt_inference(report, db, report_kind="evidence", attempt=1)
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to re-run inference: {exc}") from exc
+
+    refreshed_report = _staff_report_query(db).filter(models.EvidenceReport.id == report_id).first()
+    if refreshed_report is None:
+        raise HTTPException(status_code=500, detail="Failed to reload the updated evidence report.")
+
+    log_audit_action(
+        db,
+        current_user.id,
+        "EVIDENCE_REPORT_INFERENCE_RERUN",
+        "EvidenceReport",
+        refreshed_report.id,
+        details={
+            "tracking_id": refreshed_report.tracking_id,
+            "status": (
+                refreshed_report.status.value
+                if hasattr(refreshed_report.status, "value")
+                else str(refreshed_report.status)
+            ),
+        },
+    )
+
+    return present_evidence_report(refreshed_report)

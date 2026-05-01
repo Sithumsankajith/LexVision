@@ -13,9 +13,12 @@ import numpy as np
 from sqlalchemy.orm import Session
 
 from .database import SessionLocal
+from .env import get_env_value, load_service_env
 from .constants import ReportStatusEnum, StatusChangeSourceEnum, StatusEnum
 from .models import AuditLog, Evidence, EvidenceFile, EvidenceReport, InferenceLog, Report
 from .tracking import apply_evidence_report_status
+
+load_service_env()
 
 try:
     from services.ml.inference.helmet_roboflow import (
@@ -37,7 +40,7 @@ TEMP_DIR = BASE_DIR / "temp" / "anpr_crops"
 
 
 def _env_path_or_default(env_var_name: str, default_path: Path) -> Path:
-    raw_value = os.getenv(env_var_name)
+    raw_value = get_env_value(env_var_name)
     if raw_value is None:
         return default_path
 
@@ -56,7 +59,7 @@ ANPR_MODEL_VERSION = f"{ANPR_MODEL_PATH.name}|easyocr"
 QUALITY_THRESHOLD = 0.15
 HIGH_CONFIDENCE_THRESHOLD = 0.8
 MEDIUM_CONFIDENCE_THRESHOLD = 0.5
-HELMET_VIOLATION_THRESHOLD = float(os.getenv("HELMET_VIOLATION_THRESHOLD", "0.5"))
+HELMET_VIOLATION_THRESHOLD = float(get_env_value("HELMET_VIOLATION_THRESHOLD", "0.5") or "0.5")
 
 _helmet_detector = None
 _helmet_detector_load_attempted = False
