@@ -34,8 +34,22 @@ logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).resolve().parents[1]
 MODELS_DIR = BASE_DIR / "models"
 TEMP_DIR = BASE_DIR / "temp" / "anpr_crops"
-HELMET_MODEL_PATH = Path(os.getenv("HELMET_MODEL_PATH", str(MODELS_DIR / "helmet_best.pt")))
-ANPR_MODEL_PATH = Path(os.getenv("ANPR_MODEL_PATH", str(MODELS_DIR / "anpr_best.pt")))
+
+
+def _env_path_or_default(env_var_name: str, default_path: Path) -> Path:
+    raw_value = os.getenv(env_var_name)
+    if raw_value is None:
+        return default_path
+
+    cleaned_value = raw_value.strip()
+    if not cleaned_value:
+        return default_path
+
+    return Path(cleaned_value).expanduser()
+
+
+HELMET_MODEL_PATH = _env_path_or_default("HELMET_MODEL_PATH", MODELS_DIR / "helmet_best.pt")
+ANPR_MODEL_PATH = _env_path_or_default("ANPR_MODEL_PATH", MODELS_DIR / "anpr_best.pt")
 PLATE_CLASS_NAME = "License_Plate"
 HELMET_MODEL_VERSION = HELMET_MODEL_PATH.name
 ANPR_MODEL_VERSION = f"{ANPR_MODEL_PATH.name}|easyocr"
@@ -411,9 +425,7 @@ def _normalize_roboflow_violation_result(result: dict[str, Any]) -> dict:
 def _should_use_local_helmet_fallback(result: dict[str, Any]) -> bool:
     return result["status"] in {
         "api_error",
-        "configuration_error",
         "dependency_error",
-        "invalid_image",
         "timeout",
     }
 
@@ -506,6 +518,12 @@ def _run_violation_detection(image_path: str) -> dict:
         "status": roboflow_result["status"],
         "error": roboflow_result.get("error"),
     }
+    if roboflow_result.get("error") and local_result["status"] in {"model_unavailable", "detection_error"}:
+        local_error = local_result.get("error")
+        if local_error:
+            local_result["error"] = f"{local_error} | Roboflow fallback error: {roboflow_result['error']}"
+        else:
+            local_result["error"] = roboflow_result["error"]
     return local_result
 
 

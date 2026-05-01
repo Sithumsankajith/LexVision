@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values, load_dotenv
 
 
 logger = logging.getLogger(__name__)
@@ -37,7 +37,20 @@ _VIOLATION_LABEL_ALIASES = {
 
 _client = None
 _client_error: str | None = None
-_client_load_attempted = False
+_client_signature: tuple[str, str] | None = None
+
+
+def _env_setting(name: str, default: str | None = None) -> str | None:
+    runtime_value = os.getenv(name)
+    if isinstance(runtime_value, str) and runtime_value.strip():
+        return runtime_value.strip()
+
+    file_values = dotenv_values(ENV_PATH) if ENV_PATH.exists() else {}
+    file_value = file_values.get(name)
+    if isinstance(file_value, str) and file_value.strip():
+        return file_value.strip()
+
+    return default
 
 
 def _confidence_level(score: float) -> str:
@@ -57,7 +70,7 @@ def _safe_result(error: str | None, *, status: str) -> dict[str, Any]:
         "confidence_level": "low",
         "status": status,
         "provider": "roboflow",
-        "model_id": ROBOFLOW_HELMET_MODEL_ID,
+        "model_id": _env_setting("ROBOFLOW_HELMET_MODEL_ID", ROBOFLOW_HELMET_MODEL_ID),
         "error": error,
     }
 
@@ -96,37 +109,40 @@ def _extract_predictions(response: Any) -> list[dict[str, Any]]:
 
 
 def _get_client():
-    global _client, _client_error, _client_load_attempted
+    global _client, _client_error, _client_signature
 
-    if _client is not None:
-        return _client
-    if _client_load_attempted:
-        return None
-
-    _client_load_attempted = True
-
-    api_key = os.getenv("ROBOFLOW_API_KEY")
+    api_key = _env_setting("ROBOFLOW_API_KEY")
     if not api_key:
+        _client = None
+        _client_signature = None
         _client_error = "ROBOFLOW_API_KEY is not set."
         logger.warning("Roboflow helmet inference is disabled because ROBOFLOW_API_KEY is missing.")
         return None
 
+    api_url = _env_setting("ROBOFLOW_API_URL", ROBOFLOW_API_URL) or ROBOFLOW_API_URL
+    signature = (api_url, api_key)
+    if _client is not None and _client_signature == signature:
+        return _client
+
     try:
         from inference_sdk import InferenceHTTPClient
     except ImportError:
+        _client = None
+        _client_signature = None
         _client_error = "inference-sdk is not installed."
         logger.exception("Roboflow helmet inference dependency is missing.")
         return None
 
     _client = InferenceHTTPClient(
-        api_url=ROBOFLOW_API_URL,
+        api_url=api_url,
         api_key=api_key,
     )
+    _client_signature = signature
     _client_error = None
     logger.info(
         "Roboflow helmet client initialized for %s using %s.",
-        ROBOFLOW_HELMET_MODEL_ID,
-        ROBOFLOW_API_URL,
+        _env_setting("ROBOFLOW_HELMET_MODEL_ID", ROBOFLOW_HELMET_MODEL_ID),
+        api_url,
     )
     return _client
 
@@ -149,8 +165,9 @@ def run_helmet_detection(image_path: str) -> dict[str, Any]:
         status = "configuration_error" if _client_error and "ROBOFLOW_API_KEY" in _client_error else "dependency_error"
         return _safe_result(_client_error or "Roboflow client is unavailable.", status=status)
 
+    model_id = _env_setting("ROBOFLOW_HELMET_MODEL_ID", ROBOFLOW_HELMET_MODEL_ID) or ROBOFLOW_HELMET_MODEL_ID
     try:
-        response = client.infer(str(image_file), model_id=ROBOFLOW_HELMET_MODEL_ID)
+        response = client.infer(str(image_file), model_id=model_id)
     except TimeoutError:
         logger.exception("Roboflow helmet detection timed out for %s.", image_file)
         return _safe_result("Roboflow request timed out.", status="timeout")
@@ -208,6 +225,6 @@ def run_helmet_detection(image_path: str) -> dict[str, Any]:
         "confidence_level": _confidence_level(best_violation_confidence),
         "status": "success" if has_helmet_violation else "no_violation_detected",
         "provider": "roboflow",
-        "model_id": ROBOFLOW_HELMET_MODEL_ID,
+        "model_id": model_id,
         "error": None,
     }
