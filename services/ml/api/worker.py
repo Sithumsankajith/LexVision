@@ -6,7 +6,7 @@ import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import cv2
 import numpy as np
@@ -16,6 +16,16 @@ from .database import SessionLocal
 from .constants import ReportStatusEnum, StatusChangeSourceEnum, StatusEnum
 from .models import AuditLog, Evidence, EvidenceFile, EvidenceReport, InferenceLog, Report
 from .tracking import apply_evidence_report_status
+
+try:
+    from services.ml.inference.helmet_roboflow import (
+        ROBOFLOW_HELMET_MODEL_ID,
+        run_helmet_detection,
+    )
+except ModuleNotFoundError as exc:
+    if exc.name not in {"services", "services.ml", "services.ml.inference", "services.ml.inference.helmet_roboflow"}:
+        raise
+    from inference.helmet_roboflow import ROBOFLOW_HELMET_MODEL_ID, run_helmet_detection
 
 # Configure logging once for the background worker entrypoint.
 logging.basicConfig(level=logging.INFO)
@@ -32,6 +42,7 @@ ANPR_MODEL_VERSION = f"{ANPR_MODEL_PATH.name}|easyocr"
 QUALITY_THRESHOLD = 0.15
 HIGH_CONFIDENCE_THRESHOLD = 0.8
 MEDIUM_CONFIDENCE_THRESHOLD = 0.5
+HELMET_VIOLATION_THRESHOLD = float(os.getenv("HELMET_VIOLATION_THRESHOLD", "0.5"))
 
 _helmet_detector = None
 _helmet_detector_load_attempted = False
@@ -278,29 +289,163 @@ def _empty_violation_detection(status: str) -> dict:
     return {
         "detections": [],
         "detected_classes": [],
+        "has_helmet_violation": False,
         "inferred_violation_type": None,
         "max_confidence": 0.0,
+        "confidence_level": "low",
         "status": status,
+        "provider": "helmet_inference",
+        "model_version": HELMET_MODEL_VERSION,
+        "error": None,
+        "needs_manual_review": True,
     }
 
 
-def _run_violation_detection(image_path: str) -> dict:
-    """
-    Detect the violation class from the dedicated helmet detector.
-    The best normalized violation label is returned for police review.
-    """
+def _xyxy_to_center_bbox(xyxy: list[float]) -> dict[str, float]:
+    x1, y1, x2, y2 = xyxy
+    width = max(0.0, x2 - x1)
+    height = max(0.0, y2 - y1)
+    return {
+        "x": round(x1 + (width / 2), 1),
+        "y": round(y1 + (height / 2), 1),
+        "width": round(width, 1),
+        "height": round(height, 1),
+    }
+
+
+def _center_bbox_to_xyxy(bbox: dict[str, Any]) -> dict[str, float]:
+    x = float(bbox.get("x") or 0.0)
+    y = float(bbox.get("y") or 0.0)
+    width = max(0.0, float(bbox.get("width") or 0.0))
+    height = max(0.0, float(bbox.get("height") or 0.0))
+    half_width = width / 2
+    half_height = height / 2
+    return {
+        "x1": round(x - half_width, 1),
+        "y1": round(y - half_height, 1),
+        "x2": round(x + half_width, 1),
+        "y2": round(y + half_height, 1),
+    }
+
+
+def _summarize_violation_detections(
+    detections: list[dict[str, Any]],
+    *,
+    provider: str,
+    model_version: str,
+    status_on_empty: str = "no_detection",
+    error: str | None = None,
+) -> dict:
+    if not detections:
+        empty_result = _empty_violation_detection(status_on_empty)
+        empty_result.update(
+            {
+                "provider": provider,
+                "model_version": model_version,
+                "error": error,
+            }
+        )
+        return empty_result
+
+    candidate_detections = [item for item in detections if item.get("normalized_class") == "no-helmet"]
+    has_helmet_violation = bool(candidate_detections)
+    max_confidence = max((float(item["confidence"]) for item in candidate_detections), default=0.0)
+    inferred_violation_type = "no-helmet" if has_helmet_violation and max_confidence >= HELMET_VIOLATION_THRESHOLD else None
+
+    if inferred_violation_type:
+        status = "success"
+    elif has_helmet_violation:
+        status = "low_confidence_violation"
+    else:
+        status = "no_violation_detected"
+
+    return {
+        "detections": detections,
+        "detected_classes": sorted({str(item["class"]) for item in detections if item.get("class")}),
+        "has_helmet_violation": has_helmet_violation,
+        "inferred_violation_type": inferred_violation_type,
+        "max_confidence": round(max_confidence, 4),
+        "confidence_level": _confidence_band(max_confidence),
+        "status": status,
+        "provider": provider,
+        "model_version": model_version,
+        "error": error,
+        "needs_manual_review": inferred_violation_type is None,
+    }
+
+
+def _normalize_roboflow_violation_result(result: dict[str, Any]) -> dict:
+    model_version = str(result.get("model_id") or ROBOFLOW_HELMET_MODEL_ID)
+    detections: list[dict[str, Any]] = []
+    for item in result.get("detections", []):
+        class_name = str(item.get("class", "unknown"))
+        bbox = item.get("bbox") or {}
+        confidence = round(float(item.get("confidence") or 0.0), 4)
+        detections.append(
+            {
+                "class": class_name,
+                "normalized_class": _normalize_violation_label(class_name),
+                "confidence": confidence,
+                "confidence_level": item.get("confidence_level") or _confidence_band(confidence),
+                "bbox": {
+                    "x": round(float(bbox.get("x") or 0.0), 1),
+                    "y": round(float(bbox.get("y") or 0.0), 1),
+                    "width": round(float(bbox.get("width") or 0.0), 1),
+                    "height": round(float(bbox.get("height") or 0.0), 1),
+                },
+                "bbox_xyxy": _center_bbox_to_xyxy(bbox),
+            }
+        )
+
+    normalized_result = _summarize_violation_detections(
+        detections,
+        provider=str(result.get("provider") or "roboflow"),
+        model_version=model_version,
+        status_on_empty=str(result.get("status") or "no_detection"),
+        error=result.get("error"),
+    )
+    normalized_result["upstream_status"] = result.get("status")
+    return normalized_result
+
+
+def _should_use_local_helmet_fallback(result: dict[str, Any]) -> bool:
+    return result["status"] in {
+        "api_error",
+        "configuration_error",
+        "dependency_error",
+        "invalid_image",
+        "timeout",
+    }
+
+
+def _run_local_violation_detection(image_path: str) -> dict:
+    """Detect helmet violations with the local YOLO model as an operational fallback."""
     model = _get_helmet_detector()
     if model is None:
-        return _empty_violation_detection("model_unavailable")
+        local_unavailable = _empty_violation_detection("model_unavailable")
+        local_unavailable.update(
+            {
+                "provider": "local_yolo",
+                "model_version": HELMET_MODEL_VERSION,
+            }
+        )
+        return local_unavailable
 
     try:
         results = model.predict(source=image_path, verbose=False, device="cpu")
     except Exception as exc:
         logger.error("Violation detection failed for %s: %s", image_path, exc)
-        return _empty_violation_detection("detection_error")
+        detection_error = _empty_violation_detection("detection_error")
+        detection_error.update(
+            {
+                "provider": "local_yolo",
+                "model_version": HELMET_MODEL_VERSION,
+                "error": str(exc),
+            }
+        )
+        return detection_error
 
-    detections: list[dict] = []
-    candidate_detections: list[dict] = []
+    detections: list[dict[str, Any]] = []
     for result in results:
         boxes = getattr(result, "boxes", None)
         if boxes is None:
@@ -315,44 +460,53 @@ def _run_violation_detection(image_path: str) -> dict:
             else:
                 cls_name = "unknown"
 
-            normalized_label = _normalize_violation_label(cls_name)
             confidence = round(float(box.conf[0]), 4)
             xyxy = box.xyxy[0].tolist()
-            detection = {
-                "class": cls_name,
-                "normalized_class": normalized_label,
-                "confidence": confidence,
-                "bbox": {
-                    "x1": round(xyxy[0], 1),
-                    "y1": round(xyxy[1], 1),
-                    "x2": round(xyxy[2], 1),
-                    "y2": round(xyxy[3], 1),
-                },
-            }
-            detections.append(detection)
-            if normalized_label:
-                candidate_detections.append(detection)
+            detections.append(
+                {
+                    "class": cls_name,
+                    "normalized_class": _normalize_violation_label(cls_name),
+                    "confidence": confidence,
+                    "confidence_level": _confidence_band(confidence),
+                    "bbox": _xyxy_to_center_bbox(xyxy),
+                    "bbox_xyxy": {
+                        "x1": round(xyxy[0], 1),
+                        "y1": round(xyxy[1], 1),
+                        "x2": round(xyxy[2], 1),
+                        "y2": round(xyxy[3], 1),
+                    },
+                }
+            )
 
-    if not detections:
-        return _empty_violation_detection("no_detection")
+    return _summarize_violation_detections(
+        detections,
+        provider="local_yolo",
+        model_version=HELMET_MODEL_VERSION,
+    )
 
-    if not candidate_detections:
-        return {
-            "detections": detections,
-            "detected_classes": sorted({item["class"] for item in detections}),
-            "inferred_violation_type": None,
-            "max_confidence": 0.0,
-            "status": "no_supported_violation_class",
-        }
 
-    best_detection = max(candidate_detections, key=lambda item: item["confidence"])
-    return {
-        "detections": detections,
-        "detected_classes": sorted({item["class"] for item in detections}),
-        "inferred_violation_type": best_detection["normalized_class"],
-        "max_confidence": best_detection["confidence"],
-        "status": "success",
+def _run_violation_detection(image_path: str) -> dict:
+    """
+    Detect a no-helmet violation with Roboflow first and keep the local YOLO
+    path available as a fallback when the hosted API is unavailable.
+    """
+    roboflow_result = _normalize_roboflow_violation_result(run_helmet_detection(image_path))
+    if not _should_use_local_helmet_fallback(roboflow_result):
+        return roboflow_result
+
+    logger.warning(
+        "Roboflow helmet detection unavailable for %s (%s). Falling back to local model.",
+        image_path,
+        roboflow_result["status"],
+    )
+    local_result = _run_local_violation_detection(image_path)
+    local_result["fallback"] = {
+        "provider": roboflow_result["provider"],
+        "model_version": roboflow_result["model_version"],
+        "status": roboflow_result["status"],
+        "error": roboflow_result.get("error"),
     }
+    return local_result
 
 
 def _run_plate_detection(image_path: str) -> dict:
@@ -673,13 +827,19 @@ def attempt_inference(
 
     bbox_payload = {
         "model_version": {
-            "helmet": HELMET_MODEL_VERSION,
+            "helmet": violation_result["model_version"],
             "anpr": ANPR_MODEL_VERSION,
         },
         "processing_timestamp": processed_at.isoformat(),
         "violation_detections": violation_result["detections"],
+        "violation_detected_classes": violation_result["detected_classes"],
         "violation_detection_status": violation_result["status"],
         "violation_confidence": violation_result["max_confidence"],
+        "violation_confidence_level": violation_result["confidence_level"],
+        "violation_provider": violation_result["provider"],
+        "violation_error": violation_result["error"],
+        "has_helmet_violation": violation_result["has_helmet_violation"],
+        "needs_manual_review": violation_result["needs_manual_review"],
         "detections": anpr_result["detections"],
         "detected_classes": anpr_result["detected_classes"],
         "quality_score": overall_confidence,
@@ -713,7 +873,7 @@ def attempt_inference(
         )
         db.add(inference_log)
 
-    inference_log.model_version = f"{HELMET_MODEL_VERSION}|{ANPR_MODEL_VERSION}"
+    inference_log.model_version = f"{violation_result['model_version']}|{ANPR_MODEL_VERSION}"
     inference_log.bbox_coordinates = bbox_payload
     inference_log.confidence = overall_confidence
     inference_log.ocr_text = anpr_result["plate_text"]
@@ -750,12 +910,16 @@ def attempt_inference(
             inference_log.bbox_coordinates["filtering"] = "No plate detected; forwarded to manual review."
         elif not anpr_result["plate_text"]:
             inference_log.bbox_coordinates["filtering"] = "Plate detected but OCR/validation failed; forwarded to manual review."
-        elif inferred_violation_type is None and violation_result["status"] != "success":
-            inference_log.bbox_coordinates["filtering"] = "Helmet model did not return a supported violation class; forwarded to manual review."
+        elif violation_result["status"] in {"api_error", "configuration_error", "dependency_error", "detection_error", "model_unavailable", "timeout"}:
+            inference_log.bbox_coordinates["filtering"] = "Helmet detection was unavailable; forwarded to manual review."
+        elif violation_result["status"] == "no_detection":
+            inference_log.bbox_coordinates["filtering"] = "Helmet detector returned no objects; forwarded to manual review."
+        elif violation_result["status"] == "low_confidence_violation":
+            inference_log.bbox_coordinates["filtering"] = "No-helmet detection was below the confidence threshold; forwarded to manual review."
         elif quality_score < QUALITY_THRESHOLD:
             inference_log.bbox_coordinates["filtering"] = "Low-confidence plate read; forwarded to manual review."
         elif inferred_violation_type is None:
-            inference_log.bbox_coordinates["filtering"] = "ANPR completed, but the current AI pipeline did not infer a violation class."
+            inference_log.bbox_coordinates["filtering"] = "ANPR completed, but the current AI pipeline did not confirm a no-helmet violation."
 
     audit = AuditLog(
         user_id=report.user_id if report_kind == "legacy" else None,
@@ -772,8 +936,11 @@ def attempt_inference(
             "validation_status": anpr_result["validation_status"],
             "claimed_violation_type": claimed_violation_type,
             "inferred_violation_type": inferred_violation_type,
+            "violation_provider": violation_result["provider"],
             "violation_detection_status": violation_result["status"],
             "violation_confidence": violation_result["max_confidence"],
+            "violation_confidence_level": violation_result["confidence_level"],
+            "needs_manual_review": violation_result["needs_manual_review"],
             "threshold_met": quality_score >= QUALITY_THRESHOLD,
             "attempt": attempt,
         },

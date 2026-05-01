@@ -33,6 +33,43 @@ export interface Citizen {
   phone?: string;
 }
 
+export interface AIDetectionBBox {
+  x?: number | null;
+  y?: number | null;
+  width?: number | null;
+  height?: number | null;
+  x1?: number | null;
+  y1?: number | null;
+  x2?: number | null;
+  y2?: number | null;
+}
+
+export interface AIDetection {
+  class: string;
+  normalizedClass?: string | null;
+  confidence: number;
+  confidenceLevel?: ConfidenceBand | null;
+  bbox?: AIDetectionBBox | null;
+  bboxXyxy?: AIDetectionBBox | null;
+}
+
+export interface AISummary {
+  provider?: string | null;
+  modelId?: string | null;
+  claimedViolationType?: string | null;
+  inferredViolationType?: string | null;
+  finalViolationType?: string | null;
+  hasHelmetViolation: boolean;
+  confidence: number;
+  confidenceLevel?: ConfidenceBand | null;
+  manualReviewRequired: boolean;
+  detectedClasses: string[];
+  detections: AIDetection[];
+  error?: string | null;
+  status?: string | null;
+  processedAt?: string | null;
+}
+
 export interface Report {
   id: string;
   trackingId: string;
@@ -50,6 +87,7 @@ export interface Report {
   createdAt: string;
   updatedAt: string;
   notes?: string;
+  aiSummary?: AISummary | null;
   aiAnalysis?: {
     detectedViolationType?: string | null;
     claimedViolationType?: string | null;

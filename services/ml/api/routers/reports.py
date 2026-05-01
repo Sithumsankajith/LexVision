@@ -8,6 +8,7 @@ from .. import models, schemas
 from ..constants import StatusChangeSourceEnum, TicketStatusEnum
 from ..database import get_db
 from ..dependencies import get_current_active_user, get_citizen, get_police, log_audit_action
+from ..presenters import present_report, present_reports
 from ..tracking import is_valid_report_status_transition, apply_ticket_status, is_valid_ticket_status_transition
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
@@ -52,7 +53,7 @@ def create_report(report_data: schemas.ReportCreate, background_tasks: Backgroun
     # Audit log
     log_audit_action(db, current_user.id, "REPORT_SUBMISSION", "Report", new_report.id)
 
-    return new_report
+    return present_report(new_report)
 
 @router.get("", response_model=List[schemas.ReportResponse])
 @router.get("/", include_in_schema=False)
@@ -67,7 +68,7 @@ def get_reports(db: Session = Depends(get_db), current_user: models.User = Depen
     else:
         # Police and Admin see all reports
         reports = query.order_by(models.Report.created_at.desc()).all()
-    return reports
+    return present_reports(reports)
 
 @router.get("/tracking/{tracking_id}", response_model=schemas.ReportResponse)
 def get_report_by_tracking_id(tracking_id: str, db: Session = Depends(get_db)):
@@ -79,7 +80,7 @@ def get_report_by_tracking_id(tracking_id: str, db: Session = Depends(get_db)):
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
     
-    return report
+    return present_report(report)
 
 @router.get("/{report_id}", response_model=schemas.ReportResponse)
 def get_report_by_id(report_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_active_user)):
@@ -95,7 +96,7 @@ def get_report_by_id(report_id: str, db: Session = Depends(get_db), current_user
     if current_user.role == models.RoleEnum.CITIZEN and report.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to view this report")
     
-    return report
+    return present_report(report)
 
 @router.put("/{report_id}/status", response_model=schemas.ReportResponse)
 def update_report_status(report_id: str, update: schemas.ReportStatusUpdate, db: Session = Depends(get_db), current_user: models.User = Depends(get_police)):
@@ -118,7 +119,8 @@ def update_report_status(report_id: str, update: schemas.ReportStatusUpdate, db:
 
     log_audit_action(db, current_user.id, f"REPORT_STATUS_UPDATE_TO_{update.status}", "Report", report.id)
 
-    return report
+    db.refresh(report)
+    return present_report(report)
 
 @router.post("/{report_id}/ticket", response_model=schemas.TicketResponse)
 def issue_ticket(report_id: str, ticket_data: schemas.TicketCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_police)):

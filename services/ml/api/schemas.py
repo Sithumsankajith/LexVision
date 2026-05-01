@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List, Any
 from datetime import datetime
 from .models import RoleEnum, StatusEnum
@@ -132,6 +132,7 @@ class CitizenEvidenceReportResponse(BaseModel):
     updated_at: datetime
     files: List[CitizenEvidenceFileResponse] = []
     inference_log: Optional["InferenceLogResponse"] = None
+    ai_summary: Optional["AISummaryResponse"] = None
 
     class Config:
         from_attributes = True
@@ -193,6 +194,43 @@ class InferenceLogResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
+class AIDetectionBBoxResponse(BaseModel):
+    x: Optional[float] = None
+    y: Optional[float] = None
+    width: Optional[float] = None
+    height: Optional[float] = None
+    x1: Optional[float] = None
+    y1: Optional[float] = None
+    x2: Optional[float] = None
+    y2: Optional[float] = None
+
+
+class AIDetectionResponse(BaseModel):
+    class_name: str = Field(alias="class")
+    normalized_class: Optional[str] = None
+    confidence: float = 0.0
+    confidence_level: Optional[str] = None
+    bbox: Optional[AIDetectionBBoxResponse] = None
+    bbox_xyxy: Optional[AIDetectionBBoxResponse] = None
+
+
+class AISummaryResponse(BaseModel):
+    provider: Optional[str] = None
+    model_id: Optional[str] = None
+    claimed_violation_type: Optional[str] = None
+    inferred_violation_type: Optional[str] = None
+    final_violation_type: Optional[str] = None
+    has_helmet_violation: bool = False
+    confidence: float = 0.0
+    confidence_level: Optional[str] = None
+    manual_review_required: bool = False
+    detected_classes: List[str] = []
+    detections: List[AIDetectionResponse] = []
+    error: Optional[str] = None
+    status: Optional[str] = None
+    processed_at: Optional[datetime] = None
+
 # --- Report Schemas ---
 class ReportCreate(BaseModel):
     violation_type: str
@@ -220,6 +258,7 @@ class ReportResponse(BaseModel):
     updated_at: datetime
     evidence: List[EvidenceSchema] = []
     inference_log: Optional[InferenceLogResponse] = None
+    ai_summary: Optional[AISummaryResponse] = None
     class Config:
         from_attributes = True
 

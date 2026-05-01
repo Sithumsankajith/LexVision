@@ -17,6 +17,7 @@ sqlalchemy
 alembic
 psycopg2-binary
 python-dotenv
+inference-sdk
 firebase-admin
 passlib
 bcrypt==4.0.1

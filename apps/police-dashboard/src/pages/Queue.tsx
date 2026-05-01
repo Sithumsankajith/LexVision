@@ -9,9 +9,30 @@ import {
 import { Button, Input, Select } from '@lexvision/ui';
 import { Panel, DataTable, Badge } from '@lexvision/ui';
 import { mockDb } from '@lexvision/api-client';
-import type { Report } from '@lexvision/types';
+import type { AISummary, Report } from '@lexvision/types';
 
 const formatViolation = (value?: string | null, emptyLabel = 'Pending police validation') => value ? value.replace(/-/g, ' ') : emptyLabel;
+const formatConfidence = (value?: number | null) => typeof value === 'number' ? `${(value * 100).toFixed(0)}%` : 'N/A';
+const formatClassLabel = (value?: string | null, emptyLabel = 'N/A') => value ? value.replace(/[_-]/g, ' ') : emptyLabel;
+
+const getAiBadgeState = (aiSummary?: AISummary | null) => {
+    if (!aiSummary) {
+        return { label: 'No AI summary', variant: 'neutral' as const };
+    }
+    if (aiSummary.error) {
+        return { label: 'Inference failed', variant: 'error' as const };
+    }
+    if (aiSummary.confidenceLevel === 'low') {
+        return { label: 'Low confidence', variant: 'error' as const };
+    }
+    if (aiSummary.manualReviewRequired) {
+        return { label: 'Review needed', variant: 'warning' as const };
+    }
+    if (aiSummary.hasHelmetViolation) {
+        return { label: 'Helmet violation', variant: 'success' as const };
+    }
+    return { label: 'No violation', variant: 'info' as const };
+};
 
 export const Queue: React.FC = () => {
     const [reports, setReports] = useState<Report[]>([]);
@@ -48,6 +69,9 @@ export const Queue: React.FC = () => {
                 (r.location.city || '').toLowerCase().includes(q) ||
                 (r.vehicle?.plate || '').toLowerCase().includes(q) ||
                 (r.aiAnalysis?.detectedPlate || '').toLowerCase().includes(q) ||
+                (r.aiSummary?.provider || '').toLowerCase().includes(q) ||
+                (r.aiSummary?.modelId || '').toLowerCase().includes(q) ||
+                (r.aiSummary?.detectedClasses || []).some(cls => cls.toLowerCase().includes(q)) ||
                 (r.claimedViolationType || '').toLowerCase().includes(q) ||
                 (r.inferredViolationType || '').toLowerCase().includes(q) ||
                 (r.finalViolationType || '').toLowerCase().includes(q) ||
@@ -128,8 +152,10 @@ export const Queue: React.FC = () => {
                 action={<Badge variant="info">{loading ? 'Syncing...' : `${filteredReports.length} Reports Found`}</Badge>}
                 noPadding
             >
-                <DataTable headers={['Case ID', 'Source', 'Violation Type', 'Location', 'Timestamp', 'Status', 'Action']}>
-                    {filteredReports.map((item) => (
+                <DataTable headers={['Case ID', 'Source', 'Violation Type', 'AI Inferred Violation', 'Confidence', 'Review', 'Location', 'Timestamp', 'Status', 'Action']}>
+                    {filteredReports.map((item) => {
+                        const aiBadge = getAiBadgeState(item.aiSummary);
+                        return (
                         <tr key={item.id}>
                             <td style={{ fontFamily: 'monospace', fontWeight: '700', color: 'var(--color-primary)', fontSize: '0.875rem' }}>#{item.trackingId.substring(0, 12)}</td>
                             <td>
@@ -146,7 +172,7 @@ export const Queue: React.FC = () => {
                                         <FileText size={16} color="var(--color-primary)" />
                                     </div>
                                     <span style={{ fontWeight: '600' }}>Citizen</span>
-                                    {item.aiAnalysis && (
+                                    {item.aiSummary && (
                                         <Badge variant="warning"><BrainCircuit size={10} /> AI Flag</Badge>
                                     )}
                                 </div>
@@ -160,14 +186,42 @@ export const Queue: React.FC = () => {
                                         Claimed: {formatViolation(item.claimedViolationType || item.violationType)}
                                     </span>
                                     <span style={{ fontSize: '0.75rem', color: item.inferredViolationType ? 'var(--color-primary)' : 'var(--color-text-secondary)', fontWeight: '600' }}>
-                                        AI inferred: {formatViolation(item.inferredViolationType, 'Not inferred')}
+                                        AI inferred: {formatViolation(item.aiSummary?.inferredViolationType || item.inferredViolationType, 'Not inferred')}
                                     </span>
-                                    {item.aiAnalysis?.confidence !== undefined && (
+                                    {item.aiSummary?.confidence !== undefined && (
                                         <span style={{ fontSize: '0.75rem', color: 'var(--color-primary)', fontWeight: '600', opacity: 0.8 }}>
-                                            Confidence: {((item.aiAnalysis.confidence || 0) * 100).toFixed(0)}%
-                                            {item.aiAnalysis.confidenceBand ? ` (${item.aiAnalysis.confidenceBand})` : ''}
+                                            Confidence: {formatConfidence(item.aiSummary.confidence)}
+                                            {item.aiSummary.confidenceLevel ? ` (${item.aiSummary.confidenceLevel})` : ''}
                                         </span>
                                     )}
+                                </div>
+                            </td>
+                            <td>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    <span style={{ fontWeight: '700', color: item.aiSummary?.inferredViolationType ? 'var(--color-primary)' : 'var(--color-text-secondary)' }}>
+                                        {formatViolation(item.aiSummary?.inferredViolationType, 'Not inferred')}
+                                    </span>
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
+                                        {item.aiSummary?.detectedClasses?.length ? item.aiSummary.detectedClasses.map(cls => formatClassLabel(cls)).join(', ') : 'No classes returned'}
+                                    </span>
+                                </div>
+                            </td>
+                            <td>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    <span style={{ fontWeight: '700', color: 'var(--color-text)' }}>
+                                        {formatConfidence(item.aiSummary?.confidence)}
+                                    </span>
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
+                                        {item.aiSummary?.confidenceLevel || 'N/A'}
+                                    </span>
+                                </div>
+                            </td>
+                            <td>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                    <Badge variant={aiBadge.variant}>{aiBadge.label}</Badge>
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
+                                        {item.aiSummary ? (item.aiSummary.manualReviewRequired ? 'Officer confirmation required' : 'Ready for officer review') : 'Fallback to manual review'}
+                                    </span>
                                 </div>
                             </td>
                             <td>
@@ -202,10 +256,10 @@ export const Queue: React.FC = () => {
                                 </Button>
                             </td>
                         </tr>
-                    ))}
+                    )})}
                     {filteredReports.length === 0 && !loading && (
                         <tr>
-                            <td colSpan={7} style={{ textAlign: 'center', padding: '4rem' }}>
+                            <td colSpan={10} style={{ textAlign: 'center', padding: '4rem' }}>
                                 <div style={{ opacity: 0.5, fontSize: '1.25rem' }}>
                                     {search || statusFilter !== 'all' ? 'No cases match your filters' : 'No violation cases in the queue'}
                                 </div>

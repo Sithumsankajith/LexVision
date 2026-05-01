@@ -9,6 +9,7 @@ from .. import models, schemas
 from ..constants import RoleEnum, StatusChangeSourceEnum
 from ..database import get_db
 from ..dependencies import get_police, log_audit_action
+from ..presenters import present_evidence_report, present_evidence_reports
 from ..sms import SmsSendRequest, dispatch_sms, render_status_change_sms_template
 from ..tracking import apply_evidence_report_status, is_valid_report_status_transition
 
@@ -37,7 +38,8 @@ def list_evidence_reports(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_police),
 ):
-    return _staff_report_query(db).order_by(models.EvidenceReport.created_at.desc()).all()
+    reports = _staff_report_query(db).order_by(models.EvidenceReport.created_at.desc()).all()
+    return present_evidence_reports(reports)
 
 
 @router.get("/{report_id}", response_model=schemas.StaffEvidenceReportResponse)
@@ -49,7 +51,7 @@ def get_evidence_report_by_id(
     report = _staff_report_query(db).filter(models.EvidenceReport.id == report_id).first()
     if report is None:
         raise HTTPException(status_code=404, detail="Evidence report not found")
-    return report
+    return present_evidence_report(report)
 
 
 @router.put("/{report_id}/status", response_model=schemas.StaffEvidenceReportResponse)
@@ -120,4 +122,4 @@ def update_evidence_report_status(
         },
     )
 
-    return saved_report
+    return present_evidence_report(saved_report)

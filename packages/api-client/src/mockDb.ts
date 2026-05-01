@@ -1,4 +1,4 @@
-import type { CitizenReportDetail, Report, ReportStatusHistoryEntry, ReportStatusSource, TicketStatus, TicketStatusHistoryEntry, TrafficTicket } from '@lexvision/types';
+import type { CitizenReportDetail, ConfidenceBand, Report, ReportStatusHistoryEntry, ReportStatusSource, TicketStatus, TicketStatusHistoryEntry, TrafficTicket } from '@lexvision/types';
 import { auth } from './auth';
 
 const API_BASE_URL = 'http://localhost:8000/api';
@@ -48,6 +48,57 @@ const writeDemoCitizenReports = (reports: DemoCitizenReportRecord[]) => {
     localStorage.setItem(DEMO_CITIZEN_REPORTS_KEY, JSON.stringify(reports));
 };
 
+const buildDemoAiSummary = (reportData: CitizenReportPayload, processedAt: string): Report['aiSummary'] | null => {
+    if (reportData.violationType !== 'helmet') {
+        return {
+            provider: 'roboflow',
+            modelId: 'helmet-detection-yolov8/1',
+            claimedViolationType: reportData.violationType,
+            inferredViolationType: null,
+            finalViolationType: null,
+            hasHelmetViolation: false,
+            confidence: 0,
+            confidenceLevel: 'low',
+            manualReviewRequired: true,
+            detectedClasses: [],
+            detections: [],
+            error: null,
+            status: 'no_detection',
+            processedAt,
+        };
+    }
+
+    return {
+        provider: 'roboflow',
+        modelId: 'helmet-detection-yolov8/1',
+        claimedViolationType: 'helmet',
+        inferredViolationType: 'no-helmet',
+        finalViolationType: null,
+        hasHelmetViolation: true,
+        confidence: 0.91,
+        confidenceLevel: 'high',
+        manualReviewRequired: false,
+        detectedClasses: ['no_helmet'],
+        detections: [
+            {
+                class: 'no_helmet',
+                normalizedClass: 'no-helmet',
+                confidence: 0.91,
+                confidenceLevel: 'high',
+                bbox: {
+                    x: 144,
+                    y: 168,
+                    width: 86,
+                    height: 102,
+                },
+            },
+        ],
+        error: null,
+        status: 'success',
+        processedAt,
+    };
+};
+
 const buildDemoCitizenReport = (reportData: CitizenReportPayload): DemoCitizenReportRecord => {
     const session = auth.getCitizenSession();
     const phoneNumber = session?.phone_number;
@@ -58,6 +109,7 @@ const buildDemoCitizenReport = (reportData: CitizenReportPayload): DemoCitizenRe
     const now = new Date().toISOString();
     const reportId = globalThis.crypto?.randomUUID?.() || `demo-report-${Date.now()}`;
     const trackingId = `DEMO-${Date.now()}`;
+    const aiSummary = buildDemoAiSummary(reportData, now);
 
     return {
         id: reportId,
@@ -67,7 +119,7 @@ const buildDemoCitizenReport = (reportData: CitizenReportPayload): DemoCitizenRe
         phoneNumber,
         violationType: reportData.violationType,
         claimedViolationType: reportData.violationType,
-        inferredViolationType: null,
+        inferredViolationType: aiSummary?.inferredViolationType || null,
         finalViolationType: null,
         datetime: reportData.datetime,
         location: reportData.location,
@@ -83,6 +135,17 @@ const buildDemoCitizenReport = (reportData: CitizenReportPayload): DemoCitizenRe
         createdAt: now,
         updatedAt: now,
         notes: 'Saved locally in demo mode.',
+        aiSummary,
+        aiAnalysis: aiSummary ? {
+            detectedViolationType: aiSummary.inferredViolationType,
+            claimedViolationType: aiSummary.claimedViolationType,
+            inferredViolationType: aiSummary.inferredViolationType,
+            finalViolationType: aiSummary.finalViolationType,
+            confidence: aiSummary.confidence,
+            confidenceBand: aiSummary.confidenceLevel,
+            modelVersion: aiSummary.modelId,
+            processedAt: aiSummary.processedAt,
+        } : undefined,
         statusHistory: [{
             id: `${reportId}-submitted`,
             previousStatus: null,
@@ -143,31 +206,106 @@ const getFinalViolationType = (backendReport: any): string | null => {
     return null;
 };
 
-const buildAiAnalysis = (backendReport: any): Report['aiAnalysis'] | undefined => {
+const normalizeConfidenceBand = (value: any): ConfidenceBand | null =>
+    value === 'high' || value === 'medium' || value === 'low' ? value : null;
+
+const mapDetectionToFrontend = (detection: any) => ({
+    class: detection?.class || 'unknown',
+    normalizedClass: detection?.normalized_class || null,
+    confidence: typeof detection?.confidence === 'number' ? detection.confidence : 0,
+    confidenceLevel: normalizeConfidenceBand(detection?.confidence_level),
+    bbox: detection?.bbox ? {
+        x: detection.bbox.x ?? null,
+        y: detection.bbox.y ?? null,
+        width: detection.bbox.width ?? null,
+        height: detection.bbox.height ?? null,
+        x1: detection.bbox.x1 ?? null,
+        y1: detection.bbox.y1 ?? null,
+        x2: detection.bbox.x2 ?? null,
+        y2: detection.bbox.y2 ?? null,
+    } : null,
+    bboxXyxy: detection?.bbox_xyxy ? {
+        x1: detection.bbox_xyxy.x1 ?? null,
+        y1: detection.bbox_xyxy.y1 ?? null,
+        x2: detection.bbox_xyxy.x2 ?? null,
+        y2: detection.bbox_xyxy.y2 ?? null,
+    } : null,
+});
+
+const buildAiSummary = (backendReport: any): Report['aiSummary'] | undefined => {
+    const rawSummary = backendReport.ai_summary;
+    if (rawSummary) {
+        return {
+            provider: rawSummary.provider || null,
+            modelId: rawSummary.model_id || null,
+            claimedViolationType: rawSummary.claimed_violation_type || null,
+            inferredViolationType: rawSummary.inferred_violation_type || null,
+            finalViolationType: rawSummary.final_violation_type || getFinalViolationType(backendReport),
+            hasHelmetViolation: !!rawSummary.has_helmet_violation,
+            confidence: typeof rawSummary.confidence === 'number' ? rawSummary.confidence : 0,
+            confidenceLevel: normalizeConfidenceBand(rawSummary.confidence_level),
+            manualReviewRequired: !!rawSummary.manual_review_required,
+            detectedClasses: Array.isArray(rawSummary.detected_classes) ? rawSummary.detected_classes : [],
+            detections: Array.isArray(rawSummary.detections) ? rawSummary.detections.map(mapDetectionToFrontend) : [],
+            error: rawSummary.error || null,
+            status: rawSummary.status || null,
+            processedAt: rawSummary.processed_at || null,
+        };
+    }
+
     if (!backendReport.inference_log) {
         return undefined;
     }
 
     const bboxPayload = backendReport.inference_log.bbox_coordinates || {};
+    const modelVersion = bboxPayload.model_version || {};
+    const fallbackModelId = typeof backendReport.inference_log.model_version === 'string'
+        ? backendReport.inference_log.model_version.split('|', 1)[0]
+        : backendReport.inference_log.model_version || null;
+    return {
+        provider: bboxPayload.violation_provider || null,
+        modelId: (typeof modelVersion === 'object' && modelVersion ? modelVersion.helmet : null) || fallbackModelId,
+        claimedViolationType: bboxPayload.claimed_violation_type || getClaimedViolationType(backendReport),
+        inferredViolationType: bboxPayload.inferred_violation_type || getInferredViolationType(backendReport),
+        finalViolationType: getFinalViolationType(backendReport),
+        hasHelmetViolation: !!bboxPayload.has_helmet_violation,
+        confidence: typeof bboxPayload.violation_confidence === 'number' ? bboxPayload.violation_confidence : 0,
+        confidenceLevel: normalizeConfidenceBand(bboxPayload.violation_confidence_level),
+        manualReviewRequired: !!bboxPayload.needs_manual_review,
+        detectedClasses: Array.isArray(bboxPayload.violation_detected_classes) ? bboxPayload.violation_detected_classes : [],
+        detections: Array.isArray(bboxPayload.violation_detections) ? bboxPayload.violation_detections.map(mapDetectionToFrontend) : [],
+        error: bboxPayload.violation_error || null,
+        status: bboxPayload.violation_detection_status || null,
+        processedAt: bboxPayload.processing_timestamp || backendReport.inference_log.timestamp || null,
+    };
+};
+
+const buildAiAnalysis = (backendReport: any): Report['aiAnalysis'] | undefined => {
+    const aiSummary = buildAiSummary(backendReport);
+    if (!backendReport.inference_log && !aiSummary) {
+        return undefined;
+    }
+
+    const bboxPayload = backendReport.inference_log?.bbox_coordinates || {};
     const ocrOutput = bboxPayload.ocr_output || {};
 
     return {
-        detectedViolationType: getInferredViolationType(backendReport),
-        claimedViolationType: getClaimedViolationType(backendReport),
-        inferredViolationType: getInferredViolationType(backendReport),
-        finalViolationType: getFinalViolationType(backendReport),
-        detectedPlate: backendReport.inference_log.ocr_text || bboxPayload.plate_text || null,
-        confidence: backendReport.inference_log.confidence,
-        confidenceBand: bboxPayload.confidence_band || null,
-        modelVersion: backendReport.inference_log.model_version || null,
+        detectedViolationType: aiSummary?.inferredViolationType || getInferredViolationType(backendReport),
+        claimedViolationType: aiSummary?.claimedViolationType || getClaimedViolationType(backendReport),
+        inferredViolationType: aiSummary?.inferredViolationType || getInferredViolationType(backendReport),
+        finalViolationType: aiSummary?.finalViolationType || getFinalViolationType(backendReport),
+        detectedPlate: backendReport.inference_log?.ocr_text || bboxPayload.plate_text || null,
+        confidence: aiSummary?.confidence ?? backendReport.inference_log?.confidence,
+        confidenceBand: aiSummary?.confidenceLevel || normalizeConfidenceBand(bboxPayload.confidence_band),
+        modelVersion: aiSummary?.modelId || backendReport.inference_log?.model_version || null,
         bbox: bboxPayload.bbox || null,
         ocrOutput: {
-            text: backendReport.inference_log.ocr_text || bboxPayload.plate_text || null,
+            text: backendReport.inference_log?.ocr_text || bboxPayload.plate_text || null,
             rawText: ocrOutput.raw_text || null,
-            confidence: backendReport.inference_log.ocr_confidence ?? bboxPayload.plate_confidence ?? null,
+            confidence: backendReport.inference_log?.ocr_confidence ?? bboxPayload.plate_confidence ?? null,
             validationStatus: bboxPayload.validation_status || null,
         },
-        processedAt: backendReport.inference_log.timestamp || bboxPayload.processing_timestamp || null,
+        processedAt: aiSummary?.processedAt || backendReport.inference_log?.timestamp || bboxPayload.processing_timestamp || null,
     };
 };
 
@@ -192,6 +330,7 @@ const mapReportToFrontend = (b: any): Report => ({
     status: mapBackendStatus(b.status),
     createdAt: b.created_at,
     updatedAt: b.updated_at || b.created_at,
+    aiSummary: buildAiSummary(b),
     aiAnalysis: buildAiAnalysis(b),
 });
 
@@ -226,6 +365,7 @@ const mapCitizenReportToFrontend = (b: any): Report => ({
     status: mapBackendStatus(b.status),
     createdAt: b.created_at,
     updatedAt: b.updated_at || b.created_at,
+    aiSummary: buildAiSummary(b),
     aiAnalysis: buildAiAnalysis(b),
 });
 

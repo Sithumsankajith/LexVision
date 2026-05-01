@@ -9,6 +9,7 @@ from .. import models, schemas
 from ..constants import SmsTemplateKeyEnum, StatusChangeSourceEnum
 from ..database import get_db
 from ..dependencies import get_current_citizen_account, log_audit_action
+from ..presenters import present_citizen_evidence_report, present_citizen_report_detail
 from ..sms import SmsSendRequest, dispatch_sms, render_sms_template
 from ..tracking import apply_evidence_report_status
 from ..tasks import submit_inference_task
@@ -115,7 +116,7 @@ def create_citizen_report(
     # review citizen submissions with helmet + ANPR context in the queue.
     submit_inference_task(saved_report.id, background_tasks, report_kind="evidence")
 
-    return saved_report
+    return present_citizen_evidence_report(saved_report)
 
 
 @router.get("/me", response_model=List[schemas.CitizenReportSummaryResponse])
@@ -155,7 +156,7 @@ def get_current_citizen_report_detail(
     if not report:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Citizen report not found")
 
-    return report
+    return present_citizen_report_detail(report)
 
 
 @router.get("/tracking/{tracking_id}", response_model=schemas.CitizenEvidenceReportResponse)
@@ -173,4 +174,4 @@ def get_citizen_report_by_tracking_id(tracking_id: str, db: Session = Depends(ge
     if not report:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Citizen report not found")
 
-    return report
+    return present_citizen_evidence_report(report)

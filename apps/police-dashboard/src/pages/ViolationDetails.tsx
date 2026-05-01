@@ -17,11 +17,83 @@ import {
     Download
 } from 'lucide-react';
 import { Button, Input } from '@lexvision/ui';
-import { Panel, Badge } from '@lexvision/ui';
+import { Panel, Badge, DataTable } from '@lexvision/ui';
 import { mockDb } from '@lexvision/api-client';
-import type { Report, FineRule, TrafficTicket } from '@lexvision/types';
+import type { AISummary, Report, FineRule, TrafficTicket } from '@lexvision/types';
 
 const formatViolation = (value?: string | null, emptyLabel = 'Pending police validation') => value ? value.replace(/-/g, ' ') : emptyLabel;
+const formatClassLabel = (value?: string | null, emptyLabel = 'N/A') => value ? value.replace(/[_-]/g, ' ') : emptyLabel;
+const formatConfidence = (value?: number | null) => typeof value === 'number' ? `${(value * 100).toFixed(0)}%` : 'N/A';
+
+const getAiSummaryState = (aiSummary?: AISummary | null) => {
+    if (!aiSummary) {
+        return {
+            label: 'AI summary unavailable',
+            helper: 'No normalized AI result is attached to this report yet.',
+            accent: '#64748b',
+            surface: 'rgba(100, 116, 139, 0.08)',
+            border: 'rgba(100, 116, 139, 0.22)',
+            badgeVariant: 'neutral' as const,
+        };
+    }
+
+    if (aiSummary.error) {
+        return {
+            label: 'Inference failed',
+            helper: aiSummary.error,
+            accent: '#6b7280',
+            surface: 'rgba(107, 114, 128, 0.08)',
+            border: 'rgba(107, 114, 128, 0.22)',
+            badgeVariant: 'error' as const,
+        };
+    }
+
+    if (aiSummary.confidenceLevel === 'low') {
+        return {
+            label: 'Low confidence result',
+            helper: aiSummary.hasHelmetViolation
+                ? 'The model found a possible no-helmet signal, but confidence is too low to rely on without careful officer review.'
+                : 'The model completed, but the result confidence is too low to support a clear AI conclusion.',
+            accent: '#6b7280',
+            surface: 'rgba(107, 114, 128, 0.08)',
+            border: 'rgba(239, 68, 68, 0.22)',
+            badgeVariant: 'error' as const,
+        };
+    }
+
+    if (aiSummary.manualReviewRequired) {
+        return {
+            label: 'Manual review needed',
+            helper: aiSummary.status === 'low_confidence_violation'
+                ? 'A no-helmet candidate was found below the acceptance threshold.'
+                : 'The AI result was not strong enough to infer a violation automatically.',
+            accent: '#f59e0b',
+            surface: 'rgba(245, 158, 11, 0.10)',
+            border: 'rgba(245, 158, 11, 0.28)',
+            badgeVariant: 'warning' as const,
+        };
+    }
+
+    if (aiSummary.hasHelmetViolation) {
+        return {
+            label: 'Helmet violation detected',
+            helper: 'The model found a no-helmet class above the configured threshold.',
+            accent: '#2563eb',
+            surface: 'rgba(37, 99, 235, 0.08)',
+            border: 'rgba(16, 185, 129, 0.28)',
+            badgeVariant: 'success' as const,
+        };
+    }
+
+    return {
+        label: 'No helmet violation detected',
+        helper: 'The model completed successfully but did not confirm a no-helmet class.',
+        accent: '#0f766e',
+        surface: 'rgba(14, 165, 233, 0.08)',
+        border: 'rgba(14, 165, 233, 0.24)',
+        badgeVariant: 'info' as const,
+    };
+};
 
 export const ViolationDetails: React.FC = () => {
     const { id } = useParams();
@@ -41,6 +113,7 @@ export const ViolationDetails: React.FC = () => {
     const [ticket, setTicket] = useState<TrafficTicket | null>(null);
     const [ticketLoading, setTicketLoading] = useState(false);
     const [ticketError, setTicketError] = useState('');
+    const [imageNaturalSize, setImageNaturalSize] = useState({ width: 0, height: 0 });
 
     useEffect(() => {
         const fetchReport = async () => {
@@ -137,6 +210,17 @@ export const ViolationDetails: React.FC = () => {
     if (!report) return <div style={{ padding: '2rem', textAlign: 'center' }}>Case not found.</div>;
 
     const mainEvidence = report.evidence[0];
+    const aiSummary = report.aiSummary;
+    const aiState = getAiSummaryState(aiSummary);
+    const aiDetections = aiSummary?.detections || [];
+    const overlayDetections = aiDetections.filter((detection) =>
+        detection.bbox?.x != null &&
+        detection.bbox?.y != null &&
+        detection.bbox?.width != null &&
+        detection.bbox?.height != null &&
+        imageNaturalSize.width > 0 &&
+        imageNaturalSize.height > 0
+    );
 
     // Determine available actions based on current status
     const isEvidenceReport = report.source === 'evidence-report';
@@ -165,7 +249,7 @@ export const ViolationDetails: React.FC = () => {
                     {report.status.replace(/-/g, ' ').toUpperCase()}
                 </Badge>
                 <div style={{ marginLeft: 'auto' }}>
-                    {report.aiAnalysis ? (
+                    {aiSummary ? (
                         <Badge variant="warning">
                             <BrainCircuit size={14} style={{ marginRight: '4px' }} /> AI ANALYZED
                         </Badge>
@@ -193,7 +277,57 @@ export const ViolationDetails: React.FC = () => {
                         minHeight: '400px'
                     }}>
                         {mainEvidence?.type === 'image' ? (
-                            <img src={mainEvidence.url} alt="Evidence" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                            <div style={{ position: 'relative', maxWidth: '100%', maxHeight: '100%', display: 'inline-block' }}>
+                                <img
+                                    src={mainEvidence.url}
+                                    alt="Evidence"
+                                    onLoad={(event) => {
+                                        setImageNaturalSize({
+                                            width: event.currentTarget.naturalWidth,
+                                            height: event.currentTarget.naturalHeight,
+                                        });
+                                    }}
+                                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block' }}
+                                />
+                                {overlayDetections.map((detection, index) => {
+                                    const bbox = detection.bbox!;
+                                    const left = (((bbox.x || 0) - ((bbox.width || 0) / 2)) / imageNaturalSize.width) * 100;
+                                    const top = (((bbox.y || 0) - ((bbox.height || 0) / 2)) / imageNaturalSize.height) * 100;
+                                    const width = ((bbox.width || 0) / imageNaturalSize.width) * 100;
+                                    const height = ((bbox.height || 0) / imageNaturalSize.height) * 100;
+                                    return (
+                                        <div
+                                            key={`${detection.class}-${index}`}
+                                            style={{
+                                                position: 'absolute',
+                                                left: `${left}%`,
+                                                top: `${top}%`,
+                                                width: `${width}%`,
+                                                height: `${height}%`,
+                                                border: `2px solid ${detection.normalizedClass === 'no-helmet' ? '#ef4444' : '#38bdf8'}`,
+                                                borderRadius: '6px',
+                                                boxShadow: '0 0 0 1px rgba(255,255,255,0.24)',
+                                                pointerEvents: 'none',
+                                            }}
+                                        >
+                                            <div style={{
+                                                position: 'absolute',
+                                                top: '-28px',
+                                                left: 0,
+                                                padding: '4px 8px',
+                                                borderRadius: '999px',
+                                                backgroundColor: detection.normalizedClass === 'no-helmet' ? 'rgba(239, 68, 68, 0.95)' : 'rgba(37, 99, 235, 0.92)',
+                                                color: '#fff',
+                                                fontSize: '0.7rem',
+                                                fontWeight: 700,
+                                                whiteSpace: 'nowrap',
+                                            }}>
+                                                {formatClassLabel(detection.normalizedClass || detection.class)} {formatConfidence(detection.confidence)}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         ) : (
                             <div style={{ color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-4)' }}>
                                 {mainEvidence?.type === 'video' ? <PlayCircle size={64} /> : <ImageIcon size={64} />}
@@ -213,7 +347,7 @@ export const ViolationDetails: React.FC = () => {
                             <span style={{ fontWeight: '600', color: 'var(--color-text)' }}>Final: {formatViolation(report.finalViolationType)}</span>
                             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>Claimed: {formatViolation(report.claimedViolationType || report.violationType)}</span>
                             <span style={{ fontSize: '0.75rem', color: report.inferredViolationType ? 'var(--color-primary)' : 'var(--color-text-secondary)' }}>
-                                AI inferred: {formatViolation(report.inferredViolationType, 'Not inferred')}
+                                AI inferred: {formatViolation(aiSummary?.inferredViolationType || report.inferredViolationType, 'Not inferred')}
                             </span>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
@@ -229,29 +363,125 @@ export const ViolationDetails: React.FC = () => {
 
                 {/* Right Column: Actions */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', height: '100%' }}>
-                    <Panel title="Officer Actions" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', marginTop: 'var(--space-2)' }}>
-                            {/* AI Detection info */}
-                            {report.aiAnalysis && (
-                                <div style={{ display: 'flex', gap: 'var(--space-3)', fontSize: '0.875rem' }}>
-                                    <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#3b82f6', marginTop: '6px', flexShrink: 0 }} />
+                    <Panel
+                        title="AI Detection Result"
+                        style={{
+                            flexShrink: 0,
+                            border: `1px solid ${aiState.border}`,
+                            background: aiState.surface,
+                        }}
+                    >
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                            <div style={{
+                                padding: 'var(--space-4)',
+                                borderRadius: 'var(--radius-lg)',
+                                background: 'rgba(255, 255, 255, 0.55)',
+                                border: `1px solid ${aiState.border}`,
+                                display: 'grid',
+                                gridTemplateColumns: '1.4fr 1fr',
+                                gap: 'var(--space-4)',
+                            }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <div style={{
+                                            width: '14px',
+                                            height: '14px',
+                                            borderRadius: '50%',
+                                            backgroundColor: aiState.accent,
+                                            boxShadow: `0 0 0 6px ${aiState.surface}`,
+                                        }} />
+                                        <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--color-text)' }}>
+                                            AI Result: {aiState.label}
+                                        </div>
+                                        <Badge variant={aiState.badgeVariant}>{(aiSummary?.confidenceLevel || 'n/a').toUpperCase()}</Badge>
+                                    </div>
+                                    <div style={{ color: 'var(--color-text-secondary)', fontSize: '0.85rem', lineHeight: 1.5 }}>
+                                        {aiState.helper}
+                                    </div>
+                                    {!aiSummary && (
+                                        <div style={{ color: 'var(--color-text-secondary)', fontSize: '0.8rem' }}>
+                                            Safe fallback: no AI summary was returned, so officer review must rely on the original evidence.
+                                        </div>
+                                    )}
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.85rem' }}>
                                     <div>
-                                        <div style={{ fontWeight: '500', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                            <BrainCircuit size={14} /> AI Detection Alert
-                                        </div>
-                                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginTop: '4px' }}>
-                                            Claimed violation: <strong>{formatViolation(report.claimedViolationType || report.violationType)}</strong>.
-                                            {' '}AI inferred: <strong>{formatViolation(report.inferredViolationType, 'Not inferred')}</strong>.
-                                            {' '}Confidence: <strong>{((report.aiAnalysis.confidence || 0) * 100).toFixed(0)}%</strong>
-                                            {report.aiAnalysis.confidenceBand && <span> (<strong>{report.aiAnalysis.confidenceBand}</strong>)</span>}.
-                                            {report.aiAnalysis.detectedPlate && <span> Plate read: <strong>{report.aiAnalysis.detectedPlate}</strong>.</span>}
-                                            {report.aiAnalysis.modelVersion && <span> Model: <strong>{report.aiAnalysis.modelVersion}</strong>.</span>}
-                                            {report.aiAnalysis.processedAt && <span> Processed: <strong>{new Date(report.aiAnalysis.processedAt).toLocaleString()}</strong>.</span>}
-                                        </div>
+                                        <div style={{ color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontSize: '0.72rem', fontWeight: 700 }}>Confidence</div>
+                                        <div style={{ fontWeight: 700 }}>{formatConfidence(aiSummary?.confidence)}</div>
+                                    </div>
+                                    <div>
+                                        <div style={{ color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontSize: '0.72rem', fontWeight: 700 }}>Review Needed</div>
+                                        <div style={{ fontWeight: 700 }}>{aiSummary ? (aiSummary.manualReviewRequired ? 'Yes' : 'No') : 'Yes'}</div>
+                                    </div>
+                                    <div>
+                                        <div style={{ color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontSize: '0.72rem', fontWeight: 700 }}>Provider</div>
+                                        <div style={{ fontWeight: 700 }}>{aiSummary?.provider || 'N/A'}</div>
+                                    </div>
+                                    <div>
+                                        <div style={{ color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontSize: '0.72rem', fontWeight: 700 }}>Model ID</div>
+                                        <div style={{ fontWeight: 700, wordBreak: 'break-word' }}>{aiSummary?.modelId || 'N/A'}</div>
                                     </div>
                                 </div>
-                            )}
+                            </div>
 
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+                                <div style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)', background: 'rgba(255,255,255,0.55)', border: '1px solid var(--color-border)' }}>
+                                    <div style={{ color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontSize: '0.72rem', fontWeight: 700, marginBottom: '8px' }}>Violation Comparison</div>
+                                    <div style={{ display: 'grid', gap: '8px', fontSize: '0.9rem' }}>
+                                        <div><strong>Claimed:</strong> {formatViolation(aiSummary?.claimedViolationType || report.claimedViolationType || report.violationType)}</div>
+                                        <div><strong>AI inferred:</strong> {formatViolation(aiSummary?.inferredViolationType || report.inferredViolationType, 'Not inferred')}</div>
+                                        <div><strong>Final officer-approved:</strong> {formatViolation(report.finalViolationType)}</div>
+                                    </div>
+                                </div>
+                                <div style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)', background: 'rgba(255,255,255,0.55)', border: '1px solid var(--color-border)' }}>
+                                    <div style={{ color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontSize: '0.72rem', fontWeight: 700, marginBottom: '8px' }}>Detected Classes</div>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                        {(aiSummary?.detectedClasses?.length ? aiSummary.detectedClasses : ['No classes returned']).map((item) => (
+                                            <Badge key={item} variant={item === 'No classes returned' ? 'neutral' : 'info'}>
+                                                {formatClassLabel(item)}
+                                            </Badge>
+                                        ))}
+                                    </div>
+                                    {aiSummary?.error && (
+                                        <div style={{ marginTop: '12px', color: '#b91c1c', fontSize: '0.82rem' }}>
+                                            Error: {aiSummary.error}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div>
+                                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-text)', marginBottom: '10px' }}>
+                                    Detection List
+                                </div>
+                                {aiDetections.length > 0 ? (
+                                    <DataTable headers={['Class', 'Normalized Class', 'Confidence', 'Bounding Box']}>
+                                        {aiDetections.map((detection, index) => (
+                                            <tr key={`${detection.class}-${index}`}>
+                                                <td>{formatClassLabel(detection.class)}</td>
+                                                <td>{formatClassLabel(detection.normalizedClass, 'N/A')}</td>
+                                                <td>
+                                                    {formatConfidence(detection.confidence)}
+                                                    {detection.confidenceLevel ? ` (${detection.confidenceLevel})` : ''}
+                                                </td>
+                                                <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                                                    {detection.bbox
+                                                        ? `x:${detection.bbox.x ?? '-'} y:${detection.bbox.y ?? '-'} w:${detection.bbox.width ?? '-'} h:${detection.bbox.height ?? '-'}`
+                                                        : 'N/A'}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </DataTable>
+                                ) : (
+                                    <div style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)', border: '1px dashed var(--color-border)', color: 'var(--color-text-secondary)', fontSize: '0.85rem' }}>
+                                        No AI detections are available for this report.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </Panel>
+                    <Panel title="Officer Actions" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', marginTop: 'var(--space-2)' }}>
                             {/* Timeline entry */}
                             <div style={{ display: 'flex', gap: 'var(--space-3)', fontSize: '0.875rem' }}>
                                 <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: 'var(--color-border)', marginTop: '6px', flexShrink: 0 }} />

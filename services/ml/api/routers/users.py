@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List
 import uuid
 
 from .. import models, schemas
 from ..database import get_db
 from ..dependencies import get_current_active_user, log_audit_action
+from ..presenters import present_reports
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -26,8 +27,16 @@ def get_my_profile(db: Session = Depends(get_db), current_user: models.User = De
 
 @router.get("/me/reports", response_model=List[schemas.ReportResponse])
 def get_my_reports(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_active_user)):
-    reports = db.query(models.Report).filter(models.Report.user_id == current_user.id).all()
-    return reports
+    reports = (
+        db.query(models.Report)
+        .options(
+            joinedload(models.Report.evidence),
+            joinedload(models.Report.inference_log),
+        )
+        .filter(models.Report.user_id == current_user.id)
+        .all()
+    )
+    return present_reports(reports)
 
 @router.get("/rewards", response_model=List[schemas.RewardResponse])
 def list_rewards(db: Session = Depends(get_db)):
