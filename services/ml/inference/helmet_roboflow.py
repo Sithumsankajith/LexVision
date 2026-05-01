@@ -35,21 +35,13 @@ ROBOFLOW_HELMET_MODEL_ID = ROBOFLOW_DEFAULT_MODEL_ID
 HIGH_CONFIDENCE_THRESHOLD = 0.8
 MEDIUM_CONFIDENCE_THRESHOLD = 0.5
 
-_VIOLATION_LABEL_ALIASES = {
-    "helmet": "helmet",
-    "helmeted": "helmet",
-    "withhelmet": "helmet",
-    "with_helmet": "helmet",
-    "nohelmet": "no-helmet",
-    "no_helmet": "no-helmet",
-    "no-helmet": "no-helmet",
-    "withouthelmet": "no-helmet",
-    "without_helmet": "no-helmet",
-    "notwearinghelmet": "no-helmet",
-    "not_wearing_helmet": "no-helmet",
-    "not wearing helmet": "no-helmet",
-    "not wearing helment": "no-helmet",
-}
+def normalize_class(cls: str) -> str:
+    cls = cls.strip().lower()
+    if cls in {"no_helmet", "no-helmet", "without_helmet", "nohelmet", "no_helmet_front", "no_helmet_back", "wrong_helmet"}:
+        return "no-helmet"
+    if cls in {"helmet", "with_helmet", "yes_helmet"}:
+        return "helmet"
+    return cls
 
 _client = None
 _client_error: str | None = None
@@ -61,9 +53,9 @@ def _env_setting(name: str, default: str | None = None) -> str | None:
 
 
 def _confidence_level(score: float) -> str:
-    if score >= HIGH_CONFIDENCE_THRESHOLD:
+    if score >= 0.80:
         return "high"
-    if score >= MEDIUM_CONFIDENCE_THRESHOLD:
+    if score >= 0.50:
         return "medium"
     return "low"
 
@@ -73,8 +65,11 @@ def _safe_result(error: str | None, *, status: str) -> dict[str, Any]:
         "detections": [],
         "detected_classes": [],
         "has_helmet_violation": False,
+        "inferred_violation_type": None,
         "confidence": 0.0,
         "confidence_level": "low",
+        "manual_review_required": True,
+        "possible_false_positive": False,
         "status": status,
         "provider": "roboflow",
         "model_id": _env_setting("ROBOFLOW_HELMET_MODEL_ID", ROBOFLOW_HELMET_MODEL_ID),
@@ -82,18 +77,7 @@ def _safe_result(error: str | None, *, status: str) -> dict[str, Any]:
     }
 
 
-def _normalize_label(label: str | None) -> str | None:
-    if not label:
-        return None
-
-    normalized_key = "".join(char for char in label.strip().lower() if char.isalnum())
-    if not normalized_key:
-        return None
-    return _VIOLATION_LABEL_ALIASES.get(normalized_key)
-
-
-def _is_helmet_violation(label: str | None) -> bool:
-    return _normalize_label(label) == "no-helmet"
+# (Removed _normalize_label and _is_helmet_violation)
 
 
 def _extract_predictions(response: Any) -> list[dict[str, Any]]:
@@ -196,7 +180,6 @@ def run_helmet_detection(image_path: str) -> dict[str, Any]:
     detections: list[dict[str, Any]] = []
     detected_classes: set[str] = set()
     best_violation_confidence = 0.0
-    has_helmet_violation = False
 
     for prediction in predictions:
         class_name = str(prediction.get("class", "unknown"))
@@ -207,8 +190,7 @@ def run_helmet_detection(image_path: str) -> dict[str, Any]:
             "width": round(float(prediction.get("width") or 0.0), 1),
             "height": round(float(prediction.get("height") or 0.0), 1),
         }
-        normalized_class = _normalize_label(class_name)
-        violation_candidate = _is_helmet_violation(class_name)
+        normalized_class = normalize_class(class_name)
 
         detections.append(
             {
@@ -217,22 +199,50 @@ def run_helmet_detection(image_path: str) -> dict[str, Any]:
                 "confidence": confidence,
                 "confidence_level": _confidence_level(confidence),
                 "bbox": bbox,
-                "is_violation_candidate": violation_candidate,
             }
         )
         detected_classes.add(class_name)
 
-        if violation_candidate:
-            has_helmet_violation = True
+        if normalized_class == "no-helmet":
             best_violation_confidence = max(best_violation_confidence, confidence)
+
+    detected_classes_list = sorted(detected_classes)
+    normalized_detected = {normalize_class(c) for c in detected_classes_list}
+
+    inferred_violation_type = None
+    has_helmet_violation = False
+    manual_review_required = False
+    possible_false_positive = False
+
+    if "no-helmet" in normalized_detected:
+        if best_violation_confidence >= 0.50:
+            inferred_violation_type = "NO_HELMET"
+            has_helmet_violation = True
+        else:
+            manual_review_required = True
+
+        if best_violation_confidence < 0.80:
+            possible_false_positive = True
+    elif "helmet" in normalized_detected and "no-helmet" not in normalized_detected:
+        inferred_violation_type = None
+        has_helmet_violation = False
+        manual_review_required = True
+        possible_false_positive = True
+    elif not detections:
+        manual_review_required = True
+
+    status = "success" if has_helmet_violation else "no_violation_detected"
 
     return {
         "detections": detections,
-        "detected_classes": sorted(detected_classes),
+        "detected_classes": detected_classes_list,
         "has_helmet_violation": has_helmet_violation,
+        "inferred_violation_type": inferred_violation_type,
         "confidence": round(best_violation_confidence, 4),
         "confidence_level": _confidence_level(best_violation_confidence),
-        "status": "success" if has_helmet_violation else "no_violation_detected",
+        "manual_review_required": manual_review_required,
+        "possible_false_positive": possible_false_positive,
+        "status": status,
         "provider": "roboflow",
         "model_id": model_id,
         "error": None,

@@ -315,6 +315,7 @@ def _empty_violation_detection(status: str) -> dict:
         "model_version": HELMET_MODEL_VERSION,
         "error": None,
         "needs_manual_review": True,
+        "possible_false_positive": False,
     }
 
 
@@ -367,7 +368,29 @@ def _summarize_violation_detections(
     candidate_detections = [item for item in detections if item.get("normalized_class") == "no-helmet"]
     has_helmet_violation = bool(candidate_detections)
     max_confidence = max((float(item["confidence"]) for item in candidate_detections), default=0.0)
-    inferred_violation_type = "no-helmet" if has_helmet_violation and max_confidence >= HELMET_VIOLATION_THRESHOLD else None
+    
+    inferred_violation_type = None
+    manual_review_required = False
+    possible_false_positive = False
+
+    detected_normalized = {item.get("normalized_class") for item in detections if item.get("normalized_class")}
+
+    if "no-helmet" in detected_normalized:
+        if max_confidence >= 0.50:
+            inferred_violation_type = "NO_HELMET"
+            has_helmet_violation = True
+        else:
+            manual_review_required = True
+
+        if max_confidence < 0.80:
+            possible_false_positive = True
+    elif "helmet" in detected_normalized and "no-helmet" not in detected_normalized:
+        inferred_violation_type = None
+        has_helmet_violation = False
+        manual_review_required = True
+        possible_false_positive = True
+    else:
+        manual_review_required = True
 
     if inferred_violation_type:
         status = "success"
@@ -387,7 +410,8 @@ def _summarize_violation_detections(
         "provider": provider,
         "model_version": model_version,
         "error": error,
-        "needs_manual_review": inferred_violation_type is None,
+        "needs_manual_review": manual_review_required,
+        "possible_false_positive": possible_false_positive,
     }
 
 
@@ -401,7 +425,7 @@ def _normalize_roboflow_violation_result(result: dict[str, Any]) -> dict:
         detections.append(
             {
                 "class": class_name,
-                "normalized_class": _normalize_violation_label(class_name),
+                "normalized_class": item.get("normalized_class", _normalize_violation_label(class_name)),
                 "confidence": confidence,
                 "confidence_level": item.get("confidence_level") or _confidence_band(confidence),
                 "bbox": {
@@ -414,15 +438,21 @@ def _normalize_roboflow_violation_result(result: dict[str, Any]) -> dict:
             }
         )
 
-    normalized_result = _summarize_violation_detections(
-        detections,
-        provider=str(result.get("provider") or "roboflow"),
-        model_version=model_version,
-        status_on_empty=str(result.get("status") or "no_detection"),
-        error=result.get("error"),
-    )
-    normalized_result["upstream_status"] = result.get("status")
-    return normalized_result
+    return {
+        "detections": detections,
+        "detected_classes": result.get("detected_classes", []),
+        "has_helmet_violation": result.get("has_helmet_violation", False),
+        "inferred_violation_type": result.get("inferred_violation_type"),
+        "max_confidence": result.get("confidence", 0.0),
+        "confidence_level": result.get("confidence_level", "low"),
+        "needs_manual_review": result.get("manual_review_required", True),
+        "possible_false_positive": result.get("possible_false_positive", False),
+        "status": result.get("status", "no_detection"),
+        "upstream_status": result.get("status", "no_detection"),
+        "provider": str(result.get("provider") or "roboflow"),
+        "model_version": model_version,
+        "error": result.get("error"),
+    }
 
 
 def _should_use_local_helmet_fallback(result: dict[str, Any]) -> bool:

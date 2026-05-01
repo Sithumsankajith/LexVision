@@ -41,7 +41,12 @@ def main() -> int:
 
     print(f"Image: {image_path.resolve()}")
     print(f"Output JSON: {output_path.resolve()}")
+    print(f"Model ID: {result.get('model_id')}")
     print(f"Status: {result.get('status')}")
+    print(f"Normalized Classes: {result.get('detected_classes')}")
+    print(f"Violation Decision: {result.get('inferred_violation_type')}")
+    print(f"Manual Review Required: {result.get('manual_review_required')}")
+    print(f"Possible False Positive: {result.get('possible_false_positive')}")
     print(f"Helmet violation detected: {result.get('has_helmet_violation')}")
     print(f"Best violation confidence: {result.get('confidence')}")
     print(json.dumps(result, indent=2))
