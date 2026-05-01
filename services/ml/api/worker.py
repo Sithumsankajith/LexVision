@@ -309,12 +309,13 @@ def _empty_violation_detection(status: str) -> dict:
         "has_helmet_violation": False,
         "inferred_violation_type": None,
         "max_confidence": 0.0,
-        "confidence_level": "low",
+        "confidence_level": "none",
         "status": status,
         "provider": "helmet_inference",
         "model_version": HELMET_MODEL_VERSION,
         "error": None,
         "needs_manual_review": True,
+        "review_reason": "No helmet-related object was detected. Officer must review manually." if status == "no_detection" else "AI inference failed. Officer must rely on original evidence.",
         "possible_false_positive": False,
     }
 
@@ -375,12 +376,14 @@ def _summarize_violation_detections(
 
     detected_normalized = {item.get("normalized_class") for item in detections if item.get("normalized_class")}
 
+    review_reason = None
     if "no-helmet" in detected_normalized:
         if max_confidence >= 0.50:
             inferred_violation_type = "NO_HELMET"
             has_helmet_violation = True
         else:
             manual_review_required = True
+            review_reason = "Low confidence no-helmet detection. Officer verification is required."
 
         if max_confidence < 0.80:
             possible_false_positive = True
@@ -389,8 +392,10 @@ def _summarize_violation_detections(
         has_helmet_violation = False
         manual_review_required = True
         possible_false_positive = True
+        review_reason = "Helmet detected, but officer verification is required."
     else:
         manual_review_required = True
+        review_reason = "No helmet-related object was detected. Officer must review manually."
 
     if inferred_violation_type:
         status = "success"
@@ -411,6 +416,7 @@ def _summarize_violation_detections(
         "model_version": model_version,
         "error": error,
         "needs_manual_review": manual_review_required,
+        "review_reason": review_reason,
         "possible_false_positive": possible_false_positive,
     }
 
@@ -446,6 +452,7 @@ def _normalize_roboflow_violation_result(result: dict[str, Any]) -> dict:
         "max_confidence": result.get("confidence", 0.0),
         "confidence_level": result.get("confidence_level", "low"),
         "needs_manual_review": result.get("manual_review_required", True),
+        "review_reason": result.get("review_reason"),
         "possible_false_positive": result.get("possible_false_positive", False),
         "status": result.get("status", "no_detection"),
         "upstream_status": result.get("status", "no_detection"),
@@ -891,6 +898,7 @@ def attempt_inference(
         "violation_error": violation_result["error"],
         "has_helmet_violation": violation_result["has_helmet_violation"],
         "needs_manual_review": violation_result["needs_manual_review"],
+        "violation_review_reason": violation_result.get("review_reason"),
         "detections": anpr_result["detections"],
         "detected_classes": anpr_result["detected_classes"],
         "quality_score": overall_confidence,

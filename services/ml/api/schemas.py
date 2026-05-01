@@ -225,6 +225,7 @@ class AISummaryResponse(BaseModel):
     confidence: float = 0.0
     confidence_level: Optional[str] = None
     manual_review_required: bool = False
+    review_reason: Optional[str] = None
     detected_classes: List[str] = []
     detections: List[AIDetectionResponse] = []
     error: Optional[str] = None

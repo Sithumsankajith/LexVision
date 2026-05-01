@@ -56,6 +56,7 @@ def build_ai_summary(report: Any) -> schemas.AISummaryResponse | None:
         "confidence": float(bbox_payload.get("violation_confidence") or 0.0),
         "confidence_level": bbox_payload.get("violation_confidence_level"),
         "manual_review_required": bool(bbox_payload.get("needs_manual_review", False)),
+        "review_reason": bbox_payload.get("violation_review_reason"),
         "detected_classes": bbox_payload.get("violation_detected_classes") or [],
         "detections": bbox_payload.get("violation_detections") or [],
         "error": bbox_payload.get("violation_error"),

@@ -61,8 +61,9 @@ export interface AISummary {
   finalViolationType?: string | null;
   hasHelmetViolation: boolean;
   confidence: number;
-  confidenceLevel?: ConfidenceBand | null;
+  confidenceLevel?: ConfidenceBand | 'none' | null;
   manualReviewRequired: boolean;
+  reviewReason?: string | null;
   detectedClasses: string[];
   detections: AIDetection[];
   error?: string | null;
@@ -95,7 +96,7 @@ export interface Report {
     finalViolationType?: string | null;
     detectedPlate?: string | null;
     confidence?: number;
-    confidenceBand?: ConfidenceBand | null;
+    confidenceBand?: ConfidenceBand | 'none' | null;
     modelVersion?: string | null;
     bbox?: Record<string, unknown> | null;
     ocrOutput?: {

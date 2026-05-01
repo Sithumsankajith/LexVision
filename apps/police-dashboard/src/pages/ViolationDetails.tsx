@@ -12,10 +12,14 @@ import {
     BrainCircuit,
     RefreshCcw,
     Image as ImageIcon,
-    FileText,
     ClipboardCheck,
     Loader2,
-    Download
+    Download,
+    ZoomIn,
+    ZoomOut,
+    Maximize,
+    Minimize,
+    FileText
 } from 'lucide-react';
 import { Button, Input } from '@lexvision/ui';
 import { Panel, Badge, DataTable } from '@lexvision/ui';
@@ -117,6 +121,8 @@ export const ViolationDetails: React.FC = () => {
     const [imageNaturalSize, setImageNaturalSize] = useState({ width: 0, height: 0 });
     const [rerunLoading, setRerunLoading] = useState(false);
     const [rerunError, setRerunError] = useState('');
+    const [zoom, setZoom] = useState(1);
+    const [isFullImageOpen, setIsFullImageOpen] = useState(false);
 
     const loadReportDetails = async (reportId: string) => {
         try {
@@ -295,73 +301,127 @@ export const ViolationDetails: React.FC = () => {
                     {/* Viewer */}
                     <div style={{
                         flex: 1,
-                        backgroundColor: '#000',
+                        backgroundColor: '#0f172a',
                         borderRadius: 'var(--radius-lg)',
                         display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
+                        flexDirection: 'column',
                         position: 'relative',
                         overflow: 'hidden',
                         minHeight: '400px'
                     }}>
-                        {mainEvidence?.type === 'image' ? (
-                            <div style={{ position: 'relative', maxWidth: '100%', maxHeight: '100%', display: 'inline-block' }}>
-                                <img
-                                    src={mainEvidence.url}
-                                    alt="Evidence"
-                                    onLoad={(event) => {
-                                        setImageNaturalSize({
-                                            width: event.currentTarget.naturalWidth,
-                                            height: event.currentTarget.naturalHeight,
-                                        });
-                                    }}
-                                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block' }}
-                                />
-                                {overlayDetections.map((detection, index) => {
-                                    const bbox = detection.bbox!;
-                                    const left = (((bbox.x || 0) - ((bbox.width || 0) / 2)) / imageNaturalSize.width) * 100;
-                                    const top = (((bbox.y || 0) - ((bbox.height || 0) / 2)) / imageNaturalSize.height) * 100;
-                                    const width = ((bbox.width || 0) / imageNaturalSize.width) * 100;
-                                    const height = ((bbox.height || 0) / imageNaturalSize.height) * 100;
-                                    return (
-                                        <div
-                                            key={`${detection.class}-${index}`}
-                                            style={{
-                                                position: 'absolute',
-                                                left: `${left}%`,
-                                                top: `${top}%`,
-                                                width: `${width}%`,
-                                                height: `${height}%`,
-                                                border: `2px solid ${detection.normalizedClass === 'no-helmet' ? '#ef4444' : '#38bdf8'}`,
-                                                borderRadius: '6px',
-                                                boxShadow: '0 0 0 1px rgba(255,255,255,0.24)',
-                                                pointerEvents: 'none',
-                                            }}
-                                        >
-                                            <div style={{
-                                                position: 'absolute',
-                                                top: '-28px',
-                                                left: 0,
-                                                padding: '4px 8px',
-                                                borderRadius: '999px',
-                                                backgroundColor: detection.normalizedClass === 'no-helmet' ? 'rgba(239, 68, 68, 0.95)' : 'rgba(37, 99, 235, 0.92)',
-                                                color: '#fff',
-                                                fontSize: '0.7rem',
-                                                fontWeight: 700,
-                                                whiteSpace: 'nowrap',
-                                            }}>
-                                                {formatClassLabel(detection.normalizedClass || detection.class)} {formatConfidence(detection.confidence)}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        ) : (
-                            <div style={{ color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-4)' }}>
-                                {mainEvidence?.type === 'video' ? <PlayCircle size={64} /> : <ImageIcon size={64} />}
-                                <span>{mainEvidence ? 'Playback Evidence Clip' : 'No Evidence Available'}</span>
+                        {/* Toolbar */}
+                        {mainEvidence?.type === 'image' && (
+                            <div style={{
+                                position: 'absolute',
+                                top: 'var(--space-3)',
+                                right: 'var(--space-3)',
+                                zIndex: 10,
+                                display: 'flex',
+                                gap: '8px',
+                                background: 'rgba(15, 23, 42, 0.7)',
+                                padding: '6px',
+                                borderRadius: '8px',
+                                backdropFilter: 'blur(4px)'
+                            }}>
+                                <Button size="sm" variant="ghost" onClick={() => setZoom(z => Math.max(0.5, z - 0.25))} style={{ color: '#fff', padding: '4px' }}>
+                                    <ZoomOut size={16} />
+                                </Button>
+                                <div style={{ display: 'flex', alignItems: 'center', color: '#fff', fontSize: '0.8rem', minWidth: '40px', justifyContent: 'center', fontWeight: 'bold' }}>
+                                    {Math.round(zoom * 100)}%
+                                </div>
+                                <Button size="sm" variant="ghost" onClick={() => setZoom(z => Math.min(3, z + 0.25))} style={{ color: '#fff', padding: '4px' }}>
+                                    <ZoomIn size={16} />
+                                </Button>
+                                <div style={{ width: '1px', background: 'rgba(255,255,255,0.2)', margin: '0 4px' }} />
+                                <Button size="sm" variant="ghost" onClick={() => { setZoom(1); setIsFullImageOpen(false); }} style={{ color: '#fff', padding: '4px' }} title="Reset Zoom">
+                                    <Minimize size={16} />
+                                </Button>
+                                <Button size="sm" variant="ghost" onClick={() => setIsFullImageOpen(prev => !prev)} style={{ color: '#fff', padding: '4px' }} title={isFullImageOpen ? "Close Full Image" : "Open Full Image"}>
+                                    {isFullImageOpen ? <Minimize size={16} /> : <Maximize size={16} />}
+                                </Button>
                             </div>
                         )}
+
+                        <div style={{
+                            flex: 1,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            overflow: 'auto',
+                            padding: 'var(--space-4)'
+                        }}>
+                            {mainEvidence?.type === 'image' ? (
+                                <div style={{ 
+                                    position: 'relative', 
+                                    display: 'inline-block',
+                                    transition: 'transform 0.2s ease-out',
+                                    transform: `scale(${zoom})`,
+                                    transformOrigin: 'center center'
+                                }}>
+                                    <img
+                                        src={mainEvidence.url}
+                                        alt="Evidence"
+                                        onLoad={(event) => {
+                                            setImageNaturalSize({
+                                                width: event.currentTarget.naturalWidth,
+                                                height: event.currentTarget.naturalHeight,
+                                            });
+                                        }}
+                                        style={{ 
+                                            maxWidth: isFullImageOpen ? 'none' : '100%', 
+                                            maxHeight: isFullImageOpen ? 'none' : '60vh',
+                                            objectFit: 'contain', 
+                                            display: 'block',
+                                            borderRadius: '4px'
+                                        }}
+                                    />
+                                    {overlayDetections.map((detection, index) => {
+                                        const bbox = detection.bbox!;
+                                        const left = (((bbox.x || 0) - ((bbox.width || 0) / 2)) / imageNaturalSize.width) * 100;
+                                        const top = (((bbox.y || 0) - ((bbox.height || 0) / 2)) / imageNaturalSize.height) * 100;
+                                        const width = ((bbox.width || 0) / imageNaturalSize.width) * 100;
+                                        const height = ((bbox.height || 0) / imageNaturalSize.height) * 100;
+                                        return (
+                                            <div
+                                                key={`${detection.class}-${index}`}
+                                                style={{
+                                                    position: 'absolute',
+                                                    left: `${left}%`,
+                                                    top: `${top}%`,
+                                                    width: `${width}%`,
+                                                    height: `${height}%`,
+                                                    border: `2px solid ${detection.normalizedClass === 'no-helmet' ? '#ef4444' : '#38bdf8'}`,
+                                                    borderRadius: '4px',
+                                                    boxShadow: '0 0 0 1px rgba(255,255,255,0.1)',
+                                                    pointerEvents: 'none',
+                                                }}
+                                            >
+                                                <div style={{
+                                                    position: 'absolute',
+                                                    top: '-24px',
+                                                    left: '-2px',
+                                                    padding: '2px 6px',
+                                                    borderRadius: '4px',
+                                                    backgroundColor: detection.normalizedClass === 'no-helmet' ? '#ef4444' : '#38bdf8',
+                                                    color: '#fff',
+                                                    fontSize: '0.7rem',
+                                                    fontWeight: 700,
+                                                    whiteSpace: 'nowrap',
+                                                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                                                }}>
+                                                    {formatClassLabel(detection.normalizedClass || detection.class)} {formatConfidence(detection.confidence)}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                <div style={{ color: '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-4)' }}>
+                                    {mainEvidence?.type === 'video' ? <PlayCircle size={64} /> : <ImageIcon size={64} />}
+                                    <span>{mainEvidence ? 'Playback Evidence Clip' : 'No Evidence Available'}</span>
+                                </div>
+                            )}
+                        </div>
                     </div>
 
                     {/* Metadata Strip */}

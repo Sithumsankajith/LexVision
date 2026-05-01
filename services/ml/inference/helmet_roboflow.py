@@ -61,14 +61,21 @@ def _confidence_level(score: float) -> str:
 
 
 def _safe_result(error: str | None, *, status: str) -> dict[str, Any]:
+    if status == "no_detection":
+        review_reason = "No helmet-related object was detected. Officer must review manually."
+    else:
+        status = "failed"
+        review_reason = "AI inference failed. Officer must rely on original evidence."
+
     return {
         "detections": [],
         "detected_classes": [],
         "has_helmet_violation": False,
         "inferred_violation_type": None,
         "confidence": 0.0,
-        "confidence_level": "low",
+        "confidence_level": "none",
         "manual_review_required": True,
+        "review_reason": review_reason,
         "possible_false_positive": False,
         "status": status,
         "provider": "roboflow",
@@ -213,6 +220,7 @@ def run_helmet_detection(image_path: str) -> dict[str, Any]:
     has_helmet_violation = False
     manual_review_required = False
     possible_false_positive = False
+    review_reason = None
 
     if "no-helmet" in normalized_detected:
         if best_violation_confidence >= 0.50:
@@ -220,6 +228,7 @@ def run_helmet_detection(image_path: str) -> dict[str, Any]:
             has_helmet_violation = True
         else:
             manual_review_required = True
+            review_reason = "Low confidence no-helmet detection. Officer verification is required."
 
         if best_violation_confidence < 0.80:
             possible_false_positive = True
@@ -228,10 +237,15 @@ def run_helmet_detection(image_path: str) -> dict[str, Any]:
         has_helmet_violation = False
         manual_review_required = True
         possible_false_positive = True
+        review_reason = "Helmet detected, but officer verification is required."
     elif not detections:
         manual_review_required = True
+        review_reason = "No helmet-related object was detected. Officer must review manually."
 
-    status = "success" if has_helmet_violation else "no_violation_detected"
+    if not detections:
+        status = "no_detection"
+    else:
+        status = "success" if has_helmet_violation else "no_violation_detected"
 
     return {
         "detections": detections,
@@ -239,8 +253,9 @@ def run_helmet_detection(image_path: str) -> dict[str, Any]:
         "has_helmet_violation": has_helmet_violation,
         "inferred_violation_type": inferred_violation_type,
         "confidence": round(best_violation_confidence, 4),
-        "confidence_level": _confidence_level(best_violation_confidence),
+        "confidence_level": _confidence_level(best_violation_confidence) if detections else "none",
         "manual_review_required": manual_review_required,
+        "review_reason": review_reason,
         "possible_false_positive": possible_false_positive,
         "status": status,
         "provider": "roboflow",
