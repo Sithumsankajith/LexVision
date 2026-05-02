@@ -25,10 +25,32 @@ try:
         ROBOFLOW_HELMET_MODEL_ID,
         run_helmet_detection,
     )
+    from services.ml.inference.red_light_roboflow import (
+        ROBOFLOW_RED_LIGHT_MODEL_ID,
+        run_red_light_detection,
+    )
+    from services.ml.inference.white_line_roboflow import (
+        ROBOFLOW_WHITE_LINE_MODEL_ID,
+        run_white_line_detection,
+    )
+    from services.ml.inference.anpr_pipeline import run_anpr_pipeline
 except ModuleNotFoundError as exc:
-    if exc.name not in {"services", "services.ml", "services.ml.inference", "services.ml.inference.helmet_roboflow"}:
+    if exc.name not in {
+        "services",
+        "services.ml",
+        "services.ml.inference",
+        "services.ml.inference.helmet_roboflow",
+        "services.ml.inference.red_light_roboflow",
+        "services.ml.inference.white_line_roboflow",
+        "services.ml.inference.anpr_pipeline",
+    }:
         raise
     from inference.helmet_roboflow import ROBOFLOW_HELMET_MODEL_ID, run_helmet_detection
+    from inference.red_light_roboflow import ROBOFLOW_RED_LIGHT_MODEL_ID, run_red_light_detection
+    from inference.white_line_roboflow import ROBOFLOW_WHITE_LINE_MODEL_ID, run_white_line_detection
+    from inference.anpr_pipeline import run_anpr_pipeline
+
+from .violation_types import normalize_claimed_violation_type
 
 # Configure logging once for the background worker entrypoint.
 logging.basicConfig(level=logging.INFO)
@@ -765,61 +787,21 @@ def _run_plate_ocr(crop) -> dict:
 
 
 def _build_anpr_result(report_id: str, image_path: str | None) -> dict:
-    """
-    Execute the full ANPR flow:
-    detect plate -> crop best region -> preprocess -> OCR -> normalize/validate.
-    """
-    result = {
-        "plate_text": None,
-        "plate_confidence": 0.0,
-        "bbox": None,
-        "crop_path": None,
-        "validation_status": "no_image",
-        "detections": [],
-        "detected_classes": [],
-        "num_detections": 0,
-        "detection_confidence": 0.0,
-        "raw_text": None,
-        "ocr_candidates": [],
+    pipeline_result = run_anpr_pipeline(image_path)
+    return {
+        "plate_text": pipeline_result.get("plate_text"),
+        "plate_confidence": round(float(pipeline_result.get("plate_confidence") or 0.0), 4),
+        "bbox": pipeline_result.get("bbox"),
+        "crop_path": pipeline_result.get("crop_path"),
+        "validation_status": pipeline_result.get("status", "pending"),
+        "detections": pipeline_result.get("detections", []),
+        "detected_classes": pipeline_result.get("detected_classes", []),
+        "num_detections": int(pipeline_result.get("num_detections") or 0),
+        "detection_confidence": round(float(pipeline_result.get("detection_confidence") or 0.0), 4),
+        "raw_text": pipeline_result.get("raw_text"),
+        "ocr_candidates": pipeline_result.get("ocr_candidates", []),
+        "status": pipeline_result.get("status", "pending"),
     }
-
-    if not image_path:
-        return result
-
-    detection_result = _run_plate_detection(image_path)
-    result.update(
-        {
-            "detections": detection_result["detections"],
-            "detected_classes": detection_result["detected_classes"],
-            "num_detections": detection_result["num_detections"],
-            "detection_confidence": detection_result["max_confidence"],
-            "validation_status": detection_result["status"],
-        }
-    )
-
-    best_detection = detection_result["best_detection"]
-    if best_detection is None:
-        logger.info("No plate detected for report %s. Forwarding for manual review.", report_id)
-        return result
-
-    result["bbox"] = best_detection["bbox"]
-    crop, crop_path = _crop_highest_confidence_plate(image_path, best_detection, report_id)
-    result["crop_path"] = crop_path
-    if crop is None:
-        result["validation_status"] = "crop_failed"
-        return result
-
-    ocr_result = _run_plate_ocr(crop)
-    result.update(
-        {
-            "plate_text": ocr_result["plate_text"],
-            "plate_confidence": ocr_result["plate_confidence"],
-            "validation_status": ocr_result["validation_status"],
-            "raw_text": ocr_result["raw_text"],
-            "ocr_candidates": ocr_result["ocr_candidates"],
-        }
-    )
-    return result
 
 
 def _cleanup_temporary_evidence(image_path: str | None) -> None:
@@ -830,13 +812,83 @@ def _cleanup_temporary_evidence(image_path: str | None) -> None:
             logger.warning("Failed to remove temporary evidence file: %s", image_path)
 
 
+def _manual_review_violation_result(
+    claimed_violation_type: str | None,
+    *,
+    reason: str,
+    status: str,
+    error: str | None = None,
+) -> dict[str, Any]:
+    model_id = (
+        ROBOFLOW_HELMET_MODEL_ID if claimed_violation_type == "helmet"
+        else ROBOFLOW_RED_LIGHT_MODEL_ID if claimed_violation_type == "red_light"
+        else ROBOFLOW_WHITE_LINE_MODEL_ID if claimed_violation_type == "white_line"
+        else None
+    )
+    return {
+        "violation_family": claimed_violation_type or "unknown",
+        "status": status,
+        "inferred_violation_type": None,
+        "has_violation": False,
+        "has_helmet_violation": False,
+        "confidence": 0.0,
+        "confidence_level": "none",
+        "manual_review_required": True,
+        "review_reason": reason,
+        "detected_classes": [],
+        "detections": [],
+        "provider": "roboflow",
+        "model_id": model_id,
+        "error": error,
+    }
+
+
+def _run_selected_violation_detection(image_path: str | None, claimed_violation_type: str | None) -> dict[str, Any]:
+    if not image_path:
+        return _manual_review_violation_result(
+            claimed_violation_type,
+            reason="No usable evidence image was available for AI review.",
+            status="failed",
+        )
+
+    if claimed_violation_type == "helmet":
+        result = run_helmet_detection(image_path)
+    elif claimed_violation_type == "red_light":
+        result = run_red_light_detection(image_path)
+    elif claimed_violation_type == "white_line":
+        result = run_white_line_detection(image_path)
+    else:
+        return _manual_review_violation_result(
+            claimed_violation_type,
+            reason="Unsupported violation type selected. Manual review is required.",
+            status="failed",
+            error="Unsupported claimed_violation_type",
+        )
+
+    result.setdefault("violation_family", claimed_violation_type or "unknown")
+    result.setdefault("status", "failed")
+    result.setdefault("inferred_violation_type", None)
+    result.setdefault("has_violation", False)
+    result.setdefault("confidence", 0.0)
+    result.setdefault("confidence_level", "none")
+    result.setdefault("manual_review_required", True)
+    result.setdefault("review_reason", "Manual review required.")
+    result.setdefault("detected_classes", [])
+    result.setdefault("detections", [])
+    result.setdefault("provider", "roboflow")
+    result.setdefault("model_id", None)
+    result.setdefault("error", None)
+    result["has_helmet_violation"] = bool(result.get("violation_family") == "helmet" and result.get("has_violation"))
+    return result
+
+
 def attempt_inference(
     report: Report | EvidenceReport,
     db: Session,
     report_kind: Literal["legacy", "evidence"] = "legacy",
     attempt: int = 1,
 ):
-    """Run helmet + ANPR inference on a report and keep it available for police review."""
+    """Run the selected Roboflow violation model plus the ANPR pipeline placeholder."""
     logger.info("Starting inference job for %s report %s (Attempt %s)", report_kind, report.id, attempt)
     start_time = time.time()
     processed_at = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -846,9 +898,14 @@ def attempt_inference(
         # the claimed/inferred/final split. Keep the citizen claim accessible.
         report.claimed_violation_type = report.violation_type
 
-    claimed_violation_type = report.claimed_violation_type if report_kind == "legacy" else report.violation_type
+    claimed_violation_type = normalize_claimed_violation_type(
+        report.claimed_violation_type if report_kind == "legacy" else report.violation_type
+    )
+    if report_kind == "legacy":
+        report.claimed_violation_type = claimed_violation_type
 
-    if report.status == StatusEnum.SUBMITTED:
+    report_status_value = getattr(report.status, "value", report.status)
+    if report_status_value == "SUBMITTED":
         if report_kind == "evidence":
             apply_evidence_report_status(
                 report,
@@ -862,20 +919,13 @@ def attempt_inference(
         db.commit()
 
     image_path = _select_primary_evidence_image(db, report.id, report_kind)
-    violation_result = _run_violation_detection(image_path) if image_path else _empty_violation_detection("no_image")
+    violation_result = _run_selected_violation_detection(image_path, claimed_violation_type)
     anpr_result = _build_anpr_result(report.id, image_path)
 
     _cleanup_temporary_evidence(image_path)
 
-    bbox_clarity = 1.0 if anpr_result["bbox"] else 0.0
-    quality_score = (
-        violation_result["max_confidence"] * 0.55
-        + anpr_result["detection_confidence"] * 0.2
-        + anpr_result["plate_confidence"] * 0.2
-        + bbox_clarity * 0.05
-    )
-    overall_confidence = round(quality_score, 4)
-    confidence_band = _confidence_band(overall_confidence)
+    overall_confidence = round(float(violation_result.get("confidence") or 0.0), 4)
+    confidence_band = str(violation_result.get("confidence_level") or "none")
     latency = time.time() - start_time
     inferred_violation_type = violation_result["inferred_violation_type"]
     if report_kind == "legacy":
@@ -883,33 +933,42 @@ def attempt_inference(
     elif not report.vehicle_plate and anpr_result["plate_text"]:
         report.vehicle_plate = anpr_result["plate_text"]
 
+    manual_review_required = bool(
+        violation_result.get(
+            "manual_review_required",
+            violation_result.get("needs_manual_review", True),
+        )
+    )
+
     bbox_payload = {
         "model_version": {
-            "helmet": violation_result["model_version"],
-            "anpr": ANPR_MODEL_VERSION,
+            "violation": violation_result.get("model_id"),
+            "anpr": anpr_result.get("status", "pending"),
         },
         "processing_timestamp": processed_at.isoformat(),
+        "violation_family": violation_result.get("violation_family"),
         "violation_detections": violation_result["detections"],
         "violation_detected_classes": violation_result["detected_classes"],
         "violation_detection_status": violation_result["status"],
-        "violation_confidence": violation_result["max_confidence"],
+        "violation_confidence": overall_confidence,
         "violation_confidence_level": violation_result["confidence_level"],
         "violation_provider": violation_result["provider"],
+        "violation_model_id": violation_result.get("model_id"),
         "violation_error": violation_result["error"],
-        "has_helmet_violation": violation_result["has_helmet_violation"],
-        "needs_manual_review": violation_result["needs_manual_review"],
+        "has_violation": bool(violation_result.get("has_violation")),
+        "has_helmet_violation": bool(violation_result.get("has_helmet_violation")),
+        "manual_review_required": manual_review_required,
+        "needs_manual_review": manual_review_required,
         "violation_review_reason": violation_result.get("review_reason"),
-        "detections": anpr_result["detections"],
-        "detected_classes": anpr_result["detected_classes"],
         "quality_score": overall_confidence,
         "confidence_band": confidence_band,
         "claimed_violation_type": claimed_violation_type,
         "inferred_violation_type": inferred_violation_type,
-        "bbox": anpr_result["bbox"],
-        "crop_path": anpr_result["crop_path"],
         "plate_text": anpr_result["plate_text"],
         "plate_confidence": round(anpr_result["plate_confidence"], 4),
         "validation_status": anpr_result["validation_status"],
+        "anpr_status": anpr_result.get("status", anpr_result["validation_status"]),
+        "anpr_output": anpr_result,
         "ocr_output": {
             "raw_text": anpr_result["raw_text"],
             "plate_text": anpr_result["plate_text"],
@@ -932,7 +991,7 @@ def attempt_inference(
         )
         db.add(inference_log)
 
-    inference_log.model_version = f"{violation_result['model_version']}|{ANPR_MODEL_VERSION}"
+    inference_log.model_version = f"{violation_result.get('model_id') or 'unknown'}|anpr:{anpr_result.get('status', 'pending')}"
     inference_log.bbox_coordinates = bbox_payload
     inference_log.confidence = overall_confidence
     inference_log.ocr_text = anpr_result["plate_text"]
@@ -965,20 +1024,14 @@ def attempt_inference(
             )
         else:
             report.status = StatusEnum.UNDER_REVIEW
-        if anpr_result["bbox"] is None:
-            inference_log.bbox_coordinates["filtering"] = "No plate detected; forwarded to manual review."
-        elif not anpr_result["plate_text"]:
-            inference_log.bbox_coordinates["filtering"] = "Plate detected but OCR/validation failed; forwarded to manual review."
-        elif violation_result["status"] in {"api_error", "configuration_error", "dependency_error", "detection_error", "model_unavailable", "timeout"}:
-            inference_log.bbox_coordinates["filtering"] = "Helmet detection was unavailable; forwarded to manual review."
-        elif violation_result["status"] == "no_detection":
-            inference_log.bbox_coordinates["filtering"] = "Helmet detector returned no objects; forwarded to manual review."
-        elif violation_result["status"] == "low_confidence_violation":
-            inference_log.bbox_coordinates["filtering"] = "No-helmet detection was below the confidence threshold; forwarded to manual review."
-        elif quality_score < QUALITY_THRESHOLD:
-            inference_log.bbox_coordinates["filtering"] = "Low-confidence plate read; forwarded to manual review."
+        if violation_result["error"]:
+            inference_log.bbox_coordinates["filtering"] = "Selected AI model failed; forwarded to manual review."
+        elif manual_review_required:
+            inference_log.bbox_coordinates["filtering"] = violation_result.get("review_reason") or "Manual review required."
         elif inferred_violation_type is None:
-            inference_log.bbox_coordinates["filtering"] = "ANPR completed, but the current AI pipeline did not confirm a no-helmet violation."
+            inference_log.bbox_coordinates["filtering"] = "AI could not confirm the reported violation."
+        else:
+            inference_log.bbox_coordinates["filtering"] = "AI completed and the case is ready for officer review."
 
     audit = AuditLog(
         user_id=report.user_id if report_kind == "legacy" else None,
@@ -990,17 +1043,20 @@ def attempt_inference(
             "quality_score": overall_confidence,
             "confidence_band": confidence_band,
             "report_kind": report_kind,
-            "plate_detections": anpr_result["num_detections"],
+            "plate_detections": anpr_result.get("num_detections", 0),
             "ocr_text": anpr_result["plate_text"],
             "validation_status": anpr_result["validation_status"],
             "claimed_violation_type": claimed_violation_type,
             "inferred_violation_type": inferred_violation_type,
+            "violation_family": violation_result.get("violation_family"),
             "violation_provider": violation_result["provider"],
             "violation_detection_status": violation_result["status"],
-            "violation_confidence": violation_result["max_confidence"],
+            "violation_confidence": overall_confidence,
             "violation_confidence_level": violation_result["confidence_level"],
-            "needs_manual_review": violation_result["needs_manual_review"],
-            "threshold_met": quality_score >= QUALITY_THRESHOLD,
+            "manual_review_required": manual_review_required,
+            "needs_manual_review": manual_review_required,
+            "has_violation": bool(violation_result.get("has_violation")),
+            "anpr_status": anpr_result.get("status", "pending"),
             "attempt": attempt,
         },
     )

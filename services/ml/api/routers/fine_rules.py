@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..database import get_db
 from ..dependencies import get_admin, get_police
+from ..violation_types import canonical_or_original_violation_type, deduplicate_violation_types, violation_type_variants
 
 router = APIRouter(prefix="/api/fine-rules", tags=["fine-rules"])
 
@@ -26,8 +27,9 @@ def get_fine_rule_by_violation(
     current_user: models.User = Depends(get_police),
 ):
     """Get the active fine rule for a specific violation type."""
+    candidates = deduplicate_violation_types([canonical_or_original_violation_type(violation_type), *violation_type_variants(violation_type)])
     rule = db.query(models.FineRule).filter(
-        models.FineRule.violation_type == violation_type,
+        models.FineRule.violation_type.in_(candidates),
         models.FineRule.active == True
     ).first()
     if not rule:

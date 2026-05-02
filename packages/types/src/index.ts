@@ -1,4 +1,4 @@
-export type ViolationType = 'helmet' | 'no-helmet' | 'red-light' | 'white-line' | string;
+export type ViolationType = 'helmet' | 'red_light' | 'white_line' | 'no-helmet' | 'red-light' | 'white-line' | string;
 export type ConfidenceBand = 'high' | 'medium' | 'low';
 
 export type ReportStatus = 'submitted' | 'under-review' | 'verified' | 'rejected' | 'closed' | 'forwarded';
@@ -54,11 +54,13 @@ export interface AIDetection {
 }
 
 export interface AISummary {
+  violationFamily?: string | null;
   provider?: string | null;
   modelId?: string | null;
   claimedViolationType?: string | null;
   inferredViolationType?: string | null;
   finalViolationType?: string | null;
+  hasViolation: boolean;
   hasHelmetViolation: boolean;
   confidence: number;
   confidenceLevel?: ConfidenceBand | 'none' | null;

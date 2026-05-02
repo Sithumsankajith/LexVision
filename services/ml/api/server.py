@@ -84,13 +84,13 @@ def seed_fine_rules():
                 "description": "Riding a motorcycle without a protective helmet."
             },
             {
-                "violation_type": "red-light",
+                "violation_type": "red_light",
                 "penal_code": "MVA-456",
                 "fine_amount": 5000,
                 "description": "Failing to obey a red traffic light signal."
             },
             {
-                "violation_type": "white-line",
+                "violation_type": "white_line",
                 "penal_code": "MVA-789",
                 "fine_amount": 3000,
                 "description": "Crossing the continuous white line on the road."

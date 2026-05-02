@@ -1,8 +1,9 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, validator
 from typing import Optional, List, Any
 from datetime import datetime
 from .models import RoleEnum, StatusEnum
 from .constants import StatusChangeSourceEnum
+from .violation_types import canonical_or_original_violation_type, is_supported_claimed_violation_type
 
 # --- User Schemas ---
 class UserCreate(BaseModel):
@@ -113,6 +114,13 @@ class CitizenEvidenceReportCreate(BaseModel):
     vehicle_type: Optional[str] = None
     evidence: List[CitizenEvidenceFileCreate]
 
+    @validator("violation_type")
+    def validate_violation_type(cls, value: str) -> str:
+        normalized = canonical_or_original_violation_type(value)
+        if not is_supported_claimed_violation_type(normalized):
+            raise ValueError("violation_type must be one of: helmet, red_light, white_line")
+        return normalized or value
+
 
 class CitizenEvidenceReportResponse(BaseModel):
     id: str
@@ -216,11 +224,13 @@ class AIDetectionResponse(BaseModel):
 
 
 class AISummaryResponse(BaseModel):
+    violation_family: Optional[str] = None
     provider: Optional[str] = None
     model_id: Optional[str] = None
     claimed_violation_type: Optional[str] = None
     inferred_violation_type: Optional[str] = None
     final_violation_type: Optional[str] = None
+    has_violation: bool = False
     has_helmet_violation: bool = False
     confidence: float = 0.0
     confidence_level: Optional[str] = None
@@ -241,6 +251,13 @@ class ReportCreate(BaseModel):
     location_address: str
     location_city: str
     evidence: List[EvidenceSchema]
+
+    @validator("violation_type")
+    def validate_violation_type(cls, value: str) -> str:
+        normalized = canonical_or_original_violation_type(value)
+        if not is_supported_claimed_violation_type(normalized):
+            raise ValueError("violation_type must be one of: helmet, red_light, white_line")
+        return normalized or value
 
 class ReportResponse(BaseModel):
     id: str
@@ -276,6 +293,10 @@ class FineRuleBase(BaseModel):
     description: Optional[str] = None
     severity: Optional[str] = None
     active: Optional[bool] = True
+
+    @validator("violation_type")
+    def normalize_violation_type(cls, value: str) -> str:
+        return canonical_or_original_violation_type(value) or value
 
 class FineRuleCreate(FineRuleBase):
     pass
@@ -318,6 +339,12 @@ class TicketCreate(BaseModel):
     offender_name: Optional[str] = None
     offender_contact: Optional[str] = None
     notes: Optional[str] = None
+
+    @validator("violation_type")
+    def normalize_violation_type(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        return canonical_or_original_violation_type(value) or value
     # If True, the ticket is created directly in ISSUED status (skipping DRAFT).
     issue_immediately: bool = True
 

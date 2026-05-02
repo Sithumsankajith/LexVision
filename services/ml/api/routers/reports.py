@@ -10,6 +10,7 @@ from ..database import get_db
 from ..dependencies import get_current_active_user, get_citizen, get_police, log_audit_action
 from ..presenters import present_report, present_reports
 from ..tracking import is_valid_report_status_transition, apply_ticket_status, is_valid_ticket_status_transition
+from ..violation_types import canonical_or_original_violation_type, deduplicate_violation_types, violation_type_variants
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -186,8 +187,11 @@ def issue_ticket(report_id: str, ticket_data: schemas.TicketCreate, db: Session 
                 status_code=400,
                 detail="Cannot determine fine rule because violation_type is missing.",
             )
+        fine_rule_candidates = deduplicate_violation_types(
+            [canonical_or_original_violation_type(violation_type), *violation_type_variants(violation_type)]
+        )
         rule = db.query(models.FineRule).filter(
-            models.FineRule.violation_type == violation_type,
+            models.FineRule.violation_type.in_(fine_rule_candidates),
             models.FineRule.active == True
         ).first()
         if not rule:

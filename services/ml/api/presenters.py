@@ -18,10 +18,13 @@ def _get_report_claimed_violation(report: Any) -> str | None:
     return getattr(report, "claimed_violation_type", None) or getattr(report, "violation_type", None)
 
 
-def _get_helmet_model_identifier(inference_log: Any, bbox_payload: dict[str, Any]) -> str | None:
+def _get_violation_model_identifier(inference_log: Any, bbox_payload: dict[str, Any]) -> str | None:
     model_version = bbox_payload.get("model_version") or {}
-    if isinstance(model_version, dict) and model_version.get("helmet"):
-        return model_version["helmet"]
+    if isinstance(model_version, dict):
+        if model_version.get("violation"):
+            return model_version["violation"]
+        if model_version.get("helmet"):
+            return model_version["helmet"]
 
     combined_version = getattr(inference_log, "model_version", None)
     if isinstance(combined_version, str) and combined_version:
@@ -47,15 +50,22 @@ def build_ai_summary(report: Any) -> schemas.AISummaryResponse | None:
 
     bbox_payload = inference_log.bbox_coordinates or {}
     payload = {
+        "violation_family": bbox_payload.get("violation_family"),
         "provider": bbox_payload.get("violation_provider"),
-        "model_id": _get_helmet_model_identifier(inference_log, bbox_payload),
+        "model_id": bbox_payload.get("violation_model_id") or _get_violation_model_identifier(inference_log, bbox_payload),
         "claimed_violation_type": bbox_payload.get("claimed_violation_type") or _get_report_claimed_violation(report),
         "inferred_violation_type": bbox_payload.get("inferred_violation_type") or getattr(report, "inferred_violation_type", None),
         "final_violation_type": _get_report_final_violation(report),
+        "has_violation": bool(bbox_payload.get("has_violation", bbox_payload.get("has_helmet_violation"))),
         "has_helmet_violation": bool(bbox_payload.get("has_helmet_violation")),
         "confidence": float(bbox_payload.get("violation_confidence") or 0.0),
-        "confidence_level": bbox_payload.get("violation_confidence_level"),
-        "manual_review_required": bool(bbox_payload.get("needs_manual_review", False)),
+        "confidence_level": bbox_payload.get("violation_confidence_level") or bbox_payload.get("confidence_band"),
+        "manual_review_required": bool(
+            bbox_payload.get(
+                "manual_review_required",
+                bbox_payload.get("needs_manual_review", False),
+            )
+        ),
         "review_reason": bbox_payload.get("violation_review_reason"),
         "detected_classes": bbox_payload.get("violation_detected_classes") or [],
         "detections": bbox_payload.get("violation_detections") or [],

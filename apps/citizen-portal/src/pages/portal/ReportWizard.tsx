@@ -617,9 +617,9 @@ export const ReportWizard: React.FC = () => {
                 {currentStep === 1 && (
                     <div className="card-grid">
                         {[
-                            { id: 'helmet' as ViolationType, label: 'No Helmet', icon: <Radio size={24} /> },
-                            { id: 'red-light' as ViolationType, label: 'Red Light Violation', icon: <X size={24} /> },
-                            { id: 'white-line' as ViolationType, label: 'White Line Crossing', icon: <FileText size={24} /> },
+                            { id: 'helmet' as ViolationType, label: 'Helmet Violation', icon: <Radio size={24} /> },
+                            { id: 'red_light' as ViolationType, label: 'Red Light Violation', icon: <X size={24} /> },
+                            { id: 'white_line' as ViolationType, label: 'White Line Crossing', icon: <FileText size={24} /> },
                         ].map(type => (
                             <Card
                                 key={type.id}

@@ -12,7 +12,9 @@ logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).resolve().parent.parent
 ENV_PATH = BASE_DIR / ".env"
 ROBOFLOW_DEFAULT_API_URL = "https://serverless.roboflow.com"
-ROBOFLOW_DEFAULT_MODEL_ID = "helmet-detection-yolov8/1"
+ROBOFLOW_HELMET_DEFAULT_MODEL_ID = "helmet-no-helmet-detection/1"
+ROBOFLOW_RED_LIGHT_DEFAULT_MODEL_ID = "red-light-violation-detect-dataset-a9rsa/1"
+ROBOFLOW_WHITE_LINE_DEFAULT_MODEL_ID = "lane-detection-yolov8/2"
 
 
 def load_service_env(*, override: bool = False) -> Path:
@@ -55,12 +57,13 @@ def mask_secret(secret: str | None) -> str | None:
 
 def get_roboflow_config() -> dict[str, str | bool | None]:
     api_key = get_env_value("ROBOFLOW_API_KEY")
-    model_id = get_env_value("ROBOFLOW_HELMET_MODEL_ID", ROBOFLOW_DEFAULT_MODEL_ID)
     api_url = get_env_value("ROBOFLOW_API_URL", ROBOFLOW_DEFAULT_API_URL)
     return {
         "api_key_exists": bool(api_key),
         "api_key_masked": mask_secret(api_key),
-        "model_id": model_id,
+        "helmet_model_id": get_env_value("ROBOFLOW_HELMET_MODEL_ID", ROBOFLOW_HELMET_DEFAULT_MODEL_ID),
+        "red_light_model_id": get_env_value("ROBOFLOW_RED_LIGHT_MODEL_ID", ROBOFLOW_RED_LIGHT_DEFAULT_MODEL_ID),
+        "white_line_model_id": get_env_value("ROBOFLOW_WHITE_LINE_MODEL_ID", ROBOFLOW_WHITE_LINE_DEFAULT_MODEL_ID),
         "api_url": api_url,
     }
 
@@ -69,11 +72,13 @@ def log_roboflow_config(*, context: str = "startup", target_logger: logging.Logg
     active_logger = target_logger or logger
     config = get_roboflow_config()
     active_logger.info(
-        "Roboflow config at %s | api_key_exists=%s | api_key=%s | model_id=%s | api_url=%s",
+        "Roboflow config at %s | api_key_exists=%s | api_key=%s | helmet_model_id=%s | red_light_model_id=%s | white_line_model_id=%s | api_url=%s",
         context,
         config["api_key_exists"],
         config["api_key_masked"] or "<missing>",
-        config["model_id"],
+        config["helmet_model_id"],
+        config["red_light_model_id"],
+        config["white_line_model_id"],
         config["api_url"],
     )
 

@@ -23,6 +23,17 @@ interface DemoCitizenReportRecord extends CitizenReportDetail {
     phoneNumber: string;
 }
 
+const normalizeViolationType = (value?: string | null): Report['violationType'] => {
+    if (!value) {
+        return 'unclassified';
+    }
+    const normalized = value.toLowerCase().replace(/-/g, '_');
+    if (normalized === 'red_light' || normalized === 'white_line' || normalized === 'helmet') {
+        return normalized as Report['violationType'];
+    }
+    return value as Report['violationType'];
+};
+
 const getHeaders = (token?: string) => {
     const session = auth.getSession();
     const headers: Record<string, string> = {
@@ -49,18 +60,80 @@ const writeDemoCitizenReports = (reports: DemoCitizenReportRecord[]) => {
 };
 
 const buildDemoAiSummary = (reportData: CitizenReportPayload, processedAt: string): Report['aiSummary'] | null => {
-    if (reportData.violationType !== 'helmet') {
+    const violationType = normalizeViolationType(reportData.violationType);
+
+    if (violationType === 'red_light') {
         return {
             provider: 'roboflow',
-            modelId: 'helmet-no-helmet-detection/1',
-            claimedViolationType: reportData.violationType,
+            modelId: 'red-light-violation-detect-dataset-a9rsa/1',
+            violationFamily: 'red_light',
+            claimedViolationType: violationType,
+            inferredViolationType: 'RED_LIGHT',
+            finalViolationType: null,
+            hasViolation: true,
+            hasHelmetViolation: false,
+            confidence: 0.79,
+            confidenceLevel: 'medium',
+            manualReviewRequired: false,
+            reviewReason: null,
+            detectedClasses: ['red_light'],
+            detections: [{
+                class: 'red_light',
+                normalizedClass: 'red_light',
+                confidence: 0.79,
+                confidenceLevel: 'medium',
+                bbox: { x: 160, y: 120, width: 60, height: 110 },
+            }],
+            error: null,
+            status: 'success',
+            processedAt,
+        };
+    }
+
+    if (violationType === 'white_line') {
+        return {
+            provider: 'roboflow',
+            modelId: 'lane-detection-yolov8/2',
+            violationFamily: 'white_line',
+            claimedViolationType: violationType,
             inferredViolationType: null,
             finalViolationType: null,
+            hasViolation: false,
+            hasHelmetViolation: false,
+            confidence: 0.44,
+            confidenceLevel: 'low',
+            manualReviewRequired: true,
+            reviewReason: 'White line detected but crossing must be verified',
+            detectedClasses: ['white_line', 'lane'],
+            detections: [
+                {
+                    class: 'white_line',
+                    normalizedClass: 'white_line',
+                    confidence: 0.44,
+                    confidenceLevel: 'low',
+                    bbox: { x: 190, y: 260, width: 240, height: 24 },
+                },
+            ],
+            error: null,
+            status: 'no_detection',
+            processedAt,
+        };
+    }
+
+    if (violationType !== 'helmet') {
+        return {
+            provider: 'roboflow',
+            modelId: null,
+            violationFamily: violationType,
+            claimedViolationType: violationType,
+            inferredViolationType: null,
+            finalViolationType: null,
+            hasViolation: false,
             hasHelmetViolation: false,
             confidence: 0,
             confidenceLevel: 'none',
             manualReviewRequired: true,
-            reviewReason: 'No helmet-related object was detected. Officer must review manually.',
+            reviewReason: 'Manual review required for this report.',
             detectedClasses: [],
             detections: [],
             error: null,
@@ -72,9 +145,11 @@ const buildDemoAiSummary = (reportData: CitizenReportPayload, processedAt: strin
     return {
         provider: 'roboflow',
         modelId: 'helmet-no-helmet-detection/1',
+        violationFamily: 'helmet',
         claimedViolationType: 'helmet',
         inferredViolationType: 'NO_HELMET',
         finalViolationType: null,
+        hasViolation: true,
         hasHelmetViolation: true,
         confidence: 0.91,
         confidenceLevel: 'high',
@@ -131,8 +206,8 @@ const buildDemoCitizenReport = (reportData: CitizenReportPayload): DemoCitizenRe
         source: 'evidence-report',
         citizen: { phone: phoneNumber },
         phoneNumber,
-        violationType: reportData.violationType,
-        claimedViolationType: reportData.violationType,
+        violationType: normalizeViolationType(reportData.violationType),
+        claimedViolationType: normalizeViolationType(reportData.violationType),
         inferredViolationType: aiSummary?.inferredViolationType || null,
         finalViolationType: null,
         datetime: reportData.datetime,
@@ -192,18 +267,18 @@ const requireCitizenSessionToken = () => {
 };
 
 const getEffectiveViolationType = (backendReport: any): Report['violationType'] =>
-    (backendReport.violation_type ||
+    normalizeViolationType(backendReport.violation_type ||
         backendReport.inferred_violation_type ||
         backendReport.inference_log?.bbox_coordinates?.inferred_violation_type ||
         backendReport.claimed_violation_type ||
         backendReport.inference_log?.bbox_coordinates?.claimed_violation_type ||
-        'unclassified') as Report['violationType'];
+        'unclassified');
 
 const getClaimedViolationType = (backendReport: any): string | null =>
-    backendReport.claimed_violation_type
+    normalizeViolationType(backendReport.claimed_violation_type
     || backendReport.inference_log?.bbox_coordinates?.claimed_violation_type
     || backendReport.violation_type
-    || null;
+    || null) || null;
 
 const getInferredViolationType = (backendReport: any): string | null =>
     backendReport.inferred_violation_type
@@ -250,11 +325,13 @@ const buildAiSummary = (backendReport: any): Report['aiSummary'] | undefined => 
     const rawSummary = backendReport.ai_summary;
     if (rawSummary) {
         return {
+            violationFamily: rawSummary.violation_family || null,
             provider: rawSummary.provider || null,
             modelId: rawSummary.model_id || null,
-            claimedViolationType: rawSummary.claimed_violation_type || null,
+            claimedViolationType: normalizeViolationType(rawSummary.claimed_violation_type || null) || null,
             inferredViolationType: rawSummary.inferred_violation_type || null,
             finalViolationType: rawSummary.final_violation_type || getFinalViolationType(backendReport),
+            hasViolation: !!(rawSummary.has_violation ?? rawSummary.has_helmet_violation),
             hasHelmetViolation: !!rawSummary.has_helmet_violation,
             confidence: typeof rawSummary.confidence === 'number' ? rawSummary.confidence : 0,
             confidenceLevel: normalizeConfidenceBand(rawSummary.confidence_level) || 'none',
@@ -278,11 +355,13 @@ const buildAiSummary = (backendReport: any): Report['aiSummary'] | undefined => 
         ? backendReport.inference_log.model_version.split('|', 1)[0]
         : backendReport.inference_log.model_version || null;
     return {
+        violationFamily: bboxPayload.violation_family || null,
         provider: bboxPayload.violation_provider || null,
-        modelId: (typeof modelVersion === 'object' && modelVersion ? modelVersion.helmet : null) || fallbackModelId,
-        claimedViolationType: bboxPayload.claimed_violation_type || getClaimedViolationType(backendReport),
+        modelId: (typeof modelVersion === 'object' && modelVersion ? (modelVersion.violation || modelVersion.helmet) : null) || bboxPayload.violation_model_id || fallbackModelId,
+        claimedViolationType: normalizeViolationType(bboxPayload.claimed_violation_type || getClaimedViolationType(backendReport)) || null,
         inferredViolationType: bboxPayload.inferred_violation_type || getInferredViolationType(backendReport),
         finalViolationType: getFinalViolationType(backendReport),
+        hasViolation: !!(bboxPayload.has_violation ?? bboxPayload.has_helmet_violation),
         hasHelmetViolation: !!bboxPayload.has_helmet_violation,
         confidence: typeof bboxPayload.violation_confidence === 'number' ? bboxPayload.violation_confidence : 0,
         confidenceLevel: normalizeConfidenceBand(bboxPayload.violation_confidence_level) || 'none',
@@ -423,7 +502,7 @@ const mapTicketToFrontend = (ticket: any): TrafficTicket => ({
     penalCode: ticket.penal_code,
     fineAmount: ticket.fine_amount,
     fineOverrideReason: ticket.fine_override_reason,
-    violationType: ticket.violation_type,
+    violationType: normalizeViolationType(ticket.violation_type),
     vehiclePlate: ticket.vehicle_plate || null,
     offenderName: ticket.offender_name || null,
     offenderContact: ticket.offender_contact || null,
@@ -452,7 +531,7 @@ const mapTicketToFrontend = (ticket: any): TrafficTicket => ({
 const mapFineRuleToFrontend = (rule: any) => {
     return {
         id: rule.id,
-        violationType: rule.violation_type,
+        violationType: normalizeViolationType(rule.violation_type),
         penalCode: rule.penal_code,
         fineAmount: rule.fine_amount,
         currency: rule.currency,
@@ -468,7 +547,7 @@ const mapFineRuleToFrontend = (rule: any) => {
 export const mockDb = {
     createReport: async (reportData: Omit<Report, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'trackingId'>): Promise<Report> => {
         const payload = {
-            violation_type: reportData.violationType,
+            violation_type: normalizeViolationType(reportData.violationType),
             datetime: reportData.datetime,
             location_lat: reportData.location.lat,
             location_lng: reportData.location.lng,
@@ -517,7 +596,7 @@ export const mockDb = {
         }
 
         const payload = {
-            violation_type: reportData.violationType,
+            violation_type: normalizeViolationType(reportData.violationType),
             incident_at: reportData.datetime,
             location_lat: reportData.location.lat,
             location_lng: reportData.location.lng,
@@ -580,7 +659,7 @@ export const mockDb = {
             trackingId: report.tracking_id,
             source: 'evidence-report',
             citizen: { phone: auth.getCitizenSession()?.phone_number },
-            violationType: report.violation_type,
+            violationType: normalizeViolationType(report.violation_type),
             datetime: report.created_at,
             location: { lat: 0, lng: 0, address: '', city: '' },
             evidence: [],
@@ -854,7 +933,7 @@ export const mockDb = {
     },
 
     getFineRuleByViolation: async (violationType: string) => {
-        const response = await fetch(`${API_BASE_URL}/fine-rules/${violationType}`, {
+        const response = await fetch(`${API_BASE_URL}/fine-rules/${normalizeViolationType(violationType)}`, {
             headers: getHeaders(),
         });
         if (!response.ok) {
@@ -867,7 +946,7 @@ export const mockDb = {
 
     createFineRule: async (ruleData: { violationType: string; penalCode: string; fineAmount: number; currency: string; description?: string; active: boolean }) => {
         const payload = {
-            violation_type: ruleData.violationType,
+            violation_type: normalizeViolationType(ruleData.violationType),
             penal_code: ruleData.penalCode,
             fine_amount: ruleData.fineAmount,
             currency: ruleData.currency,
