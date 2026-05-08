@@ -1,7 +1,6 @@
 import type { CitizenReportDetail, ConfidenceBand, Report, ReportStatusHistoryEntry, ReportStatusSource, TicketStatus, TicketStatusHistoryEntry, TrafficTicket } from '@lexvision/types';
-import { auth } from './auth';
+import { API_BASE_URL, auth } from './auth';
 
-const API_BASE_URL = 'http://localhost:8000/api';
 const DEMO_CITIZEN_REPORTS_KEY = 'lexvision_demo_citizen_reports';
 
 interface CitizenReportPayload {
@@ -1064,6 +1063,7 @@ export const mockDb = {
                 violation_type: options?.violationType,
                 vehicle_plate: options?.vehiclePlate,
                 offender_name: options?.offenderName,
+                offender_contact: options?.offenderContact,
                 notes: options?.notes,
                 issue_immediately: options?.issueImmediately ?? true,
             }
@@ -1075,6 +1075,7 @@ export const mockDb = {
                 violation_type: options?.violationType,
                 vehicle_plate: options?.vehiclePlate,
                 offender_name: options?.offenderName,
+                offender_contact: options?.offenderContact,
                 notes: options?.notes,
                 issue_immediately: options?.issueImmediately ?? true,
             };

@@ -147,7 +147,7 @@ def infer_predictions(image_path: str, *, model_id: str) -> list[dict[str, Any]]
         return build_empty_summary(
             violation_family="unknown",
             model_id=model_id,
-            status="failed",
+            status="configuration_error",
             review_reason="AI inference failed. Officer must rely on original evidence.",
             error=get_client_error() or "Roboflow client is unavailable.",
         )
@@ -159,17 +159,18 @@ def infer_predictions(image_path: str, *, model_id: str) -> list[dict[str, Any]]
         return build_empty_summary(
             violation_family="unknown",
             model_id=model_id,
-            status="failed",
+            status="timeout",
             review_reason="AI inference failed. Officer must rely on original evidence.",
             error="Roboflow request timed out.",
         )
     except Exception as exc:
         message = str(exc).strip() or exc.__class__.__name__
         logger.exception("Roboflow request failed for %s.", image_file)
+        status = "timeout" if "timeout" in message.lower() or "timed out" in message.lower() else "api_error"
         return build_empty_summary(
             violation_family="unknown",
             model_id=model_id,
-            status="failed",
+            status=status,
             review_reason="AI inference failed. Officer must rely on original evidence.",
             error=message,
         )

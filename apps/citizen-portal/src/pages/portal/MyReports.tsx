@@ -73,8 +73,8 @@ export const MyReports: React.FC = () => {
             alert(`Successfully claimed ${reward.title}!`);
             // Refresh data
             loadDashboardData();
-        } catch (err: any) {
-            alert(err.message || 'Failed to claim reward.');
+        } catch (err: unknown) {
+            alert(err instanceof Error ? err.message : 'Failed to claim reward.');
         } finally {
             setClaimingId(null);
         }

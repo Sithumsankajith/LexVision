@@ -1,6 +1,13 @@
 const SESSION_KEY = 'lexvision_user_session';
 const CITIZEN_SESSION_KEY = 'lexvision_citizen_session';
-const API_BASE_URL = 'http://localhost:8000/api';
+const readApiBaseUrl = (): string => {
+    const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
+    const configuredUrl = env?.VITE_API_BASE_URL?.trim();
+    const baseUrl = configuredUrl || 'http://localhost:8000/api';
+    return baseUrl.replace(/\/+$/, '');
+};
+
+export const API_BASE_URL = readApiBaseUrl();
 const DEMO_FIREBASE_UID_PREFIX = 'demo-otp:';
 
 type CitizenAuthProvider = 'firebase' | 'demo';
@@ -125,6 +132,13 @@ export const auth = {
 
         const profileData = await profileRes.json();
         const user = profileData.user;
+        const requestedStaffPortal =
+            typeof window !== 'undefined' &&
+            (window.location.port === '5174' || window.location.port === '5175');
+
+        if (requestedStaffPortal && !['POLICE', 'ADMIN'].includes(user.role)) {
+            throw new Error('This account is not authorized for staff dashboard access.');
+        }
 
         const session: UserSession = {
             id: user.id,

@@ -1,6 +1,7 @@
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.exc import IntegrityError
 from datetime import datetime
 from typing import List
 
@@ -242,7 +243,14 @@ def issue_ticket(report_id: str, ticket_data: schemas.TicketCreate, db: Session 
     )
 
     db.add(new_ticket)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="An active ticket already exists for this report",
+        ) from exc
     db.refresh(new_ticket)
 
     log_audit_action(

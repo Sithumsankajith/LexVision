@@ -1,6 +1,6 @@
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from typing import Optional, List, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from .models import RoleEnum, StatusEnum
 from .constants import StatusChangeSourceEnum
 from .violation_types import canonical_or_original_violation_type, is_supported_claimed_violation_type
@@ -92,6 +92,36 @@ class CitizenEvidenceFileCreate(BaseModel):
     size: float
     mime_type: Optional[str] = None
 
+    @field_validator("type")
+    def validate_file_type(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"image", "video"}:
+            raise ValueError("Evidence type must be image or video")
+        return normalized
+
+    @field_validator("url")
+    def validate_storage_url(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Evidence URL is required")
+        if not (
+            cleaned.startswith("data:image/")
+            or cleaned.startswith("data:video/")
+            or cleaned.startswith("https://")
+            or cleaned.startswith("http://localhost")
+            or cleaned.startswith("/")
+        ):
+            raise ValueError("Evidence URL must be a data URI, HTTPS URL, localhost URL, or server file path")
+        return cleaned
+
+    @field_validator("size")
+    def validate_file_size(cls, value: float) -> float:
+        if value <= 0:
+            raise ValueError("Evidence file size must be greater than zero")
+        if value > 25 * 1024 * 1024:
+            raise ValueError("Evidence file size must be 25 MB or less")
+        return value
+
 
 class CitizenEvidenceFileResponse(BaseModel):
     id: str
@@ -115,14 +145,14 @@ class CitizenSummaryResponse(BaseModel):
 class CitizenEvidenceReportCreate(BaseModel):
     violation_type: str
     incident_at: datetime
-    location_lat: float
-    location_lng: float
+    location_lat: float = Field(ge=-90, le=90)
+    location_lng: float = Field(ge=-180, le=180)
     location_address: str
     location_city: str
     description: Optional[str] = None
     vehicle_plate: Optional[str] = None
     vehicle_type: Optional[str] = None
-    evidence: List[CitizenEvidenceFileCreate]
+    evidence: List[CitizenEvidenceFileCreate] = Field(min_length=1, max_length=5)
 
     @field_validator("violation_type")
     def validate_violation_type(cls, value: str) -> str:
@@ -130,6 +160,21 @@ class CitizenEvidenceReportCreate(BaseModel):
         if not is_supported_claimed_violation_type(normalized):
             raise ValueError("violation_type must be one of: helmet, red_light, white_line")
         return normalized or value
+
+    @field_validator("incident_at")
+    def validate_incident_at(cls, value: datetime) -> datetime:
+        now = datetime.now(timezone.utc)
+        comparable_value = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        if comparable_value > now:
+            raise ValueError("incident_at cannot be in the future")
+        return value
+
+    @field_validator("location_address", "location_city")
+    def validate_required_location_text(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Location address and city are required")
+        return cleaned
 
 
 class CitizenEvidenceReportResponse(BaseModel):
@@ -251,11 +296,11 @@ class AISummaryResponse(BaseModel):
 class ReportCreate(BaseModel):
     violation_type: str
     datetime: datetime
-    location_lat: float
-    location_lng: float
+    location_lat: float = Field(ge=-90, le=90)
+    location_lng: float = Field(ge=-180, le=180)
     location_address: str
     location_city: str
-    evidence: List[EvidenceSchema]
+    evidence: List[EvidenceSchema] = Field(min_length=1, max_length=5)
 
     @field_validator("violation_type")
     def validate_violation_type(cls, value: str) -> str:
@@ -263,6 +308,14 @@ class ReportCreate(BaseModel):
         if not is_supported_claimed_violation_type(normalized):
             raise ValueError("violation_type must be one of: helmet, red_light, white_line")
         return normalized or value
+
+    @field_validator("datetime")
+    def validate_report_datetime(cls, value: datetime) -> datetime:
+        now = datetime.now(timezone.utc)
+        comparable_value = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        if comparable_value > now:
+            raise ValueError("datetime cannot be in the future")
+        return value
 
 class ReportResponse(BaseModel):
     id: str

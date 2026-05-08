@@ -1,14 +1,15 @@
 import os
 import json
 import csv
+from collections import defaultdict
 from io import StringIO
 from typing import List, Dict, Any
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
-from sqlalchemy import func, extract, and_, desc
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func, or_
 
 from .. import models, schemas
 from ..database import get_db
@@ -24,6 +25,14 @@ def _report_violation_expression():
         models.Report.claimed_violation_type,
         "unclassified",
     )
+
+
+def _enum_value(value):
+    return value.value if hasattr(value, "value") else str(value)
+
+
+def _date_key(value) -> str:
+    return str(value)
 
 # --- AUDIT LOGS ---
 @router.get("/audit-logs")
@@ -51,39 +60,67 @@ def update_ai_threshold(threshold: float, db: Session = Depends(get_db), current
 
 @router.get("/analytics/reports-trend")
 def get_reports_trend(db: Session = Depends(get_db), current_user: models.User = Depends(get_admin)):
-    """ Reports per day (Last 30 days) """
+    """Reports per day across legacy and citizen evidence reports (last 30 days)."""
     thirty_days_ago = datetime.utcnow() - timedelta(days=30)
-    
-    query = db.query(
+
+    legacy_rows = db.query(
         func.date(models.Report.datetime).label('date'),
         func.count(models.Report.id).label('count')
     ).filter(models.Report.datetime >= thirty_days_ago) \
      .group_by(func.date(models.Report.datetime)) \
-     .order_by('date').all()
-     
-    return [{"date": str(q.date), "count": q.count} for q in query]
+     .all()
+
+    evidence_rows = db.query(
+        func.date(models.EvidenceReport.incident_at).label('date'),
+        func.count(models.EvidenceReport.id).label('count')
+    ).filter(models.EvidenceReport.incident_at >= thirty_days_ago) \
+     .group_by(func.date(models.EvidenceReport.incident_at)) \
+     .all()
+
+    totals = defaultdict(int)
+    for row in [*legacy_rows, *evidence_rows]:
+        totals[_date_key(row.date)] += row.count
+
+    return [{"date": date, "count": totals[date]} for date in sorted(totals)]
 
 @router.get("/analytics/status-ratio")
 def get_status_ratio(db: Session = Depends(get_db), current_user: models.User = Depends(get_admin)):
-    """ Report counts by status """
-    query = db.query(
+    """Report counts by status across legacy and citizen evidence reports."""
+    legacy_rows = db.query(
         models.Report.status,
         func.count(models.Report.id).label('count')
     ).group_by(models.Report.status).all()
-    
-    # Convert enum to plain string for JSON serialization
-    return [{"status": str(q.status.value) if hasattr(q.status, 'value') else str(q.status), "count": q.count} for q in query]
+
+    evidence_rows = db.query(
+        models.EvidenceReport.status,
+        func.count(models.EvidenceReport.id).label('count')
+    ).group_by(models.EvidenceReport.status).all()
+
+    totals = defaultdict(int)
+    for row in [*legacy_rows, *evidence_rows]:
+        totals[_enum_value(row.status)] += row.count
+
+    return [{"status": status, "count": totals[status]} for status in sorted(totals)]
 
 @router.get("/analytics/violation-types")
 def get_violation_types(db: Session = Depends(get_db), current_user: models.User = Depends(get_admin)):
-    """ Bar chart violation payload """
+    """Bar chart violation payload across all report sources."""
     violation_expr = _report_violation_expression()
-    query = db.query(
+    legacy_rows = db.query(
         violation_expr.label("violation_type"),
         func.count(models.Report.id).label('count')
     ).group_by(violation_expr).all()
-    
-    return [{"type": q.violation_type, "count": q.count} for q in query]
+
+    evidence_rows = db.query(
+        models.EvidenceReport.violation_type.label("violation_type"),
+        func.count(models.EvidenceReport.id).label('count')
+    ).group_by(models.EvidenceReport.violation_type).all()
+
+    totals = defaultdict(int)
+    for row in [*legacy_rows, *evidence_rows]:
+        totals[row.violation_type or "unclassified"] += row.count
+
+    return [{"type": violation_type, "count": totals[violation_type]} for violation_type in sorted(totals)]
 
 @router.get("/analytics/ai-metrics")
 def get_ai_metrics(db: Session = Depends(get_db), current_user: models.User = Depends(get_admin)):
@@ -108,7 +145,12 @@ def get_officer_metrics(db: Session = Depends(get_db), current_user: models.User
     query = db.query(
         models.AuditLog.user_id,
         func.count(models.AuditLog.id).label('total_decisions')
-    ).filter(models.AuditLog.action.like("REPORT_STATUS_UPDATE_TO_%")) \
+    ).filter(
+        or_(
+            models.AuditLog.action.like("REPORT_STATUS_UPDATE_TO_%"),
+            models.AuditLog.action.like("EVIDENCE_REPORT_STATUS_UPDATE_TO_%"),
+        )
+    ) \
      .group_by(models.AuditLog.user_id).all()
      
     officers = []
@@ -129,12 +171,14 @@ def get_officer_metrics(db: Session = Depends(get_db), current_user: models.User
 
 @router.get("/analytics/heatmap")
 def get_heatmap_data(db: Session = Depends(get_db), current_user: models.User = Depends(get_admin)):
-    """ Aggregate by location rounded to 3 decimal places """
-    reports = db.query(models.Report.location_lat, models.Report.location_lng)\
-                .filter(models.Report.status == models.StatusEnum.VALIDATED).all()
-                
+    """Aggregate validated report locations rounded to 3 decimal places."""
+    reports = db.query(models.Report.location_lat, models.Report.location_lng) \
+        .filter(models.Report.status == models.StatusEnum.VALIDATED).all()
+    evidence_reports = db.query(models.EvidenceReport.location_lat, models.EvidenceReport.location_lng) \
+        .filter(models.EvidenceReport.status == models.StatusEnum.VALIDATED).all()
+
     heatmap_grid = {}
-    for lat, lng in reports:
+    for lat, lng in [*reports, *evidence_reports]:
         if lat and lng:
             grid_lat = round(lat, 3)
             grid_lng = round(lng, 3)
@@ -147,15 +191,17 @@ def get_heatmap_data(db: Session = Depends(get_db), current_user: models.User = 
 
 @router.get("/export/reports")
 def export_reports_csv(db: Session = Depends(get_db), current_user: models.User = Depends(get_admin)):
-    """ Export reports via CSV Stream """
-    reports = db.query(models.Report).all()
-    
+    """Export legacy and citizen evidence reports via CSV stream."""
+    legacy_reports = db.query(models.Report).all()
+    evidence_reports = db.query(models.EvidenceReport).options(joinedload(models.EvidenceReport.inference_log)).all()
+
     def iter_csv():
         output = StringIO()
         writer = csv.writer(output)
         writer.writerow(
             [
                 'ID',
+                'Source',
                 'TrackingID',
                 'ClaimedViolationType',
                 'InferredViolationType',
@@ -168,17 +214,38 @@ def export_reports_csv(db: Session = Depends(get_db), current_user: models.User 
             ]
         )
 
-        for r in reports:
-            status_val = r.status.value if hasattr(r.status, 'value') else str(r.status)
+        for r in legacy_reports:
             writer.writerow(
                 [
                     r.id,
+                    "legacy_report",
                     r.tracking_id,
                     r.claimed_violation_type,
                     r.inferred_violation_type,
                     r.violation_type,
                     r.datetime,
-                    status_val,
+                    _enum_value(r.status),
+                    r.location_lat,
+                    r.location_lng,
+                    r.location_city,
+                ]
+            )
+            yield output.getvalue()
+            output.seek(0)
+            output.truncate(0)
+
+        for r in evidence_reports:
+            inferred_violation = r.inference_log.bbox_coordinates.get("inferred_violation_type") if r.inference_log else None
+            writer.writerow(
+                [
+                    r.id,
+                    "evidence_report",
+                    r.tracking_id,
+                    r.violation_type,
+                    inferred_violation,
+                    r.violation_type if _enum_value(r.status) in {"VALIDATED", "CLOSED"} else None,
+                    r.incident_at,
+                    _enum_value(r.status),
                     r.location_lat,
                     r.location_lng,
                     r.location_city,

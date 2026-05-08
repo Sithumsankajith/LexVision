@@ -134,7 +134,7 @@ export const RulesEngine: React.FC = () => {
             {isEditing ? (
                 <Panel title={editingId ? "Edit Fine Rule" : "Create New Fine Rule"}>
                     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 'var(--space-4)' }}>
                             <Input
                                 label="Violation Type"
                                 value={formData.violationType}

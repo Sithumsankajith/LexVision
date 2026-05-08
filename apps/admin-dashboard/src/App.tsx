@@ -9,7 +9,11 @@ import { DashboardLayout } from './layouts/DashboardLayout';
 import { auth } from '@lexvision/api-client';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-    if (!auth.isAuthenticated()) {
+    const session = auth.getSession();
+    if (!session || session.role !== 'ADMIN') {
+        if (session) {
+            auth.logout();
+        }
         return <Navigate to="/login" replace />;
     }
     return <>{children}</>;

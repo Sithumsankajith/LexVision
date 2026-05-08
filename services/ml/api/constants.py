@@ -22,7 +22,7 @@ StatusEnum = ReportStatusEnum
 
 REPORT_STATUS_TRANSITIONS = {
     ReportStatusEnum.SUBMITTED: [ReportStatusEnum.AI_PROCESSING, ReportStatusEnum.UNDER_REVIEW],
-    ReportStatusEnum.AI_PROCESSING: [ReportStatusEnum.UNDER_REVIEW],
+    ReportStatusEnum.AI_PROCESSING: [ReportStatusEnum.UNDER_REVIEW, ReportStatusEnum.VALIDATED, ReportStatusEnum.REJECTED],
     ReportStatusEnum.UNDER_REVIEW: [ReportStatusEnum.VALIDATED, ReportStatusEnum.REJECTED],
     ReportStatusEnum.VALIDATED: [ReportStatusEnum.CLOSED],
     ReportStatusEnum.REJECTED: [ReportStatusEnum.UNDER_REVIEW, ReportStatusEnum.CLOSED],

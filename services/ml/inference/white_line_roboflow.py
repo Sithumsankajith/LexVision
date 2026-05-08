@@ -28,6 +28,7 @@ except ModuleNotFoundError as exc:
 
 
 ROBOFLOW_WHITE_LINE_MODEL_ID = ROBOFLOW_WHITE_LINE_DEFAULT_MODEL_ID
+WHITE_LINE_THRESHOLD = float(env_setting("WHITE_LINE_VIOLATION_THRESHOLD", "0.55") or "0.55")
 
 
 def normalize_class(value: str) -> str:
@@ -92,7 +93,7 @@ def run_white_line_detection(image_path: str) -> dict[str, Any]:
         if normalized_class == "white_line_crossing":
             best_violation_confidence = max(best_violation_confidence, confidence)
 
-    has_violation = best_violation_confidence > 0
+    has_violation = best_violation_confidence >= WHITE_LINE_THRESHOLD
     review_reason = None
     if not has_violation:
         review_reason = "White line detected but crossing must be verified" if saw_line_signal else "AI could not confirm white-line violation"

@@ -81,7 +81,7 @@ ANPR_MODEL_VERSION = f"{ANPR_MODEL_PATH.name}|easyocr"
 QUALITY_THRESHOLD = 0.15
 HIGH_CONFIDENCE_THRESHOLD = 0.8
 MEDIUM_CONFIDENCE_THRESHOLD = 0.5
-HELMET_VIOLATION_THRESHOLD = float(get_env_value("HELMET_VIOLATION_THRESHOLD", "0.5") or "0.5")
+HELMET_VIOLATION_THRESHOLD = float(get_env_value("HELMET_VIOLATION_THRESHOLD", "0.65") or "0.65")
 
 _helmet_detector = None
 _helmet_detector_load_attempted = False
@@ -400,7 +400,7 @@ def _summarize_violation_detections(
 
     review_reason = None
     if "no-helmet" in detected_normalized:
-        if max_confidence >= 0.50:
+        if max_confidence >= HELMET_VIOLATION_THRESHOLD:
             inferred_violation_type = "NO_HELMET"
             has_helmet_violation = True
         else:
@@ -853,6 +853,35 @@ def _run_selected_violation_detection(image_path: str | None, claimed_violation_
 
     if claimed_violation_type == "helmet":
         result = run_helmet_detection(image_path)
+        if result.get("status") in {"api_error", "configuration_error", "dependency_error", "timeout", "failed"}:
+            logger.warning(
+                "Hosted helmet inference unavailable for %s (%s). Trying local YOLO fallback.",
+                image_path,
+                result.get("status"),
+            )
+            hosted_error = result.get("error")
+            local_result = _run_local_violation_detection(image_path)
+            result = {
+                "violation_family": "helmet",
+                "status": local_result.get("status", "failed"),
+                "inferred_violation_type": local_result.get("inferred_violation_type"),
+                "has_violation": bool(local_result.get("has_helmet_violation")),
+                "confidence": float(local_result.get("max_confidence") or 0.0),
+                "confidence_level": local_result.get("confidence_level", "none"),
+                "manual_review_required": bool(local_result.get("needs_manual_review", True)),
+                "review_reason": local_result.get("review_reason"),
+                "detected_classes": local_result.get("detected_classes", []),
+                "detections": local_result.get("detections", []),
+                "provider": "local_yolo",
+                "model_id": local_result.get("model_version") or HELMET_MODEL_VERSION,
+                "error": local_result.get("error"),
+                "fallback": {
+                    "provider": "roboflow",
+                    "model_id": result.get("model_id") or ROBOFLOW_HELMET_MODEL_ID,
+                    "status": result.get("status"),
+                    "error": hosted_error,
+                },
+            }
     elif claimed_violation_type == "red_light":
         result = run_red_light_detection(image_path)
     elif claimed_violation_type == "white_line":
@@ -954,6 +983,7 @@ def attempt_inference(
         "violation_confidence_level": violation_result["confidence_level"],
         "violation_provider": violation_result["provider"],
         "violation_model_id": violation_result.get("model_id"),
+        "violation_fallback": violation_result.get("fallback"),
         "violation_error": violation_result["error"],
         "has_violation": bool(violation_result.get("has_violation")),
         "has_helmet_violation": bool(violation_result.get("has_helmet_violation")),

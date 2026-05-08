@@ -28,7 +28,7 @@ except ModuleNotFoundError as exc:
 
 
 ROBOFLOW_RED_LIGHT_MODEL_ID = ROBOFLOW_RED_LIGHT_DEFAULT_MODEL_ID
-RED_LIGHT_THRESHOLD = 0.5
+RED_LIGHT_THRESHOLD = float(env_setting("RED_LIGHT_VIOLATION_THRESHOLD", "0.55") or "0.55")
 
 
 def normalize_class(value: str) -> str:

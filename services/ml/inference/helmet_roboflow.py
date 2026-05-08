@@ -28,7 +28,7 @@ except ModuleNotFoundError as exc:
 
 
 ROBOFLOW_HELMET_MODEL_ID = ROBOFLOW_HELMET_DEFAULT_MODEL_ID
-HELMET_VIOLATION_THRESHOLD = 0.5
+HELMET_VIOLATION_THRESHOLD = float(env_setting("HELMET_VIOLATION_THRESHOLD", "0.65") or "0.65")
 
 
 def normalize_class(value: str) -> str:

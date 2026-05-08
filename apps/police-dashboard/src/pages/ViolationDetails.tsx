@@ -123,9 +123,9 @@ export const ViolationDetails: React.FC = () => {
         }
 
         setReport(updated);
-        if (status === 'verified' && updated.source !== 'evidence-report') {
+        if (status === 'verified') {
             await openTicketForm(updated);
-        } else if (status !== 'verified') {
+        } else {
             setShowTicketForm(false);
         }
 
@@ -615,7 +615,7 @@ export const ViolationDetails: React.FC = () => {
                                 </>
                             )}
 
-                            {showTicketForm && !ticket && !isEvidenceReport && (
+                            {showTicketForm && !ticket && (
                                 <div style={{ padding: 'var(--space-4)', backgroundColor: 'rgba(59, 130, 246, 0.05)', border: '1px solid rgba(59, 130, 246, 0.2)', borderRadius: 'var(--radius-md)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
                                         <div style={{ fontWeight: '800', fontSize: '0.9rem', color: 'var(--color-text)' }}>
@@ -696,15 +696,15 @@ export const ViolationDetails: React.FC = () => {
                                 )}
 
                                 {isVerified && !showTicketForm && !ticket && (
-                                    isEvidenceReport ? (
-                                        <Button variant="outline" fullWidth onClick={() => handleStatusUpdate('closed')} disabled={actionLoading}>
-                                            Close Case
-                                        </Button>
-                                    ) : (
-                                        <Button variant="primary" fullWidth leftIcon={<ClipboardCheck size={18} />} onClick={() => openTicketForm(report)}>
-                                            Issue Traffic Ticket
-                                        </Button>
-                                    )
+                                    <Button variant="primary" fullWidth leftIcon={<ClipboardCheck size={18} />} onClick={() => openTicketForm(report)}>
+                                        Issue Traffic Ticket
+                                    </Button>
+                                )}
+
+                                {isVerified && ticket && !isClosed && (
+                                    <Button variant="outline" fullWidth onClick={() => handleStatusUpdate('closed')} disabled={actionLoading}>
+                                        Close Case
+                                    </Button>
                                 )}
 
                                 {isRejected && (

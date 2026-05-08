@@ -194,7 +194,7 @@ export const Dashboard: React.FC = () => {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-8)' }}>
 
             {/* KPI Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-6)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 'var(--space-6)' }}>
                 {dynamicKPIs.map((kpi, index) => (
                     <KpiCard
                         key={index}
@@ -209,7 +209,7 @@ export const Dashboard: React.FC = () => {
             </div>
 
             {/* Row 2: Status Donut + Reports Trend */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-6)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 'var(--space-6)' }}>
                 <Panel
                     title="Report Status Distribution"
                     action={<Badge variant="info">Live</Badge>}
@@ -230,7 +230,7 @@ export const Dashboard: React.FC = () => {
             </div>
 
             {/* Row 3: Violation Bar Chart + AI Metrics + Activity */}
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 'var(--space-6)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 'var(--space-6)' }}>
                 {/* Violation Type Bar Chart */}
                 <Panel
                     title="Reports by Violation Type"

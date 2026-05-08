@@ -4,14 +4,18 @@
 }
 
 .header {
-    background-color: var(--color-primary);
+    background: var(--grad-primary);
     color: white;
-    padding: var(--space-8) 0;
+    padding: var(--space-16) var(--space-4);
     text-align: center;
 }
 
 .header h1 {
-    margin-bottom: var(--spacing-sm);
+    color: white;
+    font-size: var(--text-4xl);
+    font-weight: 800;
+    margin: 0 0 var(--space-4) 0;
+    letter-spacing: -0.02em;
 }
 
 .header p {

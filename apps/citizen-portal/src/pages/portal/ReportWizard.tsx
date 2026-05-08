@@ -98,6 +98,9 @@ const getBase64 = (file: File): Promise<string> => {
     });
 };
 
+const MAX_EVIDENCE_FILES = 5;
+const MAX_EVIDENCE_FILE_SIZE_BYTES = 25 * 1024 * 1024;
+
 interface LeafletLatLng {
     lat: number;
     lng: number;
@@ -549,9 +552,32 @@ export const ReportWizard: React.FC = () => {
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
-            const files = Array.from(e.target.files);
-            setFormData(prev => ({ ...prev, evidenceFiles: [...prev.evidenceFiles, ...files] }));
+            const incomingFiles = Array.from(e.target.files);
+            const acceptedFiles = incomingFiles.filter((file) =>
+                (file.type.startsWith('image/') || file.type.startsWith('video/')) &&
+                file.size > 0 &&
+                file.size <= MAX_EVIDENCE_FILE_SIZE_BYTES
+            );
+
+            if (acceptedFiles.length !== incomingFiles.length) {
+                setErrors((current) => ({
+                    ...current,
+                    evidence: 'Only image/video files up to 25 MB are supported.',
+                }));
+            } else {
+                setErrors((current) => {
+                    const nextErrors = { ...current };
+                    delete nextErrors.evidence;
+                    return nextErrors;
+                });
+            }
+
+            setFormData(prev => ({
+                ...prev,
+                evidenceFiles: [...prev.evidenceFiles, ...acceptedFiles].slice(0, MAX_EVIDENCE_FILES),
+            }));
         }
+        e.target.value = '';
     };
 
     const removeFile = (index: number) => {

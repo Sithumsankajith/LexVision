@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -31,6 +31,31 @@ def create_citizen_report(
     db: Session = Depends(get_db),
     current_citizen: models.Citizen = Depends(get_current_citizen_account),
 ):
+    primary_evidence = report_data.evidence[0]
+    duplicate_cutoff = datetime.utcnow() - timedelta(minutes=10)
+    duplicate_report = (
+        db.query(models.EvidenceReport)
+        .options(
+            joinedload(models.EvidenceReport.files),
+            joinedload(models.EvidenceReport.inference_log),
+        )
+        .join(models.EvidenceFile)
+        .filter(
+            models.EvidenceReport.citizen_id == current_citizen.id,
+            models.EvidenceReport.violation_type == report_data.violation_type,
+            models.EvidenceReport.incident_at == report_data.incident_at,
+            models.EvidenceReport.location_lat == report_data.location_lat,
+            models.EvidenceReport.location_lng == report_data.location_lng,
+            models.EvidenceReport.created_at >= duplicate_cutoff,
+            models.EvidenceFile.original_name == primary_evidence.name,
+            models.EvidenceFile.size_bytes == primary_evidence.size,
+        )
+        .order_by(models.EvidenceReport.created_at.desc())
+        .first()
+    )
+    if duplicate_report is not None:
+        return present_citizen_evidence_report(duplicate_report)
+
     new_report = models.EvidenceReport(
         tracking_id=f"LEX-{datetime.now().year}-{str(uuid.uuid4())[:8].upper()}",
         citizen_id=current_citizen.id,
