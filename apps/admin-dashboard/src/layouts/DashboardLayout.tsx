@@ -28,7 +28,7 @@ export const DashboardLayout: React.FC = () => {
     const location = useLocation();
     const navigate = useNavigate();
 
-    const { unreadCount, notifications, loading, fetchNotifications, markRead, markAllRead } = useNotifications();
+    const { unreadCount, notifications, loading, error, fetchNotifications, markRead, markAllRead } = useNotifications();
 
     const handleLogout = () => {
         auth.logout();
@@ -115,7 +115,7 @@ export const DashboardLayout: React.FC = () => {
             actions={
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     {/* Bell with dropdown — position:relative is the anchor */}
-                    <div style={{ position: 'relative' }}>
+                    <div style={{ position: 'relative', display: 'inline-flex' }}>
                         <NotificationBell
                             count={unreadCount}
                             onClick={handleBellClick}
@@ -124,10 +124,15 @@ export const DashboardLayout: React.FC = () => {
                             <NotificationDropdown
                                 notifications={notifications}
                                 loading={loading}
+                                error={error}
                                 onMarkRead={markRead}
                                 onMarkAllRead={markAllRead}
                                 onClose={() => setDropdownOpen(false)}
-                                onViewAll={() => setDropdownOpen(false)}
+                                onViewAll={() => {
+                                    setDropdownOpen(false);
+                                    navigate('/dashboard/notifications');
+                                }}
+                                onRetry={() => fetchNotifications()}
                             />
                         )}
                     </div>

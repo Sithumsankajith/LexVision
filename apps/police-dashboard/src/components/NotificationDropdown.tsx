@@ -1,7 +1,8 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     AlertTriangle,
+    Bell,
     Bot,
     CheckCircle,
     FileText,
@@ -16,70 +17,115 @@ import type { AppNotification } from '@lexvision/types';
 interface NotificationDropdownProps {
     notifications: AppNotification[];
     loading: boolean;
+    error?: string | null;
     onMarkRead: (id: string) => void;
     onMarkAllRead: () => void;
     onClose: () => void;
     onViewAll: () => void;
+    onRetry?: () => void;
 }
 
+const ACCENT = '#2563eb';
+const MOBILE_DROPDOWN_QUERY = '(max-width: 640px)';
+
+const useIsMobileDropdown = (): boolean => {
+    const [isMobile, setIsMobile] = useState(() =>
+        typeof window !== 'undefined' && window.matchMedia(MOBILE_DROPDOWN_QUERY).matches
+    );
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+
+        const media = window.matchMedia(MOBILE_DROPDOWN_QUERY);
+        const handleChange = () => setIsMobile(media.matches);
+
+        handleChange();
+        media.addEventListener('change', handleChange);
+
+        return () => media.removeEventListener('change', handleChange);
+    }, []);
+
+    return isMobile;
+};
+
 const getTimeAgo = (isoDate: string): string => {
-    const now = Date.now();
-    const then = new Date(isoDate).getTime();
-    const diffMs = now - then;
-    const diffSec = Math.floor(diffMs / 1000);
-    const diffMin = Math.floor(diffSec / 60);
-    const diffHr = Math.floor(diffMin / 60);
-    const diffDay = Math.floor(diffHr / 24);
-
+    const diffSec = Math.floor((Date.now() - new Date(isoDate).getTime()) / 1000);
     if (diffSec < 60) return 'just now';
-    if (diffMin < 60) return `${diffMin}m ago`;
-    if (diffHr < 24) return `${diffHr}h ago`;
-    if (diffDay === 1) return 'yesterday';
-    return `${diffDay}d ago`;
+    if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+    if (diffSec < 172800) return 'yesterday';
+    return `${Math.floor(diffSec / 86400)}d ago`;
 };
 
-const getNotificationIcon = (type: string) => {
-    switch (type) {
-        case 'new_report_submitted':
-        case 'high_priority_report':
-            return <FileText size={15} />;
-        case 'report_validated':
-        case 'report_under_review':
-            return <CheckCircle size={15} />;
-        case 'report_rejected':
-            return <XCircle size={15} />;
-        case 'ai_analysis_completed':
-        case 'ai_inference_failed':
-            return <Bot size={15} />;
-        case 'ticket_issued':
-        case 'ticket_action_required':
-            return <Ticket size={15} />;
-        case 'system_warning':
-            return <AlertTriangle size={15} />;
-        case 'worker_failure':
-            return <Settings size={15} />;
-        default:
-            return <Info size={15} />;
+const getCategoryMeta = (type: string): { icon: React.ReactNode; color: string } => {
+    if (type === 'report_validated' || type === 'report_under_review') {
+        return { icon: <CheckCircle size={15} />, color: '#0ea5e9' };
     }
+    if (type === 'report_rejected') {
+        return { icon: <XCircle size={15} />, color: '#64748b' };
+    }
+    if (type === 'new_report_submitted' || type === 'high_priority_report' || type === 'report_submitted') {
+        return { icon: <FileText size={15} />, color: '#0ea5e9' };
+    }
+    if (type === 'ai_analysis_completed' || type === 'ai_inference_failed') {
+        return { icon: <Bot size={15} />, color: '#7c3aed' };
+    }
+    if (type === 'ticket_issued' || type === 'ticket_action_required') {
+        return { icon: <Ticket size={15} />, color: '#f59e0b' };
+    }
+    if (type === 'worker_failure') {
+        return { icon: <Settings size={15} />, color: '#dc2626' };
+    }
+    if (type === 'system_warning') {
+        return { icon: <AlertTriangle size={15} />, color: '#dc2626' };
+    }
+    return { icon: <Info size={15} />, color: '#64748b' };
 };
 
-const getPriorityColor = (priority: string): string => {
-    if (priority === 'high') return '#ef4444';
-    if (priority === 'normal') return '#f59e0b';
-    return '#6b7280';
-};
+const SkeletonItem: React.FC = () => (
+    <div style={{ display: 'flex', gap: 12, padding: '12px 16px', borderBottom: '1px solid #f1f5f9' }}>
+        <div style={{ width: 28, height: 28, borderRadius: 6, background: '#eef2f7', flexShrink: 0 }} />
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ height: 10, background: '#eef2f7', borderRadius: 4, width: '60%' }} />
+            <div style={{ height: 8, background: '#f1f5f9', borderRadius: 4, width: '85%' }} />
+        </div>
+    </div>
+);
 
 export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
     notifications,
     loading,
+    error,
     onMarkRead,
     onMarkAllRead,
     onClose,
     onViewAll,
+    onRetry,
 }) => {
     const navigate = useNavigate();
     const ref = useRef<HTMLDivElement>(null);
     const recent = notifications.slice(0, 5);
+    const hasUnread = notifications.some((n) => !n.is_read);
+    const unreadCount = notifications.filter((n) => !n.is_read).length;
+    const isMobile = useIsMobileDropdown();
+
+    const dropdownStyle: React.CSSProperties = {
+        position: isMobile ? 'fixed' : 'absolute',
+        top: isMobile ? 58 : 'calc(100% + 8px)',
+        right: isMobile ? 16 : 0,
+        left: isMobile ? 16 : undefined,
+        width: isMobile ? 'auto' : 384,
+        maxWidth: isMobile ? 'none' : 'calc(100vw - 2rem)',
+        background: '#ffffff',
+        border: '1px solid #e2e8f0',
+        borderRadius: 12,
+        boxShadow: '0 16px 48px rgba(15,23,42,0.18)',
+        zIndex: 1100,
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+        maxHeight: isMobile ? 'calc(100vh - 74px)' : 460,
+    };
 
     useEffect(() => {
         const handleClick = (e: MouseEvent) => {
@@ -87,19 +133,28 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
                 onClose();
             }
         };
+        const handleKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onClose();
+        };
         document.addEventListener('mousedown', handleClick);
-        return () => document.removeEventListener('mousedown', handleClick);
+        document.addEventListener('keydown', handleKey);
+        return () => {
+            document.removeEventListener('mousedown', handleClick);
+            document.removeEventListener('keydown', handleKey);
+        };
     }, [onClose]);
 
     const handleItemClick = (n: AppNotification) => {
-        if (!n.is_read) {
-            onMarkRead(n.id);
-        }
+        if (!n.is_read) onMarkRead(n.id);
+        onClose();
         if (n.related_entity_type === 'evidence_report' && n.related_entity_id) {
-            onClose();
-            navigate(`/dashboard/queue/${n.related_entity_id}`);
-        } else if (n.related_entity_type === 'ticket' && n.related_entity_id) {
-            onClose();
+            const pendingTypes = new Set(['new_report_submitted', 'high_priority_report', 'ai_analysis_completed', 'report_under_review']);
+            if (pendingTypes.has(n.notification_type)) {
+                navigate(`/dashboard/queue/${n.related_entity_id}`);
+            } else {
+                navigate('/dashboard/history');
+            }
+        } else if (n.related_entity_type === 'ticket') {
             navigate('/dashboard/history');
         }
     };
@@ -107,19 +162,9 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
     return (
         <div
             ref={ref}
-            style={{
-                position: 'absolute',
-                top: 'calc(100% + 8px)',
-                right: 0,
-                width: '360px',
-                maxWidth: 'calc(100vw - 16px)',
-                backgroundColor: '#1e293b',
-                border: '1px solid #334155',
-                borderRadius: '12px',
-                boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
-                zIndex: 1000,
-                overflow: 'hidden',
-            }}
+            role="dialog"
+            aria-label="Notifications"
+            style={dropdownStyle}
         >
             {/* Header */}
             <div
@@ -127,143 +172,130 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    padding: '14px 16px',
-                    borderBottom: '1px solid #334155',
+                    padding: '12px 16px',
+                    borderBottom: '1px solid #f1f5f9',
                 }}
             >
-                <span style={{ fontWeight: '700', fontSize: '0.9rem', color: '#f1f5f9' }}>
-                    Notifications
-                </span>
-                <button
-                    onClick={onMarkAllRead}
-                    style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#ef4444',
-                        fontSize: '0.75rem',
-                        fontWeight: '600',
-                        cursor: 'pointer',
-                        padding: '2px 6px',
-                        borderRadius: '4px',
-                    }}
-                >
-                    Mark all read
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                    <Bell size={15} color={ACCENT} />
+                    <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#0f172a' }}>Notifications</span>
+                    {notifications.length > 0 && (
+                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                            ({unreadCount} unread)
+                        </span>
+                    )}
+                </div>
+                {hasUnread && (
+                    <button
+                        onClick={onMarkAllRead}
+                        style={{
+                            background: 'none',
+                            border: 'none',
+                            color: ACCENT,
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            padding: '4px 6px',
+                            borderRadius: 4,
+                            whiteSpace: 'nowrap',
+                            flexShrink: 0,
+                        }}
+                    >
+                        Mark all read
+                    </button>
+                )}
             </div>
 
             {/* Body */}
-            <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-                {loading ? (
-                    <div
-                        style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '8px',
-                            padding: '32px 16px',
-                            color: '#64748b',
-                            fontSize: '0.875rem',
-                        }}
-                    >
-                        <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
-                        Loading...
+            <div style={{ flex: 1, overflowY: 'auto', background: '#fff' }}>
+                {loading && recent.length === 0 ? (
+                    <>
+                        <SkeletonItem />
+                        <SkeletonItem />
+                        <SkeletonItem />
+                    </>
+                ) : error ? (
+                    <div style={{ padding: '24px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, textAlign: 'center' }}>
+                        <AlertTriangle size={22} color="#f59e0b" />
+                        <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0f172a' }}>Could not load notifications</div>
+                        {onRetry && (
+                            <button
+                                onClick={onRetry}
+                                style={{
+                                    fontSize: '0.75rem',
+                                    fontWeight: 600,
+                                    color: ACCENT,
+                                    background: 'none',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    padding: 4,
+                                }}
+                            >
+                                Try again
+                            </button>
+                        )}
                     </div>
                 ) : recent.length === 0 ? (
-                    <div
-                        style={{
-                            textAlign: 'center',
-                            padding: '32px 16px',
-                            color: '#64748b',
-                            fontSize: '0.875rem',
-                        }}
-                    >
-                        No notifications yet
+                    <div style={{ padding: '32px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, textAlign: 'center' }}>
+                        <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Bell size={18} color="#94a3b8" />
+                        </div>
+                        <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0f172a' }}>No notifications</div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>You are all caught up.</div>
                     </div>
                 ) : (
                     recent.map((n) => {
-                        const priorityColor = getPriorityColor(n.priority);
+                        const meta = getCategoryMeta(n.notification_type);
                         return (
                             <div
                                 key={n.id}
                                 onClick={() => handleItemClick(n)}
                                 style={{
                                     display: 'flex',
-                                    gap: '10px',
+                                    gap: 12,
                                     padding: '12px 16px',
-                                    borderBottom: '1px solid #1e2d3d',
+                                    borderBottom: '1px solid #f1f5f9',
                                     cursor: 'pointer',
-                                    backgroundColor: n.is_read ? 'transparent' : 'rgba(239,68,68,0.05)',
-                                    transition: 'background-color 0.15s',
+                                    background: n.is_read ? '#fff' : '#eff6ff',
+                                    transition: 'background 0.15s',
                                 }}
-                                onMouseEnter={(e) =>
-                                    ((e.currentTarget as HTMLDivElement).style.backgroundColor = 'rgba(255,255,255,0.04)')
-                                }
-                                onMouseLeave={(e) =>
-                                    ((e.currentTarget as HTMLDivElement).style.backgroundColor = n.is_read ? 'transparent' : 'rgba(239,68,68,0.05)')
-                                }
+                                onMouseEnter={(e) => ((e.currentTarget as HTMLDivElement).style.background = n.is_read ? '#f8fafc' : '#dbeafe')}
+                                onMouseLeave={(e) => ((e.currentTarget as HTMLDivElement).style.background = n.is_read ? '#fff' : '#eff6ff')}
                             >
-                                {/* Icon */}
                                 <div
                                     style={{
                                         flexShrink: 0,
-                                        width: '28px',
-                                        height: '28px',
-                                        borderRadius: '6px',
-                                        backgroundColor: `${priorityColor}22`,
-                                        color: priorityColor,
+                                        width: 28,
+                                        height: 28,
+                                        borderRadius: 6,
+                                        background: `${meta.color}1a`,
+                                        color: meta.color,
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'center',
-                                        marginTop: '1px',
+                                        marginTop: 1,
                                     }}
                                 >
-                                    {getNotificationIcon(n.notification_type)}
+                                    {meta.icon}
                                 </div>
-
-                                {/* Content */}
                                 <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div
-                                        style={{
-                                            fontWeight: n.is_read ? '500' : '700',
-                                            fontSize: '0.8125rem',
-                                            color: '#f1f5f9',
-                                            marginBottom: '2px',
-                                            whiteSpace: 'nowrap',
-                                            overflow: 'hidden',
-                                            textOverflow: 'ellipsis',
-                                        }}
-                                    >
+                                    <div style={{ fontWeight: n.is_read ? 500 : 700, fontSize: '0.8125rem', color: '#0f172a', marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                         {n.title}
                                     </div>
-                                    <div
-                                        style={{
-                                            fontSize: '0.75rem',
-                                            color: '#94a3b8',
-                                            overflow: 'hidden',
-                                            textOverflow: 'ellipsis',
-                                            display: '-webkit-box',
-                                            WebkitLineClamp: 2,
-                                            WebkitBoxOrient: 'vertical',
-                                            lineHeight: 1.4,
-                                        }}
-                                    >
+                                    <div style={{ fontSize: '0.75rem', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', lineHeight: 1.4 }}>
                                         {n.message}
                                     </div>
-                                    <div style={{ fontSize: '0.7rem', color: '#475569', marginTop: '4px' }}>
-                                        {getTimeAgo(n.created_at)}
-                                    </div>
+                                    <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: 4 }}>{getTimeAgo(n.created_at)}</div>
                                 </div>
-
-                                {/* Unread dot */}
                                 {!n.is_read && (
                                     <div
                                         style={{
                                             flexShrink: 0,
-                                            width: '7px',
-                                            height: '7px',
+                                            width: 7,
+                                            height: 7,
                                             borderRadius: '50%',
-                                            backgroundColor: '#ef4444',
-                                            marginTop: '6px',
+                                            background: ACCENT,
+                                            marginTop: 6,
                                         }}
                                     />
                                 )}
@@ -271,16 +303,16 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
                         );
                     })
                 )}
+                {loading && recent.length > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 8, color: '#94a3b8', fontSize: '0.75rem' }}>
+                        <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                        Refreshing...
+                    </div>
+                )}
             </div>
 
             {/* Footer */}
-            <div
-                style={{
-                    borderTop: '1px solid #334155',
-                    padding: '10px 16px',
-                    textAlign: 'center',
-                }}
-            >
+            <div style={{ borderTop: '1px solid #f1f5f9', padding: '10px 16px', textAlign: 'center', background: '#fff' }}>
                 <button
                     onClick={() => {
                         onClose();
@@ -289,15 +321,15 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
                     style={{
                         background: 'none',
                         border: 'none',
-                        color: '#ef4444',
+                        color: ACCENT,
                         fontSize: '0.8125rem',
-                        fontWeight: '600',
+                        fontWeight: 600,
                         cursor: 'pointer',
                         width: '100%',
-                        padding: '4px',
+                        padding: 4,
                     }}
                 >
-                    View all notifications
+                    View all notifications &rarr;
                 </button>
             </div>
         </div>

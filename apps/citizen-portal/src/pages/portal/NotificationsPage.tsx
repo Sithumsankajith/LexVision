@@ -1,472 +1,496 @@
-import React, { useEffect, useState } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     AlertCircle,
     AlertTriangle,
     Bell,
     BellRing,
     CheckCircle2,
-    ChevronLeft,
-    ChevronRight,
     FileText,
     Info,
+    Loader2,
+    RefreshCw,
     TicketIcon,
-    Trash2,
+    XCircle,
 } from 'lucide-react';
-import { auth } from '@lexvision/api-client';
 import type { AppNotification } from '@lexvision/types';
 import { useNotifications } from '@/hooks/useNotifications';
 
-// ---- helpers ----
+// ---------------------------------------------------------------------------
+// Citizen accent — teal
+// ---------------------------------------------------------------------------
 
-const getNotificationIcon = (type: string, priority: string) => {
-    const size = 20;
-    if (priority === 'high') {
-        return <AlertTriangle size={size} style={{ color: '#f59e0b' }} />;
-    }
-    switch (type) {
-        case 'report_submitted':
-            return <FileText size={size} style={{ color: '#14b8a6' }} />;
-        case 'ai_analysis_completed':
-            return <CheckCircle2 size={size} style={{ color: '#14b8a6' }} />;
-        case 'report_under_review':
-            return <BellRing size={size} style={{ color: '#f59e0b' }} />;
-        case 'report_validated':
-            return <CheckCircle2 size={size} style={{ color: '#22c55e' }} />;
-        case 'report_rejected':
-            return <AlertCircle size={size} style={{ color: '#ef4444' }} />;
-        case 'ticket_issued':
-            return <TicketIcon size={size} style={{ color: '#f59e0b' }} />;
-        case 'system_warning':
-        case 'worker_failure':
-        case 'ai_inference_failed':
-            return <AlertCircle size={size} style={{ color: '#ef4444' }} />;
-        default:
-            return <Info size={size} style={{ color: '#64748b' }} />;
-    }
+const ACCENT = '#0d9488';
+const ACCENT_HOVER = '#0f766e';
+const UNREAD_BG = '#f0fdfa';
+const UNREAD_BORDER = '#99f6e4';
+
+// ---------------------------------------------------------------------------
+// Constants & helpers
+// ---------------------------------------------------------------------------
+
+const REPORT_TYPES = new Set([
+    'report_submitted',
+    'report_validated',
+    'report_rejected',
+    'report_under_review',
+    'high_priority_report',
+]);
+const AI_TYPES = new Set(['ai_analysis_completed', 'ai_inference_failed']);
+const TICKET_TYPES = new Set(['ticket_issued', 'ticket_action_required']);
+
+type Tab = 'all' | 'reports' | 'ai' | 'tickets';
+
+const TABS: { key: Tab; label: string }[] = [
+    { key: 'all', label: 'All' },
+    { key: 'reports', label: 'Reports' },
+    { key: 'ai', label: 'AI / ML' },
+    { key: 'tickets', label: 'Tickets' },
+];
+
+const filterByTab = (items: AppNotification[], tab: Tab): AppNotification[] => {
+    if (tab === 'all') return items;
+    if (tab === 'reports') return items.filter((n) => REPORT_TYPES.has(n.notification_type));
+    if (tab === 'ai') return items.filter((n) => AI_TYPES.has(n.notification_type));
+    if (tab === 'tickets') return items.filter((n) => TICKET_TYPES.has(n.notification_type));
+    return items;
 };
 
-const formatTimeAgo = (dateStr: string): string => {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffSec = Math.floor(diffMs / 1000);
-    const diffMin = Math.floor(diffSec / 60);
-    const diffHr = Math.floor(diffMin / 60);
-    const diffDay = Math.floor(diffHr / 24);
-
-    if (diffSec < 60) return 'Just now';
-    if (diffMin < 60) return `${diffMin} min ago`;
-    if (diffHr < 24) return `${diffHr} hr ago`;
-    if (diffDay === 1) return 'Yesterday';
-    if (diffDay < 7) return `${diffDay} days ago`;
-    return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+const getTimeAgo = (isoDate: string): string => {
+    const diffSec = Math.floor((Date.now() - new Date(isoDate).getTime()) / 1000);
+    if (diffSec < 60) return 'just now';
+    if (diffSec < 3600) return `${Math.floor(diffSec / 60)} min ago`;
+    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)} hr ago`;
+    if (diffSec < 172800) return 'yesterday';
+    return `${Math.floor(diffSec / 86400)} days ago`;
 };
 
-const PAGE_SIZE = 20;
+const getCategoryMeta = (type: string): { icon: React.ReactNode; label: string; color: string } => {
+    if (type === 'report_validated') return { icon: <CheckCircle2 size={18} />, label: 'Validated', color: '#10b981' };
+    if (type === 'report_under_review') return { icon: <BellRing size={18} />, label: 'In review', color: '#f59e0b' };
+    if (type === 'report_rejected') return { icon: <XCircle size={18} />, label: 'Rejected', color: '#ef4444' };
+    if (type === 'report_submitted') return { icon: <FileText size={18} />, label: 'Submitted', color: ACCENT };
+    if (type === 'ai_analysis_completed') return { icon: <CheckCircle2 size={18} />, label: 'AI ready', color: '#7c3aed' };
+    if (type === 'ai_inference_failed') return { icon: <AlertCircle size={18} />, label: 'AI', color: '#ef4444' };
+    if (type === 'ticket_issued') return { icon: <TicketIcon size={18} />, label: 'Ticket', color: '#f59e0b' };
+    if (type === 'high_priority_report') return { icon: <AlertTriangle size={18} />, label: 'Priority', color: '#f59e0b' };
+    return { icon: <Info size={18} />, label: 'Update', color: '#64748b' };
+};
 
-// ---- Skeleton ----
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
 
-const NotificationSkeleton: React.FC = () => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {Array.from({ length: 5 }).map((_, i) => (
-            <div
-                key={i}
-                style={{
-                    background: '#1e293b',
-                    border: '1px solid rgba(255,255,255,0.06)',
-                    borderRadius: 12,
-                    padding: '16px 20px',
-                    display: 'flex',
-                    gap: 16,
-                    alignItems: 'flex-start',
-                }}
-            >
-                <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#334155', flexShrink: 0 }} />
-                <div style={{ flex: 1 }}>
-                    <div style={{ width: '55%', height: 14, background: '#334155', borderRadius: 6, marginBottom: 8 }} />
-                    <div style={{ width: '80%', height: 12, background: '#293548', borderRadius: 6, marginBottom: 6 }} />
-                    <div style={{ width: '30%', height: 10, background: '#243044', borderRadius: 6 }} />
-                </div>
-            </div>
-        ))}
+const StatCard: React.FC<{ label: string; value: number; accent: string }> = ({ label, value, accent }) => (
+    <div
+        style={{
+            flex: 1,
+            minWidth: 140,
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-border)',
+            borderRadius: 12,
+            padding: '14px 18px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
+        }}
+    >
+        <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-text-secondary)', fontWeight: 600 }}>
+            {label}
+        </span>
+        <span style={{ fontSize: '1.625rem', fontWeight: 800, color: accent, lineHeight: 1.1 }}>{value}</span>
     </div>
 );
 
-// ---- Notification Card ----
+const SkeletonRow: React.FC = () => (
+    <div
+        style={{
+            display: 'flex',
+            gap: 16,
+            padding: 18,
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-border)',
+            borderRadius: 12,
+            alignItems: 'center',
+        }}
+    >
+        <div style={{ width: 40, height: 40, borderRadius: 10, background: '#eef2f7' }} />
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ height: 12, background: '#eef2f7', borderRadius: 4, width: '40%' }} />
+            <div style={{ height: 10, background: '#f1f5f9', borderRadius: 4, width: '70%' }} />
+        </div>
+    </div>
+);
 
-interface NotificationCardProps {
-    notification: AppNotification;
-    onMarkRead: (id: string) => void;
-    onDelete: (id: string) => void;
-}
+// ---------------------------------------------------------------------------
+// Main page
+// ---------------------------------------------------------------------------
 
-const NotificationCard: React.FC<NotificationCardProps> = ({ notification: n, onMarkRead, onDelete }) => {
-    const isHighPriority = n.priority === 'high';
-    const hasLink = n.related_entity_type === 'evidence_report' && n.related_entity_id;
+export const NotificationsPage: React.FC = () => {
+    const navigate = useNavigate();
+    const {
+        notifications,
+        loading,
+        error,
+        unreadCount,
+        fetchNotifications,
+        markRead,
+        markAllRead,
+    } = useNotifications();
+    const [activeTab, setActiveTab] = useState<Tab>('all');
+
+    useEffect(() => {
+        fetchNotifications();
+        const interval = setInterval(() => {
+            if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+                fetchNotifications();
+            }
+        }, 20_000);
+        return () => clearInterval(interval);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const filtered = useMemo(() => filterByTab(notifications, activeTab), [notifications, activeTab]);
+
+    const handleNotificationClick = (n: AppNotification) => {
+        if (!n.is_read) markRead(n.id);
+
+        if (n.related_entity_type === 'evidence_report' && n.related_entity_id) {
+            navigate(`/portal/my-reports/${n.related_entity_id}`);
+        } else if (n.related_entity_type === 'ticket') {
+            navigate('/portal/my-reports');
+        }
+    };
 
     return (
         <div
             style={{
-                background: n.is_read ? '#1e293b' : 'rgba(20, 184, 166, 0.06)',
-                border: `1px solid ${isHighPriority ? 'rgba(245, 158, 11, 0.3)' : 'rgba(255,255,255,0.07)'}`,
-                borderRadius: 12,
-                padding: '16px 20px',
+                maxWidth: 960,
+                margin: '0 auto',
+                padding: '32px 20px',
                 display: 'flex',
-                gap: 16,
-                alignItems: 'flex-start',
-                transition: 'background 0.15s',
+                flexDirection: 'column',
+                gap: 24,
+                width: '100%',
             }}
         >
-            {/* Icon */}
-            <div style={{
-                width: 40,
-                height: 40,
-                borderRadius: '50%',
-                background: 'rgba(255,255,255,0.05)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-            }}>
-                {getNotificationIcon(n.notification_type, n.priority)}
-            </div>
-
-            {/* Content */}
-            <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <span style={{
-                            fontSize: 15,
-                            fontWeight: n.is_read ? 400 : 600,
-                            color: n.is_read ? '#94a3b8' : '#f1f5f9',
-                        }}>
-                            {n.title}
-                        </span>
-                        {!n.is_read && (
-                            <span style={{
-                                width: 8,
-                                height: 8,
-                                borderRadius: '50%',
-                                background: '#14b8a6',
-                                display: 'inline-block',
-                                flexShrink: 0,
-                            }} />
-                        )}
-                        {isHighPriority && (
-                            <span style={{
-                                fontSize: 11,
-                                fontWeight: 600,
-                                color: '#f59e0b',
-                                background: 'rgba(245, 158, 11, 0.12)',
-                                border: '1px solid rgba(245, 158, 11, 0.3)',
-                                borderRadius: 4,
-                                padding: '1px 6px',
-                                textTransform: 'uppercase',
-                                letterSpacing: '0.04em',
-                            }}>
-                                High priority
-                            </span>
-                        )}
-                    </div>
-                    <span style={{ fontSize: 12, color: '#475569', flexShrink: 0 }}>
-                        {formatTimeAgo(n.created_at)}
-                    </span>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+                <div>
+                    <h1 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 800, color: 'var(--color-text)', letterSpacing: '-0.02em' }}>
+                        Your Notifications
+                    </h1>
+                    <p style={{ margin: '4px 0 0 0', color: 'var(--color-text-secondary)', fontSize: '0.95rem' }}>
+                        {unreadCount > 0
+                            ? `You have ${unreadCount} unread update${unreadCount !== 1 ? 's' : ''}.`
+                            : 'You are all caught up.'}
+                    </p>
                 </div>
 
-                <p style={{
-                    margin: '6px 0 0',
-                    fontSize: 14,
-                    color: n.is_read ? '#64748b' : '#94a3b8',
-                    lineHeight: 1.5,
-                }}>
-                    {n.message}
-                </p>
-
-                {/* Actions row */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10, flexWrap: 'wrap' }}>
-                    {hasLink && (
-                        <Link
-                            to={`/portal/my-reports/${n.related_entity_id!}`}
-                            style={{
-                                fontSize: 13,
-                                color: '#14b8a6',
-                                textDecoration: 'none',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 4,
-                                fontWeight: 500,
-                            }}
-                        >
-                            View report <ChevronRight size={14} />
-                        </Link>
-                    )}
-                    {!n.is_read && (
-                        <button
-                            onClick={() => onMarkRead(n.id)}
-                            style={{
-                                background: 'transparent',
-                                border: '1px solid rgba(20,184,166,0.3)',
-                                color: '#14b8a6',
-                                fontSize: 12,
-                                cursor: 'pointer',
-                                padding: '3px 10px',
-                                borderRadius: 6,
-                                transition: 'background 0.15s',
-                            }}
-                            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(20,184,166,0.1)')}
-                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                        >
-                            Mark as read
-                        </button>
-                    )}
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     <button
-                        onClick={() => onDelete(n.id)}
-                        aria-label="Delete notification"
+                        onClick={() => fetchNotifications()}
+                        disabled={loading}
                         style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: '#475569',
-                            cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
-                            padding: 4,
-                            borderRadius: 4,
-                            transition: 'color 0.15s',
+                            gap: 6,
+                            padding: '8px 14px',
+                            border: '1px solid var(--color-border)',
+                            background: 'var(--color-surface)',
+                            color: 'var(--color-text)',
+                            borderRadius: 8,
+                            fontWeight: 600,
+                            fontSize: '0.875rem',
+                            cursor: loading ? 'not-allowed' : 'pointer',
+                            opacity: loading ? 0.6 : 1,
                         }}
-                        onMouseEnter={e => (e.currentTarget.style.color = '#ef4444')}
-                        onMouseLeave={e => (e.currentTarget.style.color = '#475569')}
                     >
-                        <Trash2 size={14} />
+                        <RefreshCw size={14} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
+                        Refresh
                     </button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// ---- Main page ----
-
-export const NotificationsPage: React.FC = () => {
-    const [page, setPage] = useState(0);
-    const { notifications, loading, error, unreadCount, fetchNotifications, markRead, markAllRead, deleteNotification } =
-        useNotifications();
-
-    const isAuthenticated = auth.isCitizenAuthenticated() || auth.hasCitizenPortalAccess();
-    const isDemoOnly = auth.isClientOnlyDemoCitizenSession();
-
-    if (!isAuthenticated) {
-        return <Navigate to="/login" replace />;
-    }
-
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    useEffect(() => {
-        if (!isDemoOnly) {
-            fetchNotifications({ offset: page * PAGE_SIZE, limit: PAGE_SIZE });
-        }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [page, isDemoOnly]);
-
-    const hasUnread = unreadCount > 0;
-
-    return (
-        <div style={{ background: '#0f172a', minHeight: '100vh', padding: '40px 16px 80px' }}>
-            <div style={{ maxWidth: 720, margin: '0 auto' }}>
-                {/* Page header */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28, flexWrap: 'wrap', gap: 12 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <div style={{
-                            width: 44,
-                            height: 44,
-                            borderRadius: '50%',
-                            background: 'rgba(20,184,166,0.12)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                        }}>
-                            <Bell size={22} style={{ color: '#14b8a6' }} />
-                        </div>
-                        <div>
-                            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: '#f1f5f9' }}>
-                                My Notifications
-                            </h1>
-                            {hasUnread && (
-                                <p style={{ margin: 0, fontSize: 13, color: '#64748b' }}>
-                                    {unreadCount} unread
-                                </p>
-                            )}
-                        </div>
-                    </div>
-
-                    {hasUnread && !isDemoOnly && (
+                    {unreadCount > 0 && (
                         <button
                             onClick={markAllRead}
                             style={{
-                                background: 'rgba(20,184,166,0.1)',
-                                border: '1px solid rgba(20,184,166,0.3)',
-                                color: '#14b8a6',
-                                fontSize: 13,
-                                fontWeight: 500,
-                                cursor: 'pointer',
-                                padding: '8px 16px',
+                                padding: '8px 14px',
+                                border: `1px solid ${ACCENT}`,
+                                background: ACCENT,
+                                color: '#fff',
                                 borderRadius: 8,
-                                transition: 'background 0.15s',
+                                fontWeight: 700,
+                                fontSize: '0.875rem',
+                                cursor: 'pointer',
                             }}
-                            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(20,184,166,0.18)')}
-                            onMouseLeave={e => (e.currentTarget.style.background = 'rgba(20,184,166,0.1)')}
+                            onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = ACCENT_HOVER)}
+                            onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = ACCENT)}
                         >
-                            Mark all as read
+                            Mark all read
                         </button>
                     )}
                 </div>
-
-                {/* Demo mode banner */}
-                {isDemoOnly && (
-                    <div style={{
-                        background: 'rgba(245, 158, 11, 0.08)',
-                        border: '1px solid rgba(245, 158, 11, 0.25)',
-                        borderRadius: 12,
-                        padding: '16px 20px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                        marginBottom: 24,
-                    }}>
-                        <Info size={20} style={{ color: '#f59e0b', flexShrink: 0 }} />
-                        <div>
-                            <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#f59e0b' }}>
-                                Notifications not available in demo mode
-                            </p>
-                            <p style={{ margin: '4px 0 0', fontSize: 13, color: '#92400e' }}>
-                                Sign in with a verified phone number to receive real-time notifications about your reports.
-                            </p>
-                        </div>
-                    </div>
-                )}
-
-                {/* Error state */}
-                {error && !isDemoOnly && (
-                    <div style={{
-                        background: 'rgba(239, 68, 68, 0.08)',
-                        border: '1px solid rgba(239, 68, 68, 0.25)',
-                        borderRadius: 12,
-                        padding: '16px 20px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                        marginBottom: 24,
-                    }}>
-                        <AlertCircle size={20} style={{ color: '#ef4444', flexShrink: 0 }} />
-                        <div>
-                            <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#ef4444' }}>
-                                Could not load notifications
-                            </p>
-                            <p style={{ margin: '4px 0 0', fontSize: 13, color: '#dc2626' }}>{error}</p>
-                        </div>
-                        <button
-                            onClick={() => fetchNotifications({ offset: page * PAGE_SIZE, limit: PAGE_SIZE })}
-                            style={{
-                                marginLeft: 'auto',
-                                background: 'transparent',
-                                border: '1px solid rgba(239,68,68,0.4)',
-                                color: '#ef4444',
-                                fontSize: 12,
-                                cursor: 'pointer',
-                                padding: '6px 12px',
-                                borderRadius: 6,
-                                flexShrink: 0,
-                            }}
-                        >
-                            Retry
-                        </button>
-                    </div>
-                )}
-
-                {/* Loading skeleton */}
-                {loading && <NotificationSkeleton />}
-
-                {/* Empty state */}
-                {!loading && !isDemoOnly && notifications.length === 0 && !error && (
-                    <div style={{
-                        background: '#1e293b',
-                        border: '1px solid rgba(255,255,255,0.07)',
-                        borderRadius: 16,
-                        padding: '60px 24px',
-                        textAlign: 'center',
-                    }}>
-                        <Bell size={48} style={{ color: '#334155', marginBottom: 16 }} />
-                        <h2 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 600, color: '#64748b' }}>
-                            No notifications yet
-                        </h2>
-                        <p style={{ margin: 0, fontSize: 14, color: '#475569' }}>
-                            When you submit reports or they are updated, you'll receive notifications here.
-                        </p>
-                    </div>
-                )}
-
-                {/* Notification list */}
-                {!loading && !isDemoOnly && notifications.length > 0 && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        {notifications.map(n => (
-                            <NotificationCard
-                                key={n.id}
-                                notification={n}
-                                onMarkRead={markRead}
-                                onDelete={deleteNotification}
-                            />
-                        ))}
-                    </div>
-                )}
-
-                {/* Pagination */}
-                {!loading && !isDemoOnly && notifications.length > 0 && (
-                    <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 12,
-                        marginTop: 32,
-                    }}>
-                        <button
-                            onClick={() => setPage(p => Math.max(0, p - 1))}
-                            disabled={page === 0}
-                            style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 6,
-                                background: '#1e293b',
-                                border: '1px solid rgba(255,255,255,0.1)',
-                                color: page === 0 ? '#334155' : '#94a3b8',
-                                fontSize: 13,
-                                cursor: page === 0 ? 'not-allowed' : 'pointer',
-                                padding: '8px 14px',
-                                borderRadius: 8,
-                            }}
-                        >
-                            <ChevronLeft size={15} /> Previous
-                        </button>
-                        <span style={{ fontSize: 13, color: '#64748b' }}>Page {page + 1}</span>
-                        <button
-                            onClick={() => setPage(p => p + 1)}
-                            disabled={notifications.length < PAGE_SIZE}
-                            style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 6,
-                                background: '#1e293b',
-                                border: '1px solid rgba(255,255,255,0.1)',
-                                color: notifications.length < PAGE_SIZE ? '#334155' : '#94a3b8',
-                                fontSize: 13,
-                                cursor: notifications.length < PAGE_SIZE ? 'not-allowed' : 'pointer',
-                                padding: '8px 14px',
-                                borderRadius: 8,
-                            }}
-                        >
-                            Next <ChevronRight size={15} />
-                        </button>
-                    </div>
-                )}
             </div>
+
+            {/* Summary cards */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                <StatCard label="Unread" value={unreadCount} accent={ACCENT} />
+                <StatCard
+                    label="Validated"
+                    value={notifications.filter((n) => n.notification_type === 'report_validated').length}
+                    accent="#10b981"
+                />
+                <StatCard
+                    label="Tickets"
+                    value={notifications.filter((n) => TICKET_TYPES.has(n.notification_type)).length}
+                    accent="#f59e0b"
+                />
+                <StatCard label="Total" value={notifications.length} accent="#0f172a" />
+            </div>
+
+            {/* Tabs */}
+            <div
+                style={{
+                    display: 'flex',
+                    gap: 4,
+                    background: 'var(--color-surface)',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: 10,
+                    padding: 4,
+                    width: 'fit-content',
+                    flexWrap: 'wrap',
+                    maxWidth: '100%',
+                    overflowX: 'auto',
+                }}
+            >
+                {TABS.map((tab) => {
+                    const count = tab.key === 'all' ? notifications.length : filterByTab(notifications, tab.key).length;
+                    const isActive = activeTab === tab.key;
+                    return (
+                        <button
+                            key={tab.key}
+                            onClick={() => setActiveTab(tab.key)}
+                            style={{
+                                padding: '8px 14px',
+                                border: 'none',
+                                background: isActive ? '#0f172a' : 'transparent',
+                                color: isActive ? '#fff' : 'var(--color-text-secondary)',
+                                fontWeight: isActive ? 700 : 500,
+                                fontSize: '0.875rem',
+                                borderRadius: 7,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 6,
+                                whiteSpace: 'nowrap',
+                            }}
+                        >
+                            {tab.label}
+                            {count > 0 && (
+                                <span
+                                    style={{
+                                        minWidth: 18,
+                                        height: 18,
+                                        borderRadius: 999,
+                                        background: isActive ? ACCENT : '#e2e8f0',
+                                        color: isActive ? '#fff' : '#475569',
+                                        fontSize: '0.65rem',
+                                        fontWeight: 800,
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        padding: '0 5px',
+                                    }}
+                                >
+                                    {count}
+                                </span>
+                            )}
+                        </button>
+                    );
+                })}
+            </div>
+
+            {/* Content */}
+            {loading && filtered.length === 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <SkeletonRow />
+                    <SkeletonRow />
+                    <SkeletonRow />
+                </div>
+            ) : error ? (
+                <div
+                    style={{
+                        background: 'var(--color-surface)',
+                        border: '1px solid var(--color-border)',
+                        borderRadius: 12,
+                        padding: 32,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: 10,
+                        textAlign: 'center',
+                    }}
+                >
+                    <AlertTriangle size={28} color="#f59e0b" />
+                    <div style={{ fontWeight: 700, fontSize: '1.05rem', color: 'var(--color-text)' }}>
+                        Could not load notifications
+                    </div>
+                    <div style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', maxWidth: 400 }}>
+                        {error}
+                    </div>
+                    <button
+                        onClick={() => fetchNotifications()}
+                        style={{
+                            marginTop: 4,
+                            padding: '8px 16px',
+                            border: '1px solid var(--color-border)',
+                            background: 'var(--color-surface)',
+                            color: 'var(--color-text)',
+                            borderRadius: 8,
+                            fontWeight: 600,
+                            fontSize: '0.875rem',
+                            cursor: 'pointer',
+                        }}
+                    >
+                        Try again
+                    </button>
+                </div>
+            ) : filtered.length === 0 ? (
+                <div
+                    style={{
+                        background: 'var(--color-surface)',
+                        border: '1px solid var(--color-border)',
+                        borderRadius: 12,
+                        padding: '40px 20px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: 10,
+                        textAlign: 'center',
+                    }}
+                >
+                    <div
+                        style={{
+                            width: 56,
+                            height: 56,
+                            borderRadius: '50%',
+                            background: '#f1f5f9',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                        }}
+                    >
+                        <Bell size={26} color="#94a3b8" />
+                    </div>
+                    <div style={{ fontWeight: 700, fontSize: '1.05rem', color: 'var(--color-text)' }}>
+                        No notifications yet
+                    </div>
+                    <div style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>
+                        We will let you know as soon as something changes on your report.
+                    </div>
+                </div>
+            ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {filtered.map((n) => {
+                        const meta = getCategoryMeta(n.notification_type);
+                        const isClickable = !!n.related_entity_type && !!n.related_entity_id;
+
+                        return (
+                            <div
+                                key={n.id}
+                                onClick={() => handleNotificationClick(n)}
+                                style={{
+                                    display: 'flex',
+                                    gap: 16,
+                                    padding: '16px 20px',
+                                    borderRadius: 12,
+                                    background: n.is_read ? 'var(--color-surface)' : UNREAD_BG,
+                                    border: `1px solid ${n.is_read ? 'var(--color-border)' : UNREAD_BORDER}`,
+                                    cursor: isClickable ? 'pointer' : 'default',
+                                    alignItems: 'flex-start',
+                                    transition: 'box-shadow 0.15s',
+                                }}
+                                onMouseEnter={(e) => {
+                                    if (isClickable) {
+                                        (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 4px rgba(15,23,42,0.08)';
+                                    }
+                                }}
+                                onMouseLeave={(e) => {
+                                    (e.currentTarget as HTMLDivElement).style.boxShadow = 'none';
+                                }}
+                            >
+                                <div
+                                    style={{
+                                        flexShrink: 0,
+                                        width: 40,
+                                        height: 40,
+                                        borderRadius: 10,
+                                        background: `${meta.color}1a`,
+                                        color: meta.color,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                    }}
+                                >
+                                    {meta.icon}
+                                </div>
+
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 4, flexWrap: 'wrap' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                            <span style={{ fontWeight: n.is_read ? 600 : 800, fontSize: '0.95rem', color: 'var(--color-text)' }}>
+                                                {n.title}
+                                            </span>
+                                            <span
+                                                style={{
+                                                    fontSize: '0.7rem',
+                                                    fontWeight: 600,
+                                                    color: meta.color,
+                                                    background: `${meta.color}14`,
+                                                    padding: '2px 8px',
+                                                    borderRadius: 999,
+                                                }}
+                                            >
+                                                {meta.label}
+                                            </span>
+                                        </div>
+                                        <span style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>
+                                            {getTimeAgo(n.created_at)}
+                                        </span>
+                                    </div>
+                                    <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>
+                                        {n.message}
+                                    </p>
+
+                                    {isClickable && (
+                                        <div style={{ marginTop: 6, fontSize: '0.8125rem', color: ACCENT, fontWeight: 600 }}>
+                                            View report &rarr;
+                                        </div>
+                                    )}
+                                </div>
+
+                                {!n.is_read && (
+                                    <div
+                                        style={{
+                                            flexShrink: 0,
+                                            width: 8,
+                                            height: 8,
+                                            borderRadius: '50%',
+                                            background: ACCENT,
+                                            marginTop: 8,
+                                        }}
+                                    />
+                                )}
+                            </div>
+                        );
+                    })}
+                    {loading && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, color: 'var(--color-text-secondary)', fontSize: '0.8125rem' }}>
+                            <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                            Refreshing...
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 };

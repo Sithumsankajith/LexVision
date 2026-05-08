@@ -1,474 +1,320 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-    Bell,
-    FileText,
-    BrainCircuit,
-    Ticket,
     AlertTriangle,
-    CheckCheck,
-    AlertCircle,
+    Bell,
+    BrainCircuit,
+    CheckCircle,
+    FileText,
     Info,
+    Loader2,
+    RefreshCw,
+    Settings,
+    Ticket,
+    XCircle,
 } from 'lucide-react';
-import { Button } from '@lexvision/ui';
-import type { AppNotification, NotificationType } from '@lexvision/types';
+import type { AppNotification } from '@lexvision/types';
 import { useNotifications } from '../hooks/useNotifications';
 
 // ---------------------------------------------------------------------------
-// Category configuration
+// Constants & helpers
 // ---------------------------------------------------------------------------
 
-type CategoryKey = 'all' | 'reports' | 'aiml' | 'tickets' | 'system';
+const REPORT_TYPES = new Set([
+    'new_report_submitted',
+    'report_validated',
+    'report_rejected',
+    'report_under_review',
+    'report_submitted',
+    'high_priority_report',
+]);
+const AI_TYPES = new Set(['ai_analysis_completed', 'ai_inference_failed']);
+const TICKET_TYPES = new Set(['ticket_issued', 'ticket_action_required']);
+const SYSTEM_TYPES = new Set(['system_warning', 'worker_failure']);
 
-interface Category {
-    key: CategoryKey;
-    label: string;
-    icon: React.ReactNode;
-    types?: NotificationType[];
-}
+type Tab = 'all' | 'reports' | 'ai' | 'tickets' | 'system';
 
-const CATEGORIES: Category[] = [
-    { key: 'all', label: 'All', icon: <Bell size={15} /> },
-    {
-        key: 'reports',
-        label: 'Reports',
-        icon: <FileText size={15} />,
-        types: ['new_report_submitted', 'report_validated', 'report_rejected', 'report_submitted', 'report_under_review', 'high_priority_report'],
-    },
-    {
-        key: 'aiml',
-        label: 'AI / ML',
-        icon: <BrainCircuit size={15} />,
-        types: ['ai_analysis_completed', 'ai_inference_failed'],
-    },
-    {
-        key: 'tickets',
-        label: 'Tickets',
-        icon: <Ticket size={15} />,
-        types: ['ticket_issued', 'ticket_action_required'],
-    },
-    {
-        key: 'system',
-        label: 'System',
-        icon: <AlertTriangle size={15} />,
-        types: ['system_warning', 'worker_failure', 'ai_inference_failed'],
-    },
+const TABS: { key: Tab; label: string }[] = [
+    { key: 'all', label: 'All' },
+    { key: 'reports', label: 'Reports' },
+    { key: 'ai', label: 'AI / ML' },
+    { key: 'tickets', label: 'Tickets' },
+    { key: 'system', label: 'System' },
 ];
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-const getPriorityAccent = (priority: AppNotification['priority']): string => {
-    if (priority === 'high') return '#ef4444';
-    if (priority === 'normal') return '#f59e0b';
-    return '#6b7280';
+const filterByTab = (items: AppNotification[], tab: Tab): AppNotification[] => {
+    if (tab === 'all') return items;
+    if (tab === 'reports') return items.filter((n) => REPORT_TYPES.has(n.notification_type));
+    if (tab === 'ai') return items.filter((n) => AI_TYPES.has(n.notification_type));
+    if (tab === 'tickets') return items.filter((n) => TICKET_TYPES.has(n.notification_type));
+    if (tab === 'system') return items.filter((n) => SYSTEM_TYPES.has(n.notification_type));
+    return items;
 };
 
-const getNotificationIcon = (type: NotificationType, size = 18): React.ReactNode => {
-    if (['new_report_submitted', 'report_validated', 'report_rejected', 'report_submitted', 'report_under_review', 'high_priority_report'].includes(type as string)) {
-        return <FileText size={size} />;
-    }
-    if (['ai_analysis_completed', 'ai_inference_failed'].includes(type as string)) {
-        return <BrainCircuit size={size} />;
-    }
-    if (['ticket_issued', 'ticket_action_required'].includes(type as string)) {
-        return <Ticket size={size} />;
-    }
-    if (['system_warning', 'worker_failure'].includes(type as string)) {
-        return <AlertTriangle size={size} />;
-    }
-    return <Info size={size} />;
+const getTimeAgo = (isoDate: string): string => {
+    const diffSec = Math.floor((Date.now() - new Date(isoDate).getTime()) / 1000);
+    if (diffSec < 60) return 'just now';
+    if (diffSec < 3600) return `${Math.floor(diffSec / 60)} min ago`;
+    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)} hr ago`;
+    if (diffSec < 172800) return 'yesterday';
+    return `${Math.floor(diffSec / 86400)} days ago`;
 };
 
-const formatTimestamp = (isoString: string): string => {
-    const date = new Date(isoString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffSec = Math.floor(diffMs / 1000);
-
-    if (diffSec < 60) return `${diffSec}s ago`;
-    const diffMin = Math.floor(diffSec / 60);
-    if (diffMin < 60) return `${diffMin}m ago`;
-    const diffHr = Math.floor(diffMin / 60);
-    if (diffHr < 24) return `${diffHr}h ago`;
-
-    return date.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-    });
+const getCategoryMeta = (type: string): { icon: React.ReactNode; label: string; color: string } => {
+    if (REPORT_TYPES.has(type)) {
+        if (type === 'report_validated' || type === 'report_under_review') {
+            return { icon: <CheckCircle size={18} />, label: 'Report', color: '#0ea5e9' };
+        }
+        if (type === 'report_rejected') {
+            return { icon: <XCircle size={18} />, label: 'Report', color: '#64748b' };
+        }
+        return { icon: <FileText size={18} />, label: 'Report', color: '#0ea5e9' };
+    }
+    if (AI_TYPES.has(type)) {
+        return { icon: <BrainCircuit size={18} />, label: 'AI / ML', color: '#7c3aed' };
+    }
+    if (TICKET_TYPES.has(type)) {
+        return { icon: <Ticket size={18} />, label: 'Ticket', color: '#f59e0b' };
+    }
+    if (type === 'worker_failure') {
+        return { icon: <Settings size={18} />, label: 'System', color: '#dc2626' };
+    }
+    if (SYSTEM_TYPES.has(type)) {
+        return { icon: <AlertTriangle size={18} />, label: 'System', color: '#dc2626' };
+    }
+    return { icon: <Info size={18} />, label: 'Update', color: '#64748b' };
 };
+
+const priorityBadgeStyle = (priority: string): React.CSSProperties => {
+    if (priority === 'high') {
+        return { background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca' };
+    }
+    if (priority === 'normal') {
+        return { background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a' };
+    }
+    return { background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0' };
+};
+
+// Admin accent — indigo
+const ACCENT = '#4f46e5';
+const ACCENT_HOVER = '#4338ca';
 
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
 
-const EmptyState: React.FC<{ category: string }> = ({ category }) => (
-    <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '64px 24px',
-        gap: '12px',
-    }}>
-        <div style={{
-            width: '56px',
-            height: '56px',
-            borderRadius: '16px',
-            backgroundColor: '#1e293b',
+const StatCard: React.FC<{ label: string; value: number; accent: string }> = ({ label, value, accent }) => (
+    <div
+        style={{
+            flex: 1,
+            minWidth: 160,
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-border)',
+            borderRadius: 12,
+            padding: '16px 20px',
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-        }}>
-            <Bell size={24} color="#334155" />
-        </div>
-        <p style={{ margin: 0, fontWeight: '700', color: '#475569', fontSize: '0.9375rem' }}>
-            No {category === 'all' ? '' : category + ' '}notifications
-        </p>
-        <p style={{ margin: 0, color: '#334155', fontSize: '0.8125rem' }}>
-            You're all caught up.
-        </p>
+            flexDirection: 'column',
+            gap: 4,
+        }}
+    >
+        <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-text-secondary)', fontWeight: 600 }}>
+            {label}
+        </span>
+        <span style={{ fontSize: '1.875rem', fontWeight: 800, color: accent, lineHeight: 1.1 }}>{value}</span>
     </div>
 );
 
-const NotificationCard: React.FC<{
-    notification: AppNotification;
-    onMarkRead: (id: string) => void;
-}> = ({ notification: n, onMarkRead }) => {
-    const navigate = useNavigate();
-    const accentColor = getPriorityAccent(n.priority);
-    const isHighPriority = n.priority === 'high';
-    const isSystemWarning = n.notification_type === 'system_warning' || n.notification_type === 'worker_failure';
-
-    const handleRelatedLink = () => {
-        if (!n.is_read) onMarkRead(n.id);
-        if (n.related_entity_type === 'report' || n.related_entity_type === 'evidence_report') {
-            navigate('/dashboard/reports');
-        }
-    };
-
-    const hasLink = n.related_entity_type === 'report' || n.related_entity_type === 'evidence_report';
-
-    return (
-        <div style={{
+const SkeletonRow: React.FC = () => (
+    <div
+        style={{
             display: 'flex',
-            alignItems: 'flex-start',
-            gap: '16px',
-            padding: '16px 20px',
-            backgroundColor: '#1e293b',
-            borderRadius: '12px',
-            border: '1px solid #334155',
-            borderLeft: `4px solid ${n.is_read ? '#334155' : accentColor}`,
-            opacity: n.is_read ? 0.75 : 1,
-            transition: 'opacity 0.2s',
-            ...(isHighPriority && !n.is_read ? {
-                boxShadow: `0 0 0 1px ${accentColor}30, 0 4px 16px rgba(239, 68, 68, 0.1)`,
-            } : {}),
-            ...(isSystemWarning && !n.is_read ? {
-                backgroundColor: 'rgba(239, 68, 68, 0.05)',
-                borderColor: accentColor,
-            } : {}),
-        }}>
-            {/* Icon */}
-            <div style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '10px',
-                backgroundColor: `${accentColor}18`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: accentColor,
-                flexShrink: 0,
-            }}>
-                {getNotificationIcon(n.notification_type)}
-            </div>
-
-            {/* Content */}
-            <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    justifyContent: 'space-between',
-                    gap: '12px',
-                    marginBottom: '4px',
-                }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', flex: 1 }}>
-                        <span style={{
-                            fontSize: '0.9375rem',
-                            fontWeight: n.is_read ? '500' : '700',
-                            color: n.is_read ? '#94a3b8' : '#f1f5f9',
-                        }}>
-                            {n.title}
-                        </span>
-                        {/* Priority badge */}
-                        {n.priority !== 'low' && (
-                            <span style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                padding: '2px 8px',
-                                borderRadius: '20px',
-                                fontSize: '0.65rem',
-                                fontWeight: '800',
-                                letterSpacing: '0.04em',
-                                textTransform: 'uppercase',
-                                backgroundColor: `${accentColor}20`,
-                                color: accentColor,
-                                border: `1px solid ${accentColor}40`,
-                            }}>
-                                {n.priority}
-                            </span>
-                        )}
-                        {!n.is_read && (
-                            <span style={{
-                                width: '8px',
-                                height: '8px',
-                                borderRadius: '50%',
-                                backgroundColor: accentColor,
-                                flexShrink: 0,
-                            }} />
-                        )}
-                    </div>
-
-                    {/* Timestamp */}
-                    <span style={{
-                        fontSize: '0.75rem',
-                        color: '#475569',
-                        fontWeight: '600',
-                        whiteSpace: 'nowrap',
-                        flexShrink: 0,
-                    }}>
-                        {formatTimestamp(n.created_at)}
-                    </span>
-                </div>
-
-                <p style={{
-                    margin: '0 0 8px',
-                    fontSize: '0.8125rem',
-                    color: n.is_read ? '#64748b' : '#94a3b8',
-                    lineHeight: '1.5',
-                }}>
-                    {n.message}
-                </p>
-
-                {/* Actions row */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    {!n.is_read && (
-                        <button
-                            onClick={() => onMarkRead(n.id)}
-                            style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                padding: '4px 10px',
-                                border: 'none',
-                                borderRadius: '6px',
-                                backgroundColor: 'transparent',
-                                color: '#64748b',
-                                fontSize: '0.75rem',
-                                fontWeight: '600',
-                                cursor: 'pointer',
-                                transition: 'color 0.15s',
-                            }}
-                            onMouseEnter={e => (e.currentTarget.style.color = '#94a3b8')}
-                            onMouseLeave={e => (e.currentTarget.style.color = '#64748b')}
-                        >
-                            <CheckCheck size={13} />
-                            Mark read
-                        </button>
-                    )}
-                    {hasLink && (
-                        <button
-                            onClick={handleRelatedLink}
-                            style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                padding: '4px 10px',
-                                border: '1px solid #334155',
-                                borderRadius: '6px',
-                                backgroundColor: 'transparent',
-                                color: '#3b82f6',
-                                fontSize: '0.75rem',
-                                fontWeight: '600',
-                                cursor: 'pointer',
-                                transition: 'border-color 0.15s, color 0.15s',
-                            }}
-                            onMouseEnter={e => { e.currentTarget.style.borderColor = '#3b82f6'; }}
-                            onMouseLeave={e => { e.currentTarget.style.borderColor = '#334155'; }}
-                        >
-                            View Report
-                        </button>
-                    )}
-                    {n.related_entity_type === 'ticket' && (
-                        <span style={{
-                            padding: '4px 10px',
-                            fontSize: '0.75rem',
-                            fontWeight: '600',
-                            color: '#64748b',
-                        }}>
-                            Ticket #{n.related_entity_id?.substring(0, 8) ?? 'N/A'}
-                        </span>
-                    )}
-                </div>
-            </div>
+            gap: 16,
+            padding: 18,
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-border)',
+            borderRadius: 12,
+            alignItems: 'center',
+        }}
+    >
+        <div style={{ width: 40, height: 40, borderRadius: 10, background: '#eef2f7' }} />
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ height: 12, background: '#eef2f7', borderRadius: 4, width: '40%' }} />
+            <div style={{ height: 10, background: '#f1f5f9', borderRadius: 4, width: '70%' }} />
         </div>
-    );
-};
+    </div>
+);
 
 // ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
 export const Notifications: React.FC = () => {
-    const { notifications, unreadCount, loading, error, fetchNotifications, markRead, markAllRead } = useNotifications();
-    const [activeCategory, setActiveCategory] = useState<CategoryKey>('all');
+    const navigate = useNavigate();
+    const {
+        notifications,
+        loading,
+        error,
+        unreadCount,
+        fetchNotifications,
+        markRead,
+        markAllRead,
+    } = useNotifications();
+    const [activeTab, setActiveTab] = useState<Tab>('all');
 
     useEffect(() => {
         fetchNotifications();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        const interval = setInterval(() => {
+            if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+                fetchNotifications();
+            }
+        }, 20_000);
+        return () => clearInterval(interval);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const highPriorityCount = notifications.filter(n => !n.is_read && n.priority === 'high').length;
+    const filtered = useMemo(() => filterByTab(notifications, activeTab), [notifications, activeTab]);
+    const highPriorityCount = useMemo(
+        () => notifications.filter((n) => !n.is_read && n.priority === 'high').length,
+        [notifications],
+    );
+    const systemAlertCount = useMemo(
+        () => notifications.filter((n) => SYSTEM_TYPES.has(n.notification_type) || n.notification_type === 'ai_inference_failed').length,
+        [notifications],
+    );
 
-    const filteredNotifications = (() => {
-        const category = CATEGORIES.find(c => c.key === activeCategory);
-        if (!category || !category.types) return notifications;
-        return notifications.filter(n => category.types!.includes(n.notification_type));
-    })();
+    const handleNotificationClick = (n: AppNotification) => {
+        if (!n.is_read) markRead(n.id);
 
-    const getCategoryCount = (cat: Category): number => {
-        if (!cat.types) return notifications.filter(n => !n.is_read).length;
-        return notifications.filter(n => !n.is_read && cat.types!.includes(n.notification_type)).length;
+        if (!n.related_entity_type || !n.related_entity_id) return;
+
+        if (n.related_entity_type === 'evidence_report') {
+            navigate('/dashboard/reports');
+        } else if (n.related_entity_type === 'ticket') {
+            navigate('/dashboard/reports');
+        }
     };
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-
-            {/* Page header */}
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 1100, width: '100%' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
                 <div>
-                    <h1 style={{ margin: '0 0 4px', fontSize: '1.5rem', fontWeight: '800', color: '#f1f5f9' }}>
-                        System Notifications
+                    <h1 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 800, color: 'var(--color-text)', letterSpacing: '-0.02em' }}>
+                        Notification Centre
                     </h1>
-                    <p style={{ margin: 0, fontSize: '0.875rem', color: '#64748b' }}>
-                        Monitor reports, AI events, and system alerts in real-time.
+                    <p style={{ margin: '4px 0 0 0', color: 'var(--color-text-secondary)', fontSize: '0.95rem' }}>
+                        {unreadCount > 0
+                            ? `You have ${unreadCount} unread notification${unreadCount !== 1 ? 's' : ''}.`
+                            : 'You are all caught up.'}
                     </p>
                 </div>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    leftIcon={<CheckCheck size={15} />}
-                    onClick={markAllRead}
-                    disabled={unreadCount === 0}
-                >
-                    Mark all as read
-                </Button>
-            </div>
 
-            {/* Summary stats */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
-                {[
-                    {
-                        label: 'Total Unread',
-                        value: unreadCount,
-                        icon: <Bell size={18} color="#3b82f6" />,
-                        bg: 'rgba(59, 130, 246, 0.1)',
-                        border: 'rgba(59, 130, 246, 0.2)',
-                    },
-                    {
-                        label: 'High Priority',
-                        value: highPriorityCount,
-                        icon: <AlertCircle size={18} color="#ef4444" />,
-                        bg: highPriorityCount > 0 ? 'rgba(239, 68, 68, 0.1)' : 'transparent',
-                        border: highPriorityCount > 0 ? 'rgba(239, 68, 68, 0.3)' : '#334155',
-                    },
-                ].map((stat, i) => (
-                    <div key={i} style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '12px',
-                        padding: '14px 16px',
-                        backgroundColor: stat.bg || '#1e293b',
-                        border: `1px solid ${stat.border}`,
-                        borderRadius: '12px',
-                    }}>
-                        <div style={{
-                            width: '38px',
-                            height: '38px',
-                            borderRadius: '10px',
-                            backgroundColor: '#0f172a',
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <button
+                        onClick={() => fetchNotifications()}
+                        disabled={loading}
+                        style={{
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center',
-                        }}>
-                            {stat.icon}
-                        </div>
-                        <div>
-                            <div style={{ fontSize: '1.5rem', fontWeight: '800', color: '#f1f5f9', lineHeight: 1 }}>
-                                {stat.value}
-                            </div>
-                            <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: '600', marginTop: '2px' }}>
-                                {stat.label}
-                            </div>
-                        </div>
-                    </div>
-                ))}
+                            gap: 6,
+                            padding: '8px 14px',
+                            border: '1px solid var(--color-border)',
+                            background: 'var(--color-surface)',
+                            color: 'var(--color-text)',
+                            borderRadius: 8,
+                            fontWeight: 600,
+                            fontSize: '0.875rem',
+                            cursor: loading ? 'not-allowed' : 'pointer',
+                            opacity: loading ? 0.6 : 1,
+                        }}
+                    >
+                        <RefreshCw size={14} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
+                        Refresh
+                    </button>
+                    {unreadCount > 0 && (
+                        <button
+                            onClick={markAllRead}
+                            style={{
+                                padding: '8px 14px',
+                                border: `1px solid ${ACCENT}`,
+                                background: ACCENT,
+                                color: '#fff',
+                                borderRadius: 8,
+                                fontWeight: 700,
+                                fontSize: '0.875rem',
+                                cursor: 'pointer',
+                            }}
+                            onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = ACCENT_HOVER)}
+                            onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = ACCENT)}
+                        >
+                            Mark all read
+                        </button>
+                    )}
+                </div>
             </div>
 
-            {/* Category tabs */}
-            <div style={{
-                display: 'flex',
-                gap: '4px',
-                padding: '4px',
-                backgroundColor: '#1e293b',
-                borderRadius: '10px',
-                overflowX: 'auto',
-                flexWrap: 'nowrap',
-            }}>
-                {CATEGORIES.map(cat => {
-                    const count = getCategoryCount(cat);
-                    const isActive = activeCategory === cat.key;
+            {/* Summary cards */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+                <StatCard label="Unread" value={unreadCount} accent={ACCENT} />
+                <StatCard label="High priority" value={highPriorityCount} accent="#f59e0b" />
+                <StatCard label="System alerts" value={systemAlertCount} accent="#dc2626" />
+                <StatCard label="Total" value={notifications.length} accent="#0f172a" />
+            </div>
+
+            {/* Tabs */}
+            <div
+                style={{
+                    display: 'flex',
+                    gap: 4,
+                    background: 'var(--color-surface)',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: 10,
+                    padding: 4,
+                    width: 'fit-content',
+                    flexWrap: 'wrap',
+                    maxWidth: '100%',
+                    overflowX: 'auto',
+                }}
+            >
+                {TABS.map((tab) => {
+                    const count = tab.key === 'all' ? notifications.length : filterByTab(notifications, tab.key).length;
+                    const isActive = activeTab === tab.key;
                     return (
                         <button
-                            key={cat.key}
-                            onClick={() => setActiveCategory(cat.key)}
+                            key={tab.key}
+                            onClick={() => setActiveTab(tab.key)}
                             style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
                                 padding: '8px 14px',
                                 border: 'none',
-                                borderRadius: '7px',
-                                backgroundColor: isActive ? '#0f172a' : 'transparent',
-                                color: isActive ? '#f1f5f9' : '#64748b',
-                                fontSize: '0.8125rem',
-                                fontWeight: isActive ? '700' : '600',
+                                background: isActive ? '#0f172a' : 'transparent',
+                                color: isActive ? '#fff' : 'var(--color-text-secondary)',
+                                fontWeight: isActive ? 700 : 500,
+                                fontSize: '0.875rem',
+                                borderRadius: 7,
                                 cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 6,
                                 whiteSpace: 'nowrap',
-                                transition: 'all 0.15s',
-                                boxShadow: isActive ? '0 1px 4px rgba(0,0,0,0.3)' : 'none',
                             }}
                         >
-                            {cat.icon}
-                            {cat.label}
+                            {tab.label}
                             {count > 0 && (
-                                <span style={{
-                                    minWidth: '18px',
-                                    height: '18px',
-                                    paddingInline: '4px',
-                                    borderRadius: '9px',
-                                    backgroundColor: isActive ? '#ef4444' : '#334155',
-                                    color: '#ffffff',
-                                    fontSize: '0.65rem',
-                                    fontWeight: '800',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                }}>
+                                <span
+                                    style={{
+                                        minWidth: 18,
+                                        height: 18,
+                                        borderRadius: 999,
+                                        background: isActive ? ACCENT : '#e2e8f0',
+                                        color: isActive ? '#fff' : '#475569',
+                                        fontSize: '0.65rem',
+                                        fontWeight: 800,
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        padding: '0 5px',
+                                    }}
+                                >
                                     {count}
                                 </span>
                             )}
@@ -477,62 +323,204 @@ export const Notifications: React.FC = () => {
                 })}
             </div>
 
-            {/* Error state */}
-            {error && (
-                <div style={{
-                    padding: '12px 16px',
-                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                    border: '1px solid rgba(239, 68, 68, 0.3)',
-                    borderRadius: '8px',
-                    color: '#ef4444',
-                    fontSize: '0.8125rem',
-                    fontWeight: '600',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                }}>
-                    <AlertTriangle size={15} />
-                    {error}
+            {/* Content */}
+            {loading && filtered.length === 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <SkeletonRow />
+                    <SkeletonRow />
+                    <SkeletonRow />
                 </div>
-            )}
-
-            {/* Notification cards */}
-            {loading ? (
-                <div style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '12px',
-                }}>
-                    {[1, 2, 3].map(i => (
-                        <div key={i} style={{
-                            height: '88px',
-                            backgroundColor: '#1e293b',
-                            borderRadius: '12px',
-                            border: '1px solid #334155',
-                            opacity: 0.5,
-                            animation: 'pulse 1.5s ease-in-out infinite',
-                        }} />
-                    ))}
+            ) : error ? (
+                <div
+                    style={{
+                        background: 'var(--color-surface)',
+                        border: '1px solid var(--color-border)',
+                        borderRadius: 12,
+                        padding: 32,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: 10,
+                        textAlign: 'center',
+                    }}
+                >
+                    <AlertTriangle size={28} color="#f59e0b" />
+                    <div style={{ fontWeight: 700, fontSize: '1.05rem', color: 'var(--color-text)' }}>
+                        Could not load notifications
+                    </div>
+                    <div style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', maxWidth: 400 }}>
+                        {error}
+                    </div>
+                    <button
+                        onClick={() => fetchNotifications()}
+                        style={{
+                            marginTop: 4,
+                            padding: '8px 16px',
+                            border: '1px solid var(--color-border)',
+                            background: 'var(--color-surface)',
+                            color: 'var(--color-text)',
+                            borderRadius: 8,
+                            fontWeight: 600,
+                            fontSize: '0.875rem',
+                            cursor: 'pointer',
+                        }}
+                    >
+                        Try again
+                    </button>
                 </div>
-            ) : filteredNotifications.length === 0 ? (
-                <div style={{
-                    backgroundColor: '#1e293b',
-                    borderRadius: '12px',
-                    border: '1px solid #334155',
-                }}>
-                    <EmptyState category={CATEGORIES.find(c => c.key === activeCategory)?.label.toLowerCase() ?? 'all'} />
+            ) : filtered.length === 0 ? (
+                <div
+                    style={{
+                        background: 'var(--color-surface)',
+                        border: '1px solid var(--color-border)',
+                        borderRadius: 12,
+                        padding: '40px 20px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: 10,
+                        textAlign: 'center',
+                    }}
+                >
+                    <div
+                        style={{
+                            width: 56,
+                            height: 56,
+                            borderRadius: '50%',
+                            background: '#f1f5f9',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                        }}
+                    >
+                        <Bell size={26} color="#94a3b8" />
+                    </div>
+                    <div style={{ fontWeight: 700, fontSize: '1.05rem', color: 'var(--color-text)' }}>
+                        No notifications
+                    </div>
+                    <div style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>
+                        You are all caught up.
+                    </div>
                 </div>
             ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {filteredNotifications.map(n => (
-                        <NotificationCard
-                            key={n.id}
-                            notification={n}
-                            onMarkRead={markRead}
-                        />
-                    ))}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {filtered.map((n) => {
+                        const meta = getCategoryMeta(n.notification_type);
+                        const isClickable = !!n.related_entity_type && !!n.related_entity_id;
+
+                        return (
+                            <div
+                                key={n.id}
+                                onClick={() => handleNotificationClick(n)}
+                                style={{
+                                    display: 'flex',
+                                    gap: 16,
+                                    padding: '16px 20px',
+                                    borderRadius: 12,
+                                    background: n.is_read ? 'var(--color-surface)' : '#eef2ff',
+                                    border: `1px solid ${n.is_read ? 'var(--color-border)' : '#c7d2fe'}`,
+                                    cursor: isClickable ? 'pointer' : 'default',
+                                    alignItems: 'flex-start',
+                                    transition: 'box-shadow 0.15s',
+                                }}
+                                onMouseEnter={(e) => {
+                                    if (isClickable) {
+                                        (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 4px rgba(15,23,42,0.08)';
+                                    }
+                                }}
+                                onMouseLeave={(e) => {
+                                    (e.currentTarget as HTMLDivElement).style.boxShadow = 'none';
+                                }}
+                            >
+                                <div
+                                    style={{
+                                        flexShrink: 0,
+                                        width: 40,
+                                        height: 40,
+                                        borderRadius: 10,
+                                        background: `${meta.color}1a`,
+                                        color: meta.color,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                    }}
+                                >
+                                    {meta.icon}
+                                </div>
+
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 4, flexWrap: 'wrap' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                            <span style={{ fontWeight: n.is_read ? 600 : 800, fontSize: '0.95rem', color: 'var(--color-text)' }}>
+                                                {n.title}
+                                            </span>
+                                            <span
+                                                style={{
+                                                    fontSize: '0.65rem',
+                                                    fontWeight: 700,
+                                                    textTransform: 'uppercase',
+                                                    letterSpacing: '0.04em',
+                                                    padding: '2px 8px',
+                                                    borderRadius: 999,
+                                                    ...priorityBadgeStyle(n.priority),
+                                                }}
+                                            >
+                                                {n.priority}
+                                            </span>
+                                            <span
+                                                style={{
+                                                    fontSize: '0.7rem',
+                                                    fontWeight: 600,
+                                                    color: meta.color,
+                                                    background: `${meta.color}14`,
+                                                    padding: '2px 8px',
+                                                    borderRadius: 999,
+                                                }}
+                                            >
+                                                {meta.label}
+                                            </span>
+                                        </div>
+                                        <span style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>
+                                            {getTimeAgo(n.created_at)}
+                                        </span>
+                                    </div>
+                                    <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>
+                                        {n.message}
+                                    </p>
+
+                                    {isClickable && (
+                                        <div style={{ marginTop: 6, fontSize: '0.8125rem', color: ACCENT, fontWeight: 600 }}>
+                                            View details &rarr;
+                                        </div>
+                                    )}
+                                </div>
+
+                                {!n.is_read && (
+                                    <div
+                                        style={{
+                                            flexShrink: 0,
+                                            width: 8,
+                                            height: 8,
+                                            borderRadius: '50%',
+                                            background: ACCENT,
+                                            marginTop: 8,
+                                        }}
+                                    />
+                                )}
+                            </div>
+                        );
+                    })}
+                    {loading && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, color: 'var(--color-text-secondary)', fontSize: '0.8125rem' }}>
+                            <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                            Refreshing...
+                        </div>
+                    )}
                 </div>
             )}
         </div>
     );
 };
+
+export default Notifications;
+

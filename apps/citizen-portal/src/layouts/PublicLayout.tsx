@@ -23,7 +23,7 @@ const getNavbarSession = () => {
 const NotificationBellWrapper: React.FC = () => {
     const navigate = useNavigate();
     const [open, setOpen] = useState(false);
-    const { unreadCount, notifications, loading, fetchNotifications, markRead, markAllRead } = useNotifications();
+    const { unreadCount, notifications, loading, error, fetchNotifications, markRead, markAllRead } = useNotifications();
 
     const handleOpen = useCallback(async () => {
         setOpen(prev => {
@@ -46,10 +46,12 @@ const NotificationBellWrapper: React.FC = () => {
                 <NotificationDropdown
                     notifications={notifications}
                     loading={loading}
+                    error={error}
                     onMarkRead={markRead}
                     onMarkAllRead={markAllRead}
                     onClose={() => setOpen(false)}
                     onViewAll={handleViewAll}
+                    onRetry={() => fetchNotifications()}
                 />
             )}
         </div>

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { auth, mockDb } from '@lexvision/api-client';
 import type { AppNotification } from '@lexvision/types';
 
-const POLL_INTERVAL_MS = 30_000;
+const POLL_INTERVAL_MS = 15_000;
 
 export interface UseNotificationsResult {
     unreadCount: number;
@@ -13,6 +13,7 @@ export interface UseNotificationsResult {
     markRead: (id: string) => Promise<void>;
     markAllRead: () => Promise<void>;
     deleteNotification: (id: string) => Promise<void>;
+    refresh: () => Promise<void>;
 }
 
 export function useNotifications(): UseNotificationsResult {
@@ -21,42 +22,25 @@ export function useNotifications(): UseNotificationsResult {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const inflightRef = useRef<boolean>(false);
 
     const isAuthenticated = auth.isCitizenAuthenticated();
 
     const refreshUnreadCount = useCallback(async () => {
         if (!auth.isCitizenAuthenticated()) return;
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
         try {
             const count = await mockDb.getCitizenUnreadCount();
             setUnreadCount(count);
         } catch {
-            // Silently swallow — unread count failure must not break any page
+            // Silent — never surface poll errors as UI errors
         }
     }, []);
 
-    // Start polling for unread count
-    useEffect(() => {
-        if (!isAuthenticated) {
-            setUnreadCount(0);
-            setNotifications([]);
-            return;
-        }
-
-        // Initial fetch
-        refreshUnreadCount();
-
-        intervalRef.current = setInterval(refreshUnreadCount, POLL_INTERVAL_MS);
-
-        return () => {
-            if (intervalRef.current !== null) {
-                clearInterval(intervalRef.current);
-                intervalRef.current = null;
-            }
-        };
-    }, [isAuthenticated, refreshUnreadCount]);
-
     const fetchNotifications = useCallback(async (opts: { offset?: number; limit?: number } = {}) => {
         if (!auth.isCitizenAuthenticated()) return;
+        if (inflightRef.current) return;
+        inflightRef.current = true;
         setLoading(true);
         setError(null);
         try {
@@ -67,52 +51,103 @@ export function useNotifications(): UseNotificationsResult {
             setNotifications(result.items);
             setUnreadCount(result.unread_count);
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Failed to load notifications.';
-            setError(message);
+            const raw = err instanceof Error ? err.message : '';
+            setError(raw && !raw.toLowerCase().includes('credential') ? raw : 'Could not load notifications.');
         } finally {
+            inflightRef.current = false;
             setLoading(false);
         }
     }, []);
 
+    const refresh = useCallback(() => fetchNotifications(), [fetchNotifications]);
+
     const markRead = useCallback(async (id: string) => {
         if (!auth.isCitizenAuthenticated()) return;
+        const previous = notifications;
+        setNotifications(prev =>
+            prev.map(n => (n.id === id ? { ...n, is_read: true, read_at: new Date().toISOString() } : n)),
+        );
+        setUnreadCount(prev => Math.max(0, prev - 1));
         try {
             await mockDb.markCitizenNotificationRead(id);
-            setNotifications(prev =>
-                prev.map(n => n.id === id ? { ...n, is_read: true, read_at: new Date().toISOString() } : n),
-            );
-            setUnreadCount(prev => Math.max(0, prev - 1));
         } catch {
-            // Silently swallow
+            setNotifications(previous);
+            void refreshUnreadCount();
         }
-    }, []);
+    }, [notifications, refreshUnreadCount]);
 
     const markAllRead = useCallback(async () => {
         if (!auth.isCitizenAuthenticated()) return;
+        const previous = notifications;
+        const previousUnread = unreadCount;
+        setNotifications(prev => prev.map(n => ({ ...n, is_read: true, read_at: new Date().toISOString() })));
+        setUnreadCount(0);
         try {
             await mockDb.markAllCitizenNotificationsRead();
-            setNotifications(prev =>
-                prev.map(n => ({ ...n, is_read: true, read_at: new Date().toISOString() })),
-            );
-            setUnreadCount(0);
         } catch {
-            // Silently swallow
+            setNotifications(previous);
+            setUnreadCount(previousUnread);
         }
-    }, []);
+    }, [notifications, unreadCount]);
 
     const deleteNotification = useCallback(async (id: string) => {
         if (!auth.isCitizenAuthenticated()) return;
+        const previous = notifications;
+        const wasUnread = previous.find(n => n.id === id)?.is_read === false;
+        setNotifications(prev => prev.filter(n => n.id !== id));
+        if (wasUnread) setUnreadCount(prev => Math.max(0, prev - 1));
         try {
-            const wasUnread = notifications.find(n => n.id === id)?.is_read === false;
             await mockDb.deleteCitizenNotification(id);
-            setNotifications(prev => prev.filter(n => n.id !== id));
-            if (wasUnread) {
-                setUnreadCount(prev => Math.max(0, prev - 1));
-            }
         } catch {
-            // Silently swallow
+            setNotifications(previous);
+            if (wasUnread) setUnreadCount(prev => prev + 1);
         }
     }, [notifications]);
+
+    // Visibility-aware polling
+    useEffect(() => {
+        if (!isAuthenticated) {
+            setUnreadCount(0);
+            setNotifications([]);
+            return;
+        }
+
+        const startPolling = () => {
+            if (intervalRef.current !== null) return;
+            void refreshUnreadCount();
+            intervalRef.current = setInterval(refreshUnreadCount, POLL_INTERVAL_MS);
+        };
+
+        const stopPolling = () => {
+            if (intervalRef.current !== null) {
+                clearInterval(intervalRef.current);
+                intervalRef.current = null;
+            }
+        };
+
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                startPolling();
+            } else {
+                stopPolling();
+            }
+        };
+
+        if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+            startPolling();
+        }
+
+        if (typeof document !== 'undefined') {
+            document.addEventListener('visibilitychange', handleVisibilityChange);
+        }
+
+        return () => {
+            stopPolling();
+            if (typeof document !== 'undefined') {
+                document.removeEventListener('visibilitychange', handleVisibilityChange);
+            }
+        };
+    }, [isAuthenticated, refreshUnreadCount]);
 
     return {
         unreadCount,
@@ -123,5 +158,6 @@ export function useNotifications(): UseNotificationsResult {
         markRead,
         markAllRead,
         deleteNotification,
+        refresh,
     };
 }

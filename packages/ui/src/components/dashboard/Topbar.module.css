@@ -9,6 +9,7 @@
     top: 0;
     z-index: 40;
     gap: var(--space-4);
+    overflow: visible;
 }
 
 .mobileToggle {
@@ -36,6 +37,11 @@
     display: flex;
     gap: var(--space-2);
     align-items: center;
+    margin-left: auto;
+}
+
+.search + .actions {
+    margin-left: 0;
 }
 
 @media (max-width: 1024px) {
@@ -53,6 +59,10 @@
     }
 
     .actions {
+        margin-left: auto;
+    }
+
+    .search + .actions {
         margin-left: auto;
     }
 }

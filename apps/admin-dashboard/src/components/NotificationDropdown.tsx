@@ -1,339 +1,331 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-    FileText,
-    BrainCircuit,
-    Ticket,
     AlertTriangle,
     Bell,
-    CheckCheck,
-    ArrowRight,
-    X,
+    BrainCircuit,
+    CheckCircle,
+    FileText,
+    Info,
+    Loader2,
+    Settings,
+    Ticket,
+    XCircle,
 } from 'lucide-react';
-import type { AppNotification, NotificationType } from '@lexvision/types';
+import type { AppNotification } from '@lexvision/types';
 
 interface NotificationDropdownProps {
     notifications: AppNotification[];
     loading: boolean;
+    error?: string | null;
     onMarkRead: (id: string) => void;
     onMarkAllRead: () => void;
     onClose: () => void;
     onViewAll: () => void;
+    onRetry?: () => void;
 }
 
-const getNotificationIcon = (type: NotificationType) => {
-    if (type === 'new_report_submitted' || type === 'report_validated' || type === 'report_rejected' || type === 'report_submitted' || type === 'report_under_review') {
-        return <FileText size={15} />;
+const ACCENT = '#4f46e5';
+const MOBILE_DROPDOWN_QUERY = '(max-width: 640px)';
+
+const useIsMobileDropdown = (): boolean => {
+    const [isMobile, setIsMobile] = useState(() =>
+        typeof window !== 'undefined' && window.matchMedia(MOBILE_DROPDOWN_QUERY).matches
+    );
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+
+        const media = window.matchMedia(MOBILE_DROPDOWN_QUERY);
+        const handleChange = () => setIsMobile(media.matches);
+
+        handleChange();
+        media.addEventListener('change', handleChange);
+
+        return () => media.removeEventListener('change', handleChange);
+    }, []);
+
+    return isMobile;
+};
+
+const getTimeAgo = (isoDate: string): string => {
+    const diffSec = Math.floor((Date.now() - new Date(isoDate).getTime()) / 1000);
+    if (diffSec < 60) return 'just now';
+    if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+    if (diffSec < 172800) return 'yesterday';
+    return `${Math.floor(diffSec / 86400)}d ago`;
+};
+
+const getCategoryMeta = (type: string): { icon: React.ReactNode; color: string } => {
+    if (type === 'report_validated' || type === 'report_under_review') {
+        return { icon: <CheckCircle size={15} />, color: '#0ea5e9' };
+    }
+    if (type === 'report_rejected') {
+        return { icon: <XCircle size={15} />, color: '#64748b' };
+    }
+    if (type === 'new_report_submitted' || type === 'high_priority_report' || type === 'report_submitted') {
+        return { icon: <FileText size={15} />, color: '#0ea5e9' };
     }
     if (type === 'ai_analysis_completed' || type === 'ai_inference_failed') {
-        return <BrainCircuit size={15} />;
+        return { icon: <BrainCircuit size={15} />, color: '#7c3aed' };
     }
     if (type === 'ticket_issued' || type === 'ticket_action_required') {
-        return <Ticket size={15} />;
+        return { icon: <Ticket size={15} />, color: '#f59e0b' };
     }
-    if (type === 'system_warning' || type === 'worker_failure') {
-        return <AlertTriangle size={15} />;
+    if (type === 'worker_failure') {
+        return { icon: <Settings size={15} />, color: '#dc2626' };
     }
-    return <Bell size={15} />;
+    if (type === 'system_warning') {
+        return { icon: <AlertTriangle size={15} />, color: '#dc2626' };
+    }
+    return { icon: <Info size={15} />, color: '#64748b' };
 };
 
-const getPriorityColor = (priority: AppNotification['priority']): string => {
-    if (priority === 'high') return '#ef4444';
-    if (priority === 'normal') return '#f59e0b';
-    return '#6b7280';
-};
-
-const timeAgo = (isoString: string): string => {
-    const now = Date.now();
-    const then = new Date(isoString).getTime();
-    const diffSec = Math.floor((now - then) / 1000);
-    if (diffSec < 60) return `${diffSec}s ago`;
-    const diffMin = Math.floor(diffSec / 60);
-    if (diffMin < 60) return `${diffMin}m ago`;
-    const diffHr = Math.floor(diffMin / 60);
-    if (diffHr < 24) return `${diffHr}h ago`;
-    const diffDay = Math.floor(diffHr / 24);
-    return `${diffDay}d ago`;
-};
+const SkeletonItem: React.FC = () => (
+    <div style={{ display: 'flex', gap: 12, padding: '12px 16px', borderBottom: '1px solid #f1f5f9' }}>
+        <div style={{ width: 28, height: 28, borderRadius: 6, background: '#eef2f7', flexShrink: 0 }} />
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ height: 10, background: '#eef2f7', borderRadius: 4, width: '60%' }} />
+            <div style={{ height: 8, background: '#f1f5f9', borderRadius: 4, width: '85%' }} />
+        </div>
+    </div>
+);
 
 export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
     notifications,
     loading,
+    error,
     onMarkRead,
     onMarkAllRead,
     onClose,
     onViewAll,
+    onRetry,
 }) => {
-    const dropdownRef = useRef<HTMLDivElement>(null);
     const navigate = useNavigate();
+    const ref = useRef<HTMLDivElement>(null);
     const recent = notifications.slice(0, 5);
+    const hasUnread = notifications.some((n) => !n.is_read);
+    const unreadCount = notifications.filter((n) => !n.is_read).length;
+    const isMobile = useIsMobileDropdown();
 
-    // Close on outside click
+    const dropdownStyle: React.CSSProperties = {
+        position: isMobile ? 'fixed' : 'absolute',
+        top: isMobile ? 58 : 'calc(100% + 8px)',
+        right: isMobile ? 16 : 0,
+        left: isMobile ? 16 : undefined,
+        width: isMobile ? 'auto' : 384,
+        maxWidth: isMobile ? 'none' : 'calc(100vw - 2rem)',
+        background: '#ffffff',
+        border: '1px solid #e2e8f0',
+        borderRadius: 12,
+        boxShadow: '0 16px 48px rgba(15,23,42,0.18)',
+        zIndex: 1100,
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+        maxHeight: isMobile ? 'calc(100vh - 74px)' : 460,
+    };
+
     useEffect(() => {
-        const handler = (e: MouseEvent) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        const handleClick = (e: MouseEvent) => {
+            if (ref.current && !ref.current.contains(e.target as Node)) {
                 onClose();
             }
         };
-        document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, [onClose]);
-
-    // Close on Escape
-    useEffect(() => {
-        const handler = (e: KeyboardEvent) => {
+        const handleKey = (e: KeyboardEvent) => {
             if (e.key === 'Escape') onClose();
         };
-        document.addEventListener('keydown', handler);
-        return () => document.removeEventListener('keydown', handler);
+        document.addEventListener('mousedown', handleClick);
+        document.addEventListener('keydown', handleKey);
+        return () => {
+            document.removeEventListener('mousedown', handleClick);
+            document.removeEventListener('keydown', handleKey);
+        };
     }, [onClose]);
 
-    const handleViewAll = () => {
-        onViewAll();
-        navigate('/dashboard/notifications');
+    const handleItemClick = (n: AppNotification) => {
+        if (!n.is_read) onMarkRead(n.id);
         onClose();
+        if (n.related_entity_type === 'evidence_report' && n.related_entity_id) {
+            navigate('/dashboard/reports');
+        } else if (n.related_entity_type === 'ticket') {
+            navigate('/dashboard/reports');
+        }
     };
 
     return (
         <div
-            ref={dropdownRef}
+            ref={ref}
             role="dialog"
             aria-label="Notifications"
-            style={{
-                position: 'absolute',
-                top: 'calc(100% + 8px)',
-                right: 0,
-                width: '360px',
-                maxWidth: 'calc(100vw - 16px)',
-                backgroundColor: '#1e293b',
-                border: '1px solid #334155',
-                borderRadius: '12px',
-                boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
-                zIndex: 1000,
-                overflow: 'hidden',
-                display: 'flex',
-                flexDirection: 'column',
-                maxHeight: '380px',
-            }}
+            style={dropdownStyle}
         >
             {/* Header */}
-            <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '12px 16px',
-                borderBottom: '1px solid #334155',
-                flexShrink: 0,
-            }}>
-                <span style={{ fontSize: '0.875rem', fontWeight: '700', color: '#f1f5f9' }}>
-                    Notifications
-                </span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <div
+                style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '12px 16px',
+                    borderBottom: '1px solid #f1f5f9',
+                    background: '#fff',
+                }}
+            >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                    <Bell size={15} color={ACCENT} />
+                    <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#0f172a' }}>Notifications</span>
+                    {notifications.length > 0 && (
+                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                            ({unreadCount} unread)
+                        </span>
+                    )}
+                </div>
+                {hasUnread && (
                     <button
                         onClick={onMarkAllRead}
-                        title="Mark all as read"
                         style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            padding: '4px 8px',
+                            background: 'none',
                             border: 'none',
-                            borderRadius: '6px',
-                            backgroundColor: 'transparent',
-                            color: '#64748b',
+                            color: ACCENT,
                             fontSize: '0.75rem',
-                            fontWeight: '600',
+                            fontWeight: 600,
                             cursor: 'pointer',
-                            transition: 'color 0.15s',
+                            padding: '4px 6px',
+                            borderRadius: 4,
+                            whiteSpace: 'nowrap',
+                            flexShrink: 0,
                         }}
-                        onMouseEnter={e => (e.currentTarget.style.color = '#94a3b8')}
-                        onMouseLeave={e => (e.currentTarget.style.color = '#64748b')}
                     >
-                        <CheckCheck size={14} />
                         Mark all read
                     </button>
-                    <button
-                        onClick={onClose}
-                        title="Close"
-                        style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: '28px',
-                            height: '28px',
-                            border: 'none',
-                            borderRadius: '6px',
-                            backgroundColor: 'transparent',
-                            color: '#64748b',
-                            cursor: 'pointer',
-                        }}
-                        onMouseEnter={e => (e.currentTarget.style.color = '#94a3b8')}
-                        onMouseLeave={e => (e.currentTarget.style.color = '#64748b')}
-                    >
-                        <X size={14} />
-                    </button>
-                </div>
+                )}
             </div>
 
-            {/* Notification list */}
-            <div style={{ overflowY: 'auto', flex: 1 }}>
-                {loading && (
-                    <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        padding: '32px 16px',
-                        color: '#64748b',
-                        fontSize: '0.8125rem',
-                    }}>
-                        Loading…
-                    </div>
-                )}
-
-                {!loading && recent.length === 0 && (
-                    <div style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        padding: '32px 16px',
-                        gap: '8px',
-                    }}>
-                        <Bell size={28} color="#334155" />
-                        <span style={{ color: '#64748b', fontSize: '0.8125rem' }}>No notifications</span>
-                    </div>
-                )}
-
-                {!loading && recent.map(n => {
-                    const accentColor = getPriorityColor(n.priority);
-                    const isHighPriority = n.priority === 'high';
-                    const isSystemWarning = n.notification_type === 'system_warning' || n.notification_type === 'worker_failure';
-
-                    return (
-                        <div
-                            key={n.id}
-                            onClick={() => !n.is_read && onMarkRead(n.id)}
-                            style={{
-                                display: 'flex',
-                                alignItems: 'flex-start',
-                                gap: '12px',
-                                padding: '12px 16px',
-                                borderBottom: '1px solid #1e293b',
-                                backgroundColor: n.is_read
-                                    ? 'transparent'
-                                    : isHighPriority || isSystemWarning
-                                        ? 'rgba(239, 68, 68, 0.06)'
-                                        : 'rgba(248, 250, 252, 0.03)',
-                                cursor: n.is_read ? 'default' : 'pointer',
-                                transition: 'background-color 0.15s',
-                                borderLeft: `3px solid ${n.is_read ? 'transparent' : accentColor}`,
-                            }}
-                            onMouseEnter={e => {
-                                if (!n.is_read) (e.currentTarget as HTMLDivElement).style.backgroundColor =
-                                    isHighPriority ? 'rgba(239, 68, 68, 0.1)' : 'rgba(248, 250, 252, 0.06)';
-                            }}
-                            onMouseLeave={e => {
-                                if (!n.is_read) (e.currentTarget as HTMLDivElement).style.backgroundColor =
-                                    isHighPriority || isSystemWarning ? 'rgba(239, 68, 68, 0.06)' : 'rgba(248, 250, 252, 0.03)';
-                            }}
-                        >
-                            {/* Icon */}
-                            <div style={{
-                                width: '32px',
-                                height: '32px',
-                                borderRadius: '8px',
-                                backgroundColor: `${accentColor}20`,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                color: accentColor,
-                                flexShrink: 0,
-                                marginTop: '1px',
-                            }}>
-                                {getNotificationIcon(n.notification_type)}
-                            </div>
-
-                            {/* Content */}
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    marginBottom: '2px',
-                                }}>
-                                    <span style={{
-                                        fontSize: '0.8125rem',
-                                        fontWeight: n.is_read ? '500' : '700',
-                                        color: n.is_read ? '#94a3b8' : '#f1f5f9',
-                                        flex: 1,
-                                        overflow: 'hidden',
-                                        textOverflow: 'ellipsis',
-                                        whiteSpace: 'nowrap',
-                                    }}>
-                                        {n.title}
-                                    </span>
-                                    {!n.is_read && (
-                                        <span style={{
-                                            width: '7px',
-                                            height: '7px',
-                                            borderRadius: '50%',
-                                            backgroundColor: accentColor,
-                                            flexShrink: 0,
-                                        }} />
-                                    )}
-                                </div>
-                                <p style={{
-                                    margin: 0,
+            {/* Body */}
+            <div style={{ flex: 1, overflowY: 'auto', background: '#fff' }}>
+                {loading && recent.length === 0 ? (
+                    <>
+                        <SkeletonItem />
+                        <SkeletonItem />
+                        <SkeletonItem />
+                    </>
+                ) : error ? (
+                    <div style={{ padding: '24px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, textAlign: 'center' }}>
+                        <AlertTriangle size={22} color="#f59e0b" />
+                        <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0f172a' }}>Could not load notifications</div>
+                        {onRetry && (
+                            <button
+                                onClick={onRetry}
+                                style={{
                                     fontSize: '0.75rem',
-                                    color: '#64748b',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    whiteSpace: 'nowrap',
-                                }}>
-                                    {n.message}
-                                </p>
-                                <span style={{
-                                    fontSize: '0.7rem',
-                                    color: '#475569',
-                                    fontWeight: '600',
-                                    marginTop: '4px',
-                                    display: 'block',
-                                }}>
-                                    {timeAgo(n.created_at)}
-                                </span>
-                            </div>
+                                    fontWeight: 600,
+                                    color: ACCENT,
+                                    background: 'none',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    padding: 4,
+                                }}
+                            >
+                                Try again
+                            </button>
+                        )}
+                    </div>
+                ) : recent.length === 0 ? (
+                    <div style={{ padding: '32px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, textAlign: 'center' }}>
+                        <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Bell size={18} color="#94a3b8" />
                         </div>
-                    );
-                })}
+                        <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0f172a' }}>No notifications</div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>You are all caught up.</div>
+                    </div>
+                ) : (
+                    recent.map((n) => {
+                        const meta = getCategoryMeta(n.notification_type);
+                        return (
+                            <div
+                                key={n.id}
+                                onClick={() => handleItemClick(n)}
+                                style={{
+                                    display: 'flex',
+                                    gap: 12,
+                                    padding: '12px 16px',
+                                    borderBottom: '1px solid #f1f5f9',
+                                    cursor: 'pointer',
+                                    background: n.is_read ? '#fff' : '#eef2ff',
+                                    transition: 'background 0.15s',
+                                }}
+                                onMouseEnter={(e) => ((e.currentTarget as HTMLDivElement).style.background = n.is_read ? '#f8fafc' : '#e0e7ff')}
+                                onMouseLeave={(e) => ((e.currentTarget as HTMLDivElement).style.background = n.is_read ? '#fff' : '#eef2ff')}
+                            >
+                                <div
+                                    style={{
+                                        flexShrink: 0,
+                                        width: 28,
+                                        height: 28,
+                                        borderRadius: 6,
+                                        background: `${meta.color}1a`,
+                                        color: meta.color,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        marginTop: 1,
+                                    }}
+                                >
+                                    {meta.icon}
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontWeight: n.is_read ? 500 : 700, fontSize: '0.8125rem', color: '#0f172a', marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                        {n.title}
+                                    </div>
+                                    <div style={{ fontSize: '0.75rem', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', lineHeight: 1.4 }}>
+                                        {n.message}
+                                    </div>
+                                    <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: 4 }}>{getTimeAgo(n.created_at)}</div>
+                                </div>
+                                {!n.is_read && (
+                                    <div
+                                        style={{
+                                            flexShrink: 0,
+                                            width: 7,
+                                            height: 7,
+                                            borderRadius: '50%',
+                                            background: ACCENT,
+                                            marginTop: 6,
+                                        }}
+                                    />
+                                )}
+                            </div>
+                        );
+                    })
+                )}
+                {loading && recent.length > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 8, color: '#94a3b8', fontSize: '0.75rem' }}>
+                        <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                        Refreshing...
+                    </div>
+                )}
             </div>
 
             {/* Footer */}
-            <div style={{
-                borderTop: '1px solid #334155',
-                flexShrink: 0,
-            }}>
+            <div style={{ borderTop: '1px solid #f1f5f9', padding: '10px 16px', textAlign: 'center', background: '#fff' }}>
                 <button
-                    onClick={handleViewAll}
-                    style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        width: '100%',
-                        padding: '12px',
-                        border: 'none',
-                        backgroundColor: 'transparent',
-                        color: '#3b82f6',
-                        fontSize: '0.8125rem',
-                        fontWeight: '700',
-                        cursor: 'pointer',
-                        transition: 'color 0.15s, background-color 0.15s',
+                    onClick={() => {
+                        onClose();
+                        onViewAll();
                     }}
-                    onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.08)')}
-                    onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+                    style={{
+                        background: 'none',
+                        border: 'none',
+                        color: ACCENT,
+                        fontSize: '0.8125rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        width: '100%',
+                        padding: 4,
+                    }}
                 >
-                    View all notifications
-                    <ArrowRight size={14} />
+                    View all notifications &rarr;
                 </button>
             </div>
         </div>
