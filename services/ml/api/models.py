@@ -25,6 +25,7 @@ class User(Base):
     reports = relationship("Report", back_populates="user")
     claimed_rewards = relationship("UserReward", back_populates="user")
     status_history_entries = relationship("StatusHistory", back_populates="changed_by_user")
+    notifications = relationship("Notification", back_populates="recipient_user", foreign_keys="Notification.recipient_user_id", cascade="all, delete-orphan")
 
 
 class Citizen(Base):
@@ -54,6 +55,7 @@ class Citizen(Base):
         order_by="SmsNotification.attempted_at",
     )
     status_history_entries = relationship("StatusHistory", back_populates="changed_by_citizen")
+    notifications = relationship("Notification", back_populates="recipient_citizen", foreign_keys="Notification.recipient_citizen_id", cascade="all, delete-orphan")
 
 
 class Report(Base):
@@ -96,6 +98,8 @@ class EvidenceReport(Base):
         Index("ix_evidence_reports_tracking_id", "tracking_id", unique=True),
         Index("ix_evidence_reports_citizen_created_at", "citizen_id", "created_at"),
         Index("ix_evidence_reports_status_created_at", "status", "created_at"),
+        Index("ix_evidence_reports_violation_created_at", "violation_type", "created_at"),
+        Index("ix_evidence_reports_vehicle_plate", "vehicle_plate"),
     )
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -193,9 +197,38 @@ class EvidenceFile(Base):
     original_name = Column(String, nullable=False)
     mime_type = Column(String)
     size_bytes = Column(Float, nullable=False)
+    storage_backend = Column(String, nullable=False, default="legacy")
+    storage_path = Column(Text, nullable=True)
+    checksum_sha256 = Column(String, nullable=True, index=True)
+    access_metadata = Column(JSON, default=dict)
     created_at = Column(DateTime, nullable=False, default=func.now())
 
     report = relationship("EvidenceReport", back_populates="files")
+
+
+class InferenceJob(Base):
+    __tablename__ = "inference_jobs"
+    __table_args__ = (
+        Index("ix_inference_jobs_report_kind_report_id", "report_kind", "report_id"),
+        Index("ix_inference_jobs_status_created_at", "status", "created_at"),
+    )
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    report_id = Column(String, nullable=False, index=True)
+    report_kind = Column(String, nullable=False, default="legacy", index=True)
+    queue_backend = Column(String, nullable=False, default="background")
+    queue_job_id = Column(String, nullable=True, index=True)
+    status = Column(String, nullable=False, default="queued", index=True)
+    attempts = Column(Integer, nullable=False, default=0)
+    max_retries = Column(Integer, nullable=False, default=2)
+    last_error = Column(Text, nullable=True)
+    details = Column(JSON, default=dict)
+    queued_at = Column(DateTime, nullable=False, default=func.now(), index=True)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    failed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=func.now())
+    updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
 
 class StatusHistory(Base):
@@ -485,6 +518,47 @@ class AuditLog(Base):
     target_id = Column(String, nullable=True)
     details = Column(JSON)
     timestamp = Column(DateTime, default=func.now())
+
+
+class Notification(Base):
+    """In-app notification for citizens, police officers, and admins."""
+
+    __tablename__ = "notifications"
+    __table_args__ = (
+        Index("ix_notifications_recipient_user_id", "recipient_user_id"),
+        Index("ix_notifications_recipient_citizen_id", "recipient_citizen_id"),
+        Index("ix_notifications_recipient_role", "recipient_role"),
+        Index("ix_notifications_is_read_created_at", "is_read", "created_at"),
+        Index("ix_notifications_related_entity_id", "related_entity_id"),
+        Index("ix_notifications_notification_type", "notification_type"),
+    )
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+
+    # Recipient — exactly one of these will be set.
+    recipient_user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    recipient_citizen_id = Column(String, ForeignKey("citizens.id", ondelete="CASCADE"), nullable=True, index=True)
+    # Denormalised role tag for fast role-scoped queries.
+    recipient_role = Column(String, nullable=False, index=True)  # CITIZEN / POLICE / ADMIN
+
+    title = Column(String, nullable=False)
+    message = Column(Text, nullable=False)
+    notification_type = Column(String, nullable=False, index=True)
+
+    # Entity that triggered this notification.
+    related_entity_type = Column(String, nullable=True)  # report / evidence_report / ticket / system
+    related_entity_id = Column(String, nullable=True, index=True)
+
+    priority = Column(String, nullable=False, default="normal")  # low / normal / high
+    is_read = Column(Boolean, nullable=False, default=False, index=True)
+    read_at = Column(DateTime, nullable=True)
+    is_deleted = Column(Boolean, nullable=False, default=False, index=True)
+
+    created_at = Column(DateTime, nullable=False, default=func.now(), index=True)
+    extra_data = Column("metadata", JSON, nullable=True)
+
+    recipient_user = relationship("User", back_populates="notifications", foreign_keys=[recipient_user_id])
+    recipient_citizen = relationship("Citizen", back_populates="notifications", foreign_keys=[recipient_citizen_id])
 
 
 @event.listens_for(EvidenceReport, "after_insert")

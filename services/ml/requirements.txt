@@ -25,3 +25,4 @@ python-jose[cryptography]
 redis
 rq
 fpdf2==2.8.1
+pytest

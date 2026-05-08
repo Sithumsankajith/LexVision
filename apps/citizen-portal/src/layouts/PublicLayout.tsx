@@ -1,7 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { Navbar, Footer, PageTransition } from '@lexvision/ui';
 import { auth } from '@lexvision/api-client';
+import { NotificationBell } from '@/components/NotificationBell';
+import { NotificationDropdown } from '@/components/NotificationDropdown';
+import { useNotifications } from '@/hooks/useNotifications';
 
 const getNavbarSession = () => {
     const staffSession = auth.getSession();
@@ -17,9 +20,46 @@ const getNavbarSession = () => {
     return null;
 };
 
+const NotificationBellWrapper: React.FC = () => {
+    const navigate = useNavigate();
+    const [open, setOpen] = useState(false);
+    const { unreadCount, notifications, loading, fetchNotifications, markRead, markAllRead } = useNotifications();
+
+    const handleOpen = useCallback(async () => {
+        setOpen(prev => {
+            if (!prev) {
+                // Fetch latest when opening
+                fetchNotifications({ limit: 5 }).catch(() => undefined);
+            }
+            return !prev;
+        });
+    }, [fetchNotifications]);
+
+    const handleViewAll = useCallback(() => {
+        navigate('/portal/notifications');
+    }, [navigate]);
+
+    return (
+        <div style={{ position: 'relative' }}>
+            <NotificationBell count={unreadCount} onClick={handleOpen} />
+            {open && (
+                <NotificationDropdown
+                    notifications={notifications}
+                    loading={loading}
+                    onMarkRead={markRead}
+                    onMarkAllRead={markAllRead}
+                    onClose={() => setOpen(false)}
+                    onViewAll={handleViewAll}
+                />
+            )}
+        </div>
+    );
+};
+
 export const PublicLayout: React.FC = () => {
     const navigate = useNavigate();
     const [session, setSession] = useState(getNavbarSession());
+    const [isCitizenLoggedIn, setIsCitizenLoggedIn] = useState(auth.isCitizenAuthenticated());
 
     useEffect(() => {
         // Simple listener for session changes if needed
@@ -28,20 +68,29 @@ export const PublicLayout: React.FC = () => {
             if (JSON.stringify(currentSession) !== JSON.stringify(session)) {
                 setSession(currentSession);
             }
+            const citizenLoggedIn = auth.isCitizenAuthenticated();
+            if (citizenLoggedIn !== isCitizenLoggedIn) {
+                setIsCitizenLoggedIn(citizenLoggedIn);
+            }
         }, 1000);
         return () => clearInterval(interval);
-    }, [session]);
+    }, [session, isCitizenLoggedIn]);
 
     const handleLogout = () => {
         auth.logout();
         auth.logoutCitizen();
         setSession(null);
+        setIsCitizenLoggedIn(false);
         navigate('/portal');
     };
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', width: '100%' }}>
-            <Navbar user={session} onLogout={handleLogout} />
+            <Navbar
+                user={session}
+                onLogout={handleLogout}
+                notificationSlot={isCitizenLoggedIn ? <NotificationBellWrapper /> : undefined}
+            />
             <main style={{ flex: 1 }}>
                 <PageTransition>
                     <Outlet />

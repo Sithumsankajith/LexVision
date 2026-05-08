@@ -10,9 +10,10 @@ export interface NavbarProps {
         reward_points?: number;
     } | null;
     onLogout?: () => void;
+    notificationSlot?: React.ReactNode;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
+export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, notificationSlot }) => {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const location = useLocation();
 
@@ -76,10 +77,17 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
                     </Link>
                 </div>
 
-                {/* Mobile Menu Button */}
-                <button className={styles.menuButton} onClick={toggleMenu} aria-label="Toggle menu">
-                    {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
-                </button>
+                {/* Right-side cluster: notification bell (always visible) + mobile hamburger */}
+                <div className={styles.rightCluster}>
+                    {notificationSlot && (
+                        <div className={styles.notificationArea}>
+                            {notificationSlot}
+                        </div>
+                    )}
+                    <button className={styles.menuButton} onClick={toggleMenu} aria-label="Toggle menu">
+                        {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
+                    </button>
+                </div>
             </div>
 
             {/* Mobile Nav */}

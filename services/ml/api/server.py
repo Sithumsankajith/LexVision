@@ -1,21 +1,28 @@
 from contextlib import asynccontextmanager
 import logging
 
-from fastapi import FastAPI
+import time
+from collections import defaultdict, deque
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from sqlalchemy import inspect, text
 
 from .env import get_env_value, load_service_env, log_roboflow_config
+from .production_config import get_cors_origins, validate_production_environment
 
 
 load_service_env()
 
 from .database import engine, Base, SessionLocal
-from .routers import admin, auth, citizen_reports, evidence_reports, reports, tickets, users, fine_rules
+from .routers import admin, auth, citizen_reports, evidence_reports, notifications, reports, tickets, users, fine_rules, media
 from . import models
+from .tasks import get_queue_health
 
 
 logger = logging.getLogger(__name__)
+_request_buckets: dict[str, deque[float]] = defaultdict(deque)
 
 # Keep SQLite zero-config for local demos; PostgreSQL should be migrated explicitly.
 if engine.dialect.name == "sqlite":
@@ -32,6 +39,28 @@ def ensure_sqlite_schema_compatibility():
         if "inference_logs" in inspector.get_table_names() and "evidence_report_id" not in inference_log_columns:
             connection.execute(text("ALTER TABLE inference_logs ADD COLUMN evidence_report_id VARCHAR"))
             connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_inference_logs_evidence_report_id ON inference_logs (evidence_report_id)"))
+
+        if "evidence_files" in inspector.get_table_names():
+            evidence_file_columns = {column["name"] for column in inspector.get_columns("evidence_files")}
+            if "storage_backend" not in evidence_file_columns:
+                connection.execute(text("ALTER TABLE evidence_files ADD COLUMN storage_backend VARCHAR DEFAULT 'legacy' NOT NULL"))
+            if "storage_path" not in evidence_file_columns:
+                connection.execute(text("ALTER TABLE evidence_files ADD COLUMN storage_path TEXT"))
+            if "checksum_sha256" not in evidence_file_columns:
+                connection.execute(text("ALTER TABLE evidence_files ADD COLUMN checksum_sha256 VARCHAR"))
+            if "access_metadata" not in evidence_file_columns:
+                connection.execute(text("ALTER TABLE evidence_files ADD COLUMN access_metadata JSON"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_evidence_files_checksum_sha256 ON evidence_files (checksum_sha256)"))
+
+        if "evidence_reports" in inspector.get_table_names():
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_evidence_reports_violation_created_at ON evidence_reports (violation_type, created_at)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_evidence_reports_vehicle_plate ON evidence_reports (vehicle_plate)"))
+
+        if "notifications" in inspector.get_table_names():
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_notifications_recipient_user_id ON notifications (recipient_user_id)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_notifications_recipient_citizen_id ON notifications (recipient_citizen_id)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_notifications_is_read_created_at ON notifications (is_read, created_at)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_notifications_related_entity_id ON notifications (related_entity_id)"))
 
 
 ensure_sqlite_schema_compatibility()
@@ -126,32 +155,47 @@ seed_fine_rules()
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    validate_production_environment()
     log_roboflow_config(context="backend startup", target_logger=logger)
     yield
 
 
 app = FastAPI(title="LexVision Core API", version="1.0.0", lifespan=lifespan)
 
+
+@app.middleware("http")
+async def security_and_timing_middleware(request: Request, call_next):
+    started_at = time.perf_counter()
+    rate_limit = int(get_env_value("RATE_LIMIT_PER_MINUTE", "300") or "300")
+    auth_rate_limit = int(get_env_value("AUTH_RATE_LIMIT_PER_MINUTE", "30") or "30")
+    active_limit = auth_rate_limit if request.url.path.startswith("/api/auth") else rate_limit
+    client_host = request.client.host if request.client else "unknown"
+    bucket_key = f"{client_host}:{request.url.path.split('/')[1:3]}"
+    now = time.time()
+    bucket = _request_buckets[bucket_key]
+    while bucket and bucket[0] <= now - 60:
+        bucket.popleft()
+    if len(bucket) >= active_limit:
+        return Response(
+            content='{"detail":"Too many requests. Please retry shortly."}',
+            status_code=429,
+            media_type="application/json",
+            headers={"Retry-After": "60"},
+        )
+    bucket.append(now)
+
+    response: Response = await call_next(request)
+    duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+    response.headers["X-Process-Time-Ms"] = str(duration_ms)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Content-Security-Policy"] = "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; frame-ancestors 'none'"
+    return response
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "http://localhost:3002",
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "http://localhost:5175",
-        "http://localhost:5177",
-        "http://localhost:5176",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:3001",
-        "http://127.0.0.1:3002",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:5174",
-        "http://127.0.0.1:5175",
-        "http://127.0.0.1:5177",
-        "http://127.0.0.1:5176",
-    ],
+    allow_origins=get_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -165,6 +209,9 @@ app.include_router(tickets.router)
 app.include_router(admin.router)
 app.include_router(users.router)
 app.include_router(fine_rules.router)
+app.include_router(media.router)
+app.include_router(notifications.router)
+app.include_router(notifications.citizen_router)
 
 @app.get("/")
 def read_root():
@@ -176,11 +223,13 @@ def read_root():
 
 @app.get("/health")
 def health_check():
+    queue_health = get_queue_health()
     return {
         "status": "ok",
         "db": "connected",
-        "queue_mode": "fastapi_background_tasks",
+        "queue_mode": queue_health["backend"],
         "redis_configured": bool(get_env_value("REDIS_URL")),
+        "queue": queue_health,
     }
 
 if __name__ == "__main__":

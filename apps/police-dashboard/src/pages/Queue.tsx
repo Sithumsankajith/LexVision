@@ -33,47 +33,51 @@ export const Queue: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
+    const [violationFilter, setViolationFilter] = useState('all');
+    const [sort, setSort] = useState('newest');
+    const [offset, setOffset] = useState(0);
+    const [total, setTotal] = useState(0);
+    const [error, setError] = useState<string | null>(null);
     const navigate = useNavigate();
+    const pageSize = 25;
 
     useEffect(() => {
         const fetchReports = async () => {
-            const data = await mockDb.getAllReports();
-            setReports(data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-            setLoading(false);
+            try {
+                const data = await mockDb.getEvidenceReportsPage({
+                    limit: pageSize,
+                    offset,
+                    status: statusFilter,
+                    violationType: violationFilter,
+                    search,
+                    sort,
+                });
+                setReports(data.items);
+                setTotal(data.total);
+                setError(null);
+            } catch (err) {
+                setError(err instanceof Error ? err.message : 'Unable to load the police review queue.');
+            } finally {
+                setLoading(false);
+            }
         };
 
+        setLoading(true);
         fetchReports();
-        const interval = setInterval(fetchReports, 3000);
+        const interval = setInterval(fetchReports, 5000);
         return () => clearInterval(interval);
-    }, []);
+    }, [offset, search, sort, statusFilter, violationFilter]);
 
     const filteredReports = useMemo(() => {
-        let result = reports;
-
-        if (statusFilter !== 'all') {
-            result = result.filter((report) => report.status === statusFilter);
-        }
-
-        if (search.trim()) {
-            const query = search.toLowerCase();
-            result = result.filter((report) =>
-                report.trackingId.toLowerCase().includes(query) ||
-                (report.location.address || '').toLowerCase().includes(query) ||
-                (report.location.city || '').toLowerCase().includes(query) ||
-                (report.vehicle?.plate || '').toLowerCase().includes(query) ||
-                (report.claimedViolationType || '').toLowerCase().includes(query) ||
-                (report.inferredViolationType || '').toLowerCase().includes(query) ||
-                (report.finalViolationType || '').toLowerCase().includes(query) ||
-                report.violationType.toLowerCase().includes(query)
-            );
-        }
-
-        return result;
-    }, [reports, search, statusFilter]);
+        return reports;
+    }, [reports]);
 
     const handleResetFilters = () => {
         setSearch('');
         setStatusFilter('all');
+        setViolationFilter('all');
+        setSort('newest');
+        setOffset(0);
     };
 
     const handleExport = async () => {
@@ -120,11 +124,14 @@ export const Queue: React.FC = () => {
             >
                 <div style={{ flex: 1, minWidth: '280px' }}>
                     <Input
-                        placeholder="Search by Case ID, location, vehicle number, or reported violation..."
+                        placeholder="Search by Case ID, plate number, or citizen phone..."
                         fullWidth
                         style={{ height: '52px', fontSize: '1rem' }}
                         value={search}
-                        onChange={(event) => setSearch(event.target.value)}
+                        onChange={(event) => {
+                            setSearch(event.target.value);
+                            setOffset(0);
+                        }}
                     />
                 </div>
 
@@ -134,7 +141,10 @@ export const Queue: React.FC = () => {
                     </div>
                     <Select
                         value={statusFilter}
-                        onChange={(event) => setStatusFilter(event.target.value)}
+                        onChange={(event) => {
+                            setStatusFilter(event.target.value);
+                            setOffset(0);
+                        }}
                         options={[
                             { value: 'all', label: 'All Status' },
                             { value: 'submitted', label: 'New Reports' },
@@ -142,6 +152,31 @@ export const Queue: React.FC = () => {
                             { value: 'verified', label: 'Verified' },
                             { value: 'rejected', label: 'Rejected' },
                             { value: 'closed', label: 'Closed' },
+                        ]}
+                        style={{ width: '180px', height: '52px' }}
+                    />
+                    <Select
+                        value={violationFilter}
+                        onChange={(event) => {
+                            setViolationFilter(event.target.value);
+                            setOffset(0);
+                        }}
+                        options={[
+                            { value: 'all', label: 'All Violations' },
+                            { value: 'helmet', label: 'Helmet' },
+                            { value: 'red_light', label: 'Red Light' },
+                            { value: 'white_line', label: 'White Line' },
+                        ]}
+                        style={{ width: '180px', height: '52px' }}
+                    />
+                    <Select
+                        value={sort}
+                        onChange={(event) => setSort(event.target.value)}
+                        options={[
+                            { value: 'newest', label: 'Newest First' },
+                            { value: 'oldest', label: 'Oldest First' },
+                            { value: 'confidence', label: 'AI Confidence' },
+                            { value: 'status', label: 'Status' },
                         ]}
                         style={{ width: '180px', height: '52px' }}
                     />
@@ -158,9 +193,14 @@ export const Queue: React.FC = () => {
 
             <Panel
                 title="Active Cases"
-                action={<Badge variant="info">{loading ? 'Syncing...' : `${filteredReports.length} Reports Found`}</Badge>}
+                action={<Badge variant="info">{loading ? 'Syncing...' : `${total} Reports Found`}</Badge>}
                 noPadding
             >
+                {error && (
+                    <div style={{ padding: 'var(--space-4)', color: 'var(--color-error)', fontWeight: 600 }}>
+                        {error}
+                    </div>
+                )}
                 <DataTable headers={['Case ID', 'Citizen Reported Violation', 'AI Suggestion', 'Review Priority', 'Submitted Time', 'Status', 'Action']}>
                     {filteredReports.map((item) => {
                         const suggestion = getQueueAISuggestion(item.aiSummary);
@@ -226,6 +266,19 @@ export const Queue: React.FC = () => {
                         </tr>
                     )}
                 </DataTable>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-4)', borderTop: '1px solid var(--color-border)' }}>
+                    <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
+                        Showing {total === 0 ? 0 : offset + 1}-{Math.min(offset + pageSize, total)} of {total}
+                    </span>
+                    <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                        <Button variant="outline" size="sm" disabled={offset === 0 || loading} onClick={() => setOffset(Math.max(0, offset - pageSize))}>
+                            Previous
+                        </Button>
+                        <Button variant="outline" size="sm" disabled={offset + pageSize >= total || loading} onClick={() => setOffset(offset + pageSize)}>
+                            Next
+                        </Button>
+                    </div>
+                </div>
             </Panel>
         </div>
     );

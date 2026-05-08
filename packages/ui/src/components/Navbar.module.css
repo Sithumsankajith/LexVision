@@ -138,6 +138,22 @@
     color: var(--color-surface);
 }
 
+/* Right-side cluster: wraps notification bell + mobile hamburger so they always stick to the right */
+.rightCluster {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-left: auto;
+}
+
+/* Notification bell — always visible (desktop + mobile) */
+.notificationArea {
+    display: flex;
+    align-items: center;
+    position: relative;
+    overflow: visible;
+}
+
 /* Mobile Menu Button */
 .menuButton {
     display: flex;
@@ -223,8 +239,8 @@
         display: none;
     }
 
+    /* rightCluster already has margin-left: auto; menuButton inside it needs no extra push */
     .menuButton {
-        margin-left: auto;
-        /* Push hamburger to right */
+        margin-left: 0;
     }
 }

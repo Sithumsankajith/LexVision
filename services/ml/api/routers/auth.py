@@ -2,7 +2,7 @@ import os
 from datetime import timedelta
 
 import bcrypt
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -16,6 +16,7 @@ from ..citizen_auth import (
 )
 from ..database import get_db
 from ..dependencies import (
+    ACCESS_TOKEN_EXPIRE_MINUTES,
     create_access_token,
     create_citizen_access_token,
     get_current_citizen_account,
@@ -23,6 +24,7 @@ from ..dependencies import (
     log_audit_action,
 )
 from ..firebase_admin import FirebaseAdminConfigError, get_firebase_admin_status
+from ..production_config import is_production_environment
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 DEMO_FIREBASE_UID_PREFIX = "demo-otp:"
@@ -67,11 +69,22 @@ def _build_citizen_auth_response(citizen: models.Citizen, access_token: str) -> 
     }
 
 
-def _create_citizen_login_response(citizen: models.Citizen) -> dict:
-    from ..dependencies import ACCESS_TOKEN_EXPIRE_MINUTES
+def _set_session_cookie(response: Response, name: str, token: str) -> None:
+    response.set_cookie(
+        key=name,
+        value=token,
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        httponly=True,
+        secure=is_production_environment(),
+        samesite="lax",
+        path="/",
+    )
 
+
+def _create_citizen_login_response(citizen: models.Citizen, response: Response) -> dict:
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_citizen_access_token(citizen, expires_delta=access_token_expires)
+    _set_session_cookie(response, "lexvision_citizen_session", access_token)
     return _build_citizen_auth_response(citizen, access_token)
 
 
@@ -80,6 +93,7 @@ def _login_citizen_with_firebase_identity(
     firebase_id_token: str,
     expected_phone_number: str | None,
     db: Session,
+    response: Response,
 ) -> dict:
     try:
         identity = verify_citizen_firebase_identity(
@@ -126,7 +140,7 @@ def _login_citizen_with_firebase_identity(
         },
     )
 
-    return _create_citizen_login_response(citizen)
+    return _create_citizen_login_response(citizen, response)
 
 
 @router.post("/register", response_model=schemas.UserResponse)
@@ -147,7 +161,7 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=schemas.Token)
-def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def login_for_access_token(response: Response, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.email == form_data.username).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
         log_audit_action(db, user.id if user else None, "FAILED_LOGIN_ATTEMPT", "User", form_data.username)
@@ -157,45 +171,56 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    from ..dependencies import ACCESS_TOKEN_EXPIRE_MINUTES
-
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user.email, "role": getattr(user.role, 'name', user.role)},
         expires_delta=access_token_expires,
     )
+    _set_session_cookie(response, "lexvision_staff_session", access_token)
     log_audit_action(db, user.id, "LOGIN_ATTEMPT_SUCCESS", "User", user.id)
 
     return {"access_token": access_token, "token_type": "bearer"}
 
 
+@router.post("/logout")
+def logout(response: Response):
+    response.delete_cookie("lexvision_staff_session", path="/")
+    response.delete_cookie("lexvision_citizen_session", path="/")
+    return {"message": "Logged out"}
+
+
 @router.post("/firebase-phone-login", response_model=schemas.CitizenAuthResponse)
 def login_citizen_with_firebase_phone(
     payload: schemas.FirebasePhoneLoginRequest,
+    response: Response,
     db: Session = Depends(get_db),
 ):
     return _login_citizen_with_firebase_identity(
         firebase_id_token=payload.firebase_id_token,
         expected_phone_number=payload.phone_number,
         db=db,
+        response=response,
     )
 
 
 @router.post("/citizen/firebase-login", response_model=schemas.CitizenAuthResponse)
 def login_citizen_with_firebase(
     payload: schemas.FirebaseCitizenAuthRequest,
+    response: Response,
     db: Session = Depends(get_db),
 ):
     return _login_citizen_with_firebase_identity(
         firebase_id_token=payload.id_token,
         expected_phone_number=None,
         db=db,
+        response=response,
     )
 
 
 @router.post("/citizen/demo-login", response_model=schemas.CitizenAuthResponse)
 def login_citizen_with_demo_otp(
     payload: schemas.DemoCitizenAuthRequest,
+    response: Response,
     db: Session = Depends(get_db),
 ):
     if not _is_demo_citizen_login_enabled():
@@ -224,7 +249,7 @@ def login_citizen_with_demo_otp(
         },
     )
 
-    return _create_citizen_login_response(citizen)
+    return _create_citizen_login_response(citizen, response)
 
 
 @router.get("/citizen/me", response_model=schemas.CitizenResponse)

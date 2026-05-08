@@ -5,9 +5,9 @@ import {
     List,
     History,
     Settings,
-    Bell,
     LogOut,
-    Siren
+    Siren,
+    Bell as BellIconLucide,
 } from 'lucide-react';
 import { Button } from '@lexvision/ui';
 import {
@@ -19,11 +19,18 @@ import {
     Topbar
 } from '@lexvision/ui';
 import { auth } from '@lexvision/api-client';
+import { NotificationBell } from '../components/NotificationBell';
+import { NotificationDropdown } from '../components/NotificationDropdown';
+import { useNotifications } from '../hooks/useNotifications';
 
 export const DashboardLayout: React.FC = () => {
     const [isMobileOpen, setIsMobileOpen] = useState(false);
+    const [showDropdown, setShowDropdown] = useState(false);
     const location = useLocation();
     const navigate = useNavigate();
+
+    const { unreadCount, notifications, loading, fetchNotifications, markRead, markAllRead } =
+        useNotifications();
 
     const handleLogout = () => {
         auth.logout();
@@ -35,7 +42,16 @@ export const DashboardLayout: React.FC = () => {
         if (location.pathname.startsWith('/dashboard/queue')) return 'Violation Queue';
         if (location.pathname.startsWith('/dashboard/history')) return 'Case History';
         if (location.pathname.startsWith('/dashboard/settings')) return 'Settings';
+        if (location.pathname.startsWith('/dashboard/notifications')) return 'Notification Centre';
         return 'Police Portal';
+    };
+
+    const handleBellClick = () => {
+        const willOpen = !showDropdown;
+        setShowDropdown(willOpen);
+        if (willOpen) {
+            fetchNotifications();
+        }
     };
 
     const sidebar = (
@@ -80,6 +96,12 @@ export const DashboardLayout: React.FC = () => {
             />
             <SidebarItem
                 as={NavLink}
+                to="/dashboard/notifications"
+                icon={<BellIconLucide size={20} />}
+                label="Notifications"
+            />
+            <SidebarItem
+                as={NavLink}
                 to="/dashboard/settings"
                 icon={<Settings size={20} />}
                 label="Settings"
@@ -93,19 +115,36 @@ export const DashboardLayout: React.FC = () => {
             onMobileToggle={() => setIsMobileOpen(!isMobileOpen)}
             actions={
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <Button variant="ghost" size="sm">
-                        <Bell size={20} />
-                        <span style={{
-                            position: 'absolute',
-                            top: '8px',
-                            right: '8px',
-                            width: '8px',
-                            height: '8px',
-                            backgroundColor: '#ef4444',
-                            borderRadius: '50%'
-                        }} />
-                    </Button>
-                    <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#1e293b', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
+                    {/* Notification bell with dropdown */}
+                    <div style={{ position: 'relative' }}>
+                        <NotificationBell
+                            count={unreadCount}
+                            onClick={handleBellClick}
+                        />
+                        {showDropdown && (
+                            <NotificationDropdown
+                                notifications={notifications}
+                                loading={loading}
+                                onMarkRead={markRead}
+                                onMarkAllRead={markAllRead}
+                                onClose={() => setShowDropdown(false)}
+                                onViewAll={() => navigate('/dashboard/notifications')}
+                            />
+                        )}
+                    </div>
+
+                    {/* Avatar */}
+                    <div style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '50%',
+                        backgroundColor: '#1e293b',
+                        color: '#fff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontWeight: 'bold',
+                    }}>
                         OP
                     </div>
                 </div>

@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from sqlalchemy import or_, func
 from sqlalchemy.orm import Session, joinedload
 
 from .. import models, schemas
@@ -10,9 +14,11 @@ from ..constants import RoleEnum, StatusChangeSourceEnum
 from ..database import get_db
 from ..dependencies import get_police, log_audit_action
 from ..presenters import present_evidence_report, present_evidence_reports
-from ..sms import SmsSendRequest, dispatch_sms, render_status_change_sms_template
+from ..sms import SmsSendRequest, render_status_change_sms_template
+from ..tasks import submit_sms_task
 from ..tracking import apply_evidence_report_status, is_valid_report_status_transition
 from ..worker import attempt_inference
+from ..services.notifications import notify_citizen, notify_admins
 
 router = APIRouter(prefix="/api/evidence-reports", tags=["evidence-reports"])
 
@@ -43,6 +49,67 @@ def list_evidence_reports(
     return present_evidence_reports(reports)
 
 
+@router.get("/page")
+def list_evidence_reports_page(
+    limit: int = Query(25, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    status_filter: str | None = Query(None, alias="status"),
+    violation_type: str | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    officer_id: str | None = None,
+    search: str | None = None,
+    sort: str = Query("newest", pattern="^(newest|oldest|confidence|status)$"),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_police),
+):
+    query = _staff_report_query(db).outerjoin(models.InferenceLog, models.InferenceLog.evidence_report_id == models.EvidenceReport.id)
+
+    if status_filter and status_filter != "all":
+        try:
+            normalized_status = models.ReportStatusEnum(status_filter.upper().replace("-", "_"))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid report status filter.") from exc
+        query = query.filter(models.EvidenceReport.status == normalized_status)
+    if violation_type and violation_type != "all":
+        query = query.filter(models.EvidenceReport.violation_type == violation_type)
+    if date_from:
+        query = query.filter(models.EvidenceReport.created_at >= date_from)
+    if date_to:
+        query = query.filter(models.EvidenceReport.created_at <= date_to)
+    if officer_id:
+        query = query.join(models.StatusHistory).filter(models.StatusHistory.changed_by_user_id == officer_id)
+    if search and search.strip():
+        pattern = f"%{search.strip()}%"
+        query = query.outerjoin(models.Citizen, models.Citizen.id == models.EvidenceReport.citizen_id).filter(
+            or_(
+                models.EvidenceReport.tracking_id.ilike(pattern),
+                models.EvidenceReport.vehicle_plate.ilike(pattern),
+                models.InferenceLog.ocr_text.ilike(pattern),
+                models.Citizen.phone_number.ilike(pattern),
+            )
+        )
+
+    total = query.with_entities(func.count(models.EvidenceReport.id.distinct())).scalar() or 0
+
+    if sort == "oldest":
+        query = query.order_by(models.EvidenceReport.created_at.asc())
+    elif sort == "confidence":
+        query = query.order_by(models.InferenceLog.confidence.desc().nullslast(), models.EvidenceReport.created_at.desc())
+    elif sort == "status":
+        query = query.order_by(models.EvidenceReport.status.asc(), models.EvidenceReport.created_at.desc())
+    else:
+        query = query.order_by(models.EvidenceReport.created_at.desc())
+
+    items = query.offset(offset).limit(limit).all()
+    return {
+        "items": present_evidence_reports(items),
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
 @router.get("/{report_id}", response_model=schemas.StaffEvidenceReportResponse)
 def get_evidence_report_by_id(
     report_id: str,
@@ -59,6 +126,7 @@ def get_evidence_report_by_id(
 def update_evidence_report_status(
     report_id: str,
     update: schemas.ReportStatusUpdate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_police),
 ):
@@ -89,19 +157,18 @@ def update_evidence_report_status(
     if saved_report is None or saved_report.citizen is None:
         raise HTTPException(status_code=500, detail="Failed to reload the updated evidence report.")
 
-    sms_outcome = None
     rendered_sms = render_status_change_sms_template(report=saved_report, citizen=saved_report.citizen)
     if rendered_sms is not None:
-        sms_outcome = dispatch_sms(
-            db,
-            SmsSendRequest(
+        submit_sms_task(
+            background_tasks,
+            asdict(SmsSendRequest(
                 phone_number=saved_report.citizen.phone_number,
                 message_body=rendered_sms.message_body,
                 template_key=rendered_sms.template_key.value,
                 citizen_id=saved_report.citizen_id,
                 report_id=saved_report.id,
                 metadata=rendered_sms.metadata,
-            ),
+            )),
         )
 
     log_audit_action(
@@ -115,13 +182,67 @@ def update_evidence_report_status(
             "new_status": update.status.value if hasattr(update.status, "value") else str(update.status),
             "tracking_id": saved_report.tracking_id,
             "sms_logged": rendered_sms is not None,
-            "sms_delivery_status": (
-                sms_outcome.notification.delivery_status.value
-                if sms_outcome is not None and hasattr(sms_outcome.notification.delivery_status, "value")
-                else None
-            ),
+            "sms_delivery_status": "queued" if rendered_sms is not None else None,
         },
     )
+
+    # In-app notifications per new status — best-effort.
+    try:
+        new_status_val = update.status.value if hasattr(update.status, "value") else str(update.status)
+        citizen_id = saved_report.citizen_id
+        report_id = saved_report.id
+        tracking_id = saved_report.tracking_id
+        meta = {"tracking_id": tracking_id, "violation_type": saved_report.violation_type}
+
+        if new_status_val == "UNDER_REVIEW":
+            notify_citizen(
+                db, citizen_id,
+                title="Report under review",
+                message="A police officer is now reviewing your report.",
+                notification_type="report_under_review",
+                related_entity_type="evidence_report",
+                related_entity_id=report_id,
+                metadata=meta,
+            )
+        elif new_status_val == "VALIDATED":
+            notify_citizen(
+                db, citizen_id,
+                title="Report validated",
+                message="Your submitted report has been validated by police.",
+                notification_type="report_validated",
+                related_entity_type="evidence_report",
+                related_entity_id=report_id,
+                metadata=meta,
+            )
+            notify_admins(
+                db,
+                title="Report validated",
+                message=f"Report {tracking_id} has been validated by an officer.",
+                notification_type="report_validated",
+                related_entity_type="evidence_report",
+                related_entity_id=report_id,
+                priority="normal",
+                metadata=meta,
+            )
+        elif new_status_val == "REJECTED":
+            rejection_msg = (
+                f"Your report has been rejected. Reason: {update.notes}"
+                if update.notes
+                else "Your report has been reviewed and rejected."
+            )
+            notify_citizen(
+                db, citizen_id,
+                title="Report rejected",
+                message=rejection_msg,
+                notification_type="report_rejected",
+                related_entity_type="evidence_report",
+                related_entity_id=report_id,
+                metadata=meta,
+            )
+        db.commit()
+    except Exception as _exc:
+        import logging
+        logging.getLogger(__name__).error("Notification dispatch failed after status update: %s", _exc)
 
     return present_evidence_report(saved_report)
 

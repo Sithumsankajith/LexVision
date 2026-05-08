@@ -5,6 +5,7 @@ import { Reports } from './pages/Reports';
 import { Users } from './pages/Users';
 import { Settings } from './pages/Settings';
 import { RulesEngine } from './pages/RulesEngine';
+import { Notifications } from './pages/Notifications';
 import { DashboardLayout } from './layouts/DashboardLayout';
 import { auth } from '@lexvision/api-client';
 
@@ -37,6 +38,7 @@ function App() {
                     <Route path="reports" element={<Reports />} />
                     <Route path="users" element={<Users />} />
                     <Route path="rules" element={<RulesEngine />} />
+                    <Route path="notifications" element={<Notifications />} />
                     <Route path="settings" element={<Settings />} />
                 </Route>
             </Routes>

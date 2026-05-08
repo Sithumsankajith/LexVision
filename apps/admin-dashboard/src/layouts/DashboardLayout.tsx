@@ -18,15 +18,29 @@ import {
     Topbar
 } from '@lexvision/ui';
 import { auth } from '@lexvision/api-client';
+import { useNotifications } from '../hooks/useNotifications';
+import { NotificationBell } from '../components/NotificationBell';
+import { NotificationDropdown } from '../components/NotificationDropdown';
 
 export const DashboardLayout: React.FC = () => {
     const [isMobileOpen, setIsMobileOpen] = useState(false);
+    const [dropdownOpen, setDropdownOpen] = useState(false);
     const location = useLocation();
     const navigate = useNavigate();
+
+    const { unreadCount, notifications, loading, fetchNotifications, markRead, markAllRead } = useNotifications();
 
     const handleLogout = () => {
         auth.logout();
         navigate('/login');
+    };
+
+    const handleBellClick = () => {
+        if (!dropdownOpen) {
+            // Fetch latest notifications when opening the dropdown
+            fetchNotifications();
+        }
+        setDropdownOpen(prev => !prev);
     };
 
     const getPageTitle = () => {
@@ -35,6 +49,7 @@ export const DashboardLayout: React.FC = () => {
         if (location.pathname.startsWith('/dashboard/users')) return 'User Management';
         if (location.pathname.startsWith('/dashboard/rules')) return 'Fine Rules Engine';
         if (location.pathname.startsWith('/dashboard/settings')) return 'Settings';
+        if (location.pathname.startsWith('/dashboard/notifications')) return 'System Notifications';
         return 'Admin Portal';
     };
 
@@ -80,6 +95,12 @@ export const DashboardLayout: React.FC = () => {
             />
             <SidebarItem
                 as={NavLink}
+                to="/dashboard/notifications"
+                icon={<Bell size={20} />}
+                label="Notifications"
+            />
+            <SidebarItem
+                as={NavLink}
                 to="/dashboard/settings"
                 icon={<Settings size={20} />}
                 label="Settings"
@@ -93,9 +114,23 @@ export const DashboardLayout: React.FC = () => {
             onMobileToggle={() => setIsMobileOpen(!isMobileOpen)}
             actions={
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <Button variant="ghost" size="sm">
-                        <Bell size={20} />
-                    </Button>
+                    {/* Bell with dropdown — position:relative is the anchor */}
+                    <div style={{ position: 'relative' }}>
+                        <NotificationBell
+                            count={unreadCount}
+                            onClick={handleBellClick}
+                        />
+                        {dropdownOpen && (
+                            <NotificationDropdown
+                                notifications={notifications}
+                                loading={loading}
+                                onMarkRead={markRead}
+                                onMarkAllRead={markAllRead}
+                                onClose={() => setDropdownOpen(false)}
+                                onViewAll={() => setDropdownOpen(false)}
+                            />
+                        )}
+                    </div>
                     <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#ddd', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
                         A
                     </div>

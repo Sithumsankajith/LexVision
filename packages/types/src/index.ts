@@ -210,6 +210,48 @@ export interface FineRule {
   updatedAt: string;
 }
 
+// ---------------------------------------------------------------------------
+// Notification Types
+// ---------------------------------------------------------------------------
+
+export type NotificationRole = 'CITIZEN' | 'POLICE' | 'ADMIN';
+export type NotificationPriority = 'low' | 'normal' | 'high';
+export type NotificationType =
+  | 'report_submitted'
+  | 'ai_analysis_completed'
+  | 'report_under_review'
+  | 'report_validated'
+  | 'report_rejected'
+  | 'ticket_issued'
+  | 'new_report_submitted'
+  | 'high_priority_report'
+  | 'ticket_action_required'
+  | 'ai_inference_failed'
+  | 'system_warning'
+  | 'worker_failure'
+  | string;
+
+export interface AppNotification {
+  id: string;
+  recipient_role: NotificationRole;
+  title: string;
+  message: string;
+  notification_type: NotificationType;
+  related_entity_type?: 'report' | 'evidence_report' | 'ticket' | 'system' | null;
+  related_entity_id?: string | null;
+  priority: NotificationPriority;
+  is_read: boolean;
+  read_at?: string | null;
+  created_at: string;
+  extra_data?: Record<string, any> | null;
+}
+
+export interface NotificationListResult {
+  items: AppNotification[];
+  total: number;
+  unread_count: number;
+}
+
 // --- Rewards & Profile Types ---
 export interface Reward {
   id: string;

@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, timedelta
+from dataclasses import asdict
 from typing import List
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -10,9 +11,10 @@ from ..constants import SmsTemplateKeyEnum, StatusChangeSourceEnum
 from ..database import get_db
 from ..dependencies import get_current_citizen_account, log_audit_action
 from ..presenters import present_citizen_evidence_report, present_citizen_report_detail
-from ..sms import SmsSendRequest, dispatch_sms, render_sms_template
+from ..sms import SmsSendRequest, render_sms_template
 from ..tracking import apply_evidence_report_status
-from ..tasks import submit_inference_task
+from ..tasks import submit_inference_task, submit_sms_task
+from ..services.notifications import notify_citizen, notify_police, notify_admins
 
 router = APIRouter(prefix="/api/citizen-reports", tags=["citizen-reports"])
 
@@ -80,6 +82,10 @@ def create_citizen_report(
     db.flush()
 
     for evidence_item in report_data.evidence:
+        storage_backend = evidence_item.storage_backend or ("legacy" if evidence_item.url.startswith("data:") else "external")
+        storage_path = evidence_item.storage_path
+        if storage_backend == "local" and not storage_path and evidence_item.url.startswith("local://"):
+            storage_path = evidence_item.url.replace("local://", "", 1)
         db.add(
             models.EvidenceFile(
                 report_id=new_report.id,
@@ -88,6 +94,10 @@ def create_citizen_report(
                 original_name=evidence_item.name,
                 mime_type=evidence_item.mime_type,
                 size_bytes=evidence_item.size,
+                storage_backend=storage_backend,
+                storage_path=storage_path,
+                checksum_sha256=evidence_item.checksum_sha256,
+                access_metadata=evidence_item.access_metadata or {},
             )
         )
 
@@ -125,21 +135,47 @@ def create_citizen_report(
         report=saved_report,
         citizen=current_citizen,
     )
-    dispatch_sms(
-        db,
-        SmsSendRequest(
+    submit_sms_task(
+        background_tasks,
+        asdict(SmsSendRequest(
             phone_number=current_citizen.phone_number,
             message_body=rendered_sms.message_body,
             template_key=rendered_sms.template_key.value,
             citizen_id=current_citizen.id,
             report_id=saved_report.id,
             metadata=rendered_sms.metadata,
-        ),
+        )),
     )
 
     # Run the same AI enrichment path used by legacy reports so police can
     # review citizen submissions with helmet + ANPR context in the queue.
     submit_inference_task(saved_report.id, background_tasks, report_kind="evidence")
+
+    # In-app notifications — best-effort, never block the response.
+    try:
+        notify_citizen(
+            db, current_citizen.id,
+            title="Report submitted",
+            message="Your traffic violation report has been submitted successfully. You will be notified as it progresses.",
+            notification_type="report_submitted",
+            related_entity_type="evidence_report",
+            related_entity_id=saved_report.id,
+            metadata={"tracking_id": saved_report.tracking_id},
+        )
+        notify_police(
+            db,
+            title="New report submitted",
+            message=f"A new citizen traffic violation report ({saved_report.tracking_id}) is waiting for review.",
+            notification_type="new_report_submitted",
+            related_entity_type="evidence_report",
+            related_entity_id=saved_report.id,
+            priority="normal",
+            metadata={"tracking_id": saved_report.tracking_id, "violation_type": saved_report.violation_type},
+        )
+        db.commit()
+    except Exception as _exc:
+        import logging
+        logging.getLogger(__name__).error("Notification dispatch failed after report submission: %s", _exc)
 
     return present_citizen_evidence_report(saved_report)
 

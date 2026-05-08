@@ -14,6 +14,7 @@ import { ReportWizard } from '@/pages/portal/ReportWizard';
 import { TrackReport } from '@/pages/portal/TrackReport';
 import { MyReports } from '@/pages/portal/MyReports';
 import { MyReportDetail } from '@/pages/portal/MyReportDetail';
+import { NotificationsPage } from '@/pages/portal/NotificationsPage';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { PageLoader } from '@lexvision/ui';
 
@@ -69,6 +70,11 @@ function AppContent() {
             <Route path="my-reports/:reportId" element={
               <ProtectedRoute>
                 <MyReportDetail />
+              </ProtectedRoute>
+            } />
+            <Route path="notifications" element={
+              <ProtectedRoute>
+                <NotificationsPage />
               </ProtectedRoute>
             } />
             <Route path="profile" element={

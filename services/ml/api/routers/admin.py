@@ -1,21 +1,24 @@
-import os
-import json
 import csv
+import time
 from collections import defaultdict
 from io import StringIO
-from typing import List, Dict, Any
+from typing import Any
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_
 
-from .. import models, schemas
+from .. import models
 from ..database import get_db
 from ..dependencies import get_admin, log_audit_action
+from ..services.evidence_storage import cleanup_orphaned_local_files
+from ..tasks import get_queue_health
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+_analytics_cache: dict[str, tuple[float, Any]] = {}
+ANALYTICS_CACHE_SECONDS = 30
 
 
 def _report_violation_expression():
@@ -33,6 +36,22 @@ def _enum_value(value):
 
 def _date_key(value) -> str:
     return str(value)
+
+
+def _cache_get(key: str):
+    cached = _analytics_cache.get(key)
+    if not cached:
+        return None
+    expires_at, payload = cached
+    if expires_at <= time.time():
+        _analytics_cache.pop(key, None)
+        return None
+    return payload
+
+
+def _cache_set(key: str, payload: Any):
+    _analytics_cache[key] = (time.time() + ANALYTICS_CACHE_SECONDS, payload)
+    return payload
 
 # --- AUDIT LOGS ---
 @router.get("/audit-logs")
@@ -61,6 +80,9 @@ def update_ai_threshold(threshold: float, db: Session = Depends(get_db), current
 @router.get("/analytics/reports-trend")
 def get_reports_trend(db: Session = Depends(get_db), current_user: models.User = Depends(get_admin)):
     """Reports per day across legacy and citizen evidence reports (last 30 days)."""
+    cached = _cache_get("reports_trend")
+    if cached is not None:
+        return cached
     thirty_days_ago = datetime.utcnow() - timedelta(days=30)
 
     legacy_rows = db.query(
@@ -81,11 +103,14 @@ def get_reports_trend(db: Session = Depends(get_db), current_user: models.User =
     for row in [*legacy_rows, *evidence_rows]:
         totals[_date_key(row.date)] += row.count
 
-    return [{"date": date, "count": totals[date]} for date in sorted(totals)]
+    return _cache_set("reports_trend", [{"date": date, "count": totals[date]} for date in sorted(totals)])
 
 @router.get("/analytics/status-ratio")
 def get_status_ratio(db: Session = Depends(get_db), current_user: models.User = Depends(get_admin)):
     """Report counts by status across legacy and citizen evidence reports."""
+    cached = _cache_get("status_ratio")
+    if cached is not None:
+        return cached
     legacy_rows = db.query(
         models.Report.status,
         func.count(models.Report.id).label('count')
@@ -100,11 +125,14 @@ def get_status_ratio(db: Session = Depends(get_db), current_user: models.User = 
     for row in [*legacy_rows, *evidence_rows]:
         totals[_enum_value(row.status)] += row.count
 
-    return [{"status": status, "count": totals[status]} for status in sorted(totals)]
+    return _cache_set("status_ratio", [{"status": status, "count": totals[status]} for status in sorted(totals)])
 
 @router.get("/analytics/violation-types")
 def get_violation_types(db: Session = Depends(get_db), current_user: models.User = Depends(get_admin)):
     """Bar chart violation payload across all report sources."""
+    cached = _cache_get("violation_types")
+    if cached is not None:
+        return cached
     violation_expr = _report_violation_expression()
     legacy_rows = db.query(
         violation_expr.label("violation_type"),
@@ -120,29 +148,32 @@ def get_violation_types(db: Session = Depends(get_db), current_user: models.User
     for row in [*legacy_rows, *evidence_rows]:
         totals[row.violation_type or "unclassified"] += row.count
 
-    return [{"type": violation_type, "count": totals[violation_type]} for violation_type in sorted(totals)]
+    return _cache_set("violation_types", [{"type": violation_type, "count": totals[violation_type]} for violation_type in sorted(totals)])
 
 @router.get("/analytics/ai-metrics")
 def get_ai_metrics(db: Session = Depends(get_db), current_user: models.User = Depends(get_admin)):
     """ Average AI confidence and average inference latency """
+    cached = _cache_get("ai_metrics")
+    if cached is not None:
+        return cached
     query = db.query(
         func.avg(models.InferenceLog.confidence).label('avg_confidence'),
         func.avg(models.InferenceLog.ocr_confidence).label('avg_ocr_confidence'),
         func.avg(models.InferenceLog.inference_latency).label('avg_latency')
     ).first()
     
-    return {
+    return _cache_set("ai_metrics", {
         "avg_helmet_confidence": round(query.avg_confidence or 0, 4),
         "avg_ocr_confidence": round(query.avg_ocr_confidence or 0, 4),
         "avg_inference_latency_seconds": round(query.avg_latency or 0, 4)
-    }
+    })
 
 # --- OFFICER PERFORMANCE METRICS ---
 
 @router.get("/analytics/officers")
 def get_officer_metrics(db: Session = Depends(get_db), current_user: models.User = Depends(get_admin)):
     """ Validations per officer and approval rates """
-    query = db.query(
+    decision_rows = db.query(
         models.AuditLog.user_id,
         func.count(models.AuditLog.id).label('total_decisions')
     ).filter(
@@ -152,10 +183,16 @@ def get_officer_metrics(db: Session = Depends(get_db), current_user: models.User
         )
     ) \
      .group_by(models.AuditLog.user_id).all()
-     
+
+    ticket_rows = db.query(
+        models.TrafficTicket.officer_id,
+        func.count(models.TrafficTicket.id).label("tickets_issued"),
+    ).group_by(models.TrafficTicket.officer_id).all()
+    tickets_by_officer = {officer_id: tickets_issued for officer_id, tickets_issued in ticket_rows}
+
     officers = []
-    for user_id, total_decisions in query:
-        issued_tickets = db.query(func.count(models.TrafficTicket.id)).filter(models.TrafficTicket.officer_id == user_id).scalar()
+    for user_id, total_decisions in decision_rows:
+        issued_tickets = tickets_by_officer.get(user_id, 0)
         approval_rate = (issued_tickets / total_decisions) * 100 if total_decisions > 0 else 0
         
         officers.append({
@@ -167,11 +204,106 @@ def get_officer_metrics(db: Session = Depends(get_db), current_user: models.User
         
     return officers
 
+
+@router.get("/worker/health")
+def get_worker_health(db: Session = Depends(get_db), current_user: models.User = Depends(get_admin)):
+    """Queue and inference-job health for operations dashboards."""
+    job_status_rows = db.query(
+        models.InferenceJob.status,
+        func.count(models.InferenceJob.id).label("count"),
+    ).group_by(models.InferenceJob.status).all()
+    recent_failed = db.query(models.InferenceJob).filter(
+        models.InferenceJob.status == "failed",
+    ).order_by(models.InferenceJob.failed_at.desc().nullslast(), models.InferenceJob.created_at.desc()).limit(10).all()
+
+    return {
+        "queue": get_queue_health(),
+        "jobs_by_status": {status: count for status, count in job_status_rows},
+        "recent_failed_jobs": [
+            {
+                "id": job.id,
+                "report_id": job.report_id,
+                "report_kind": job.report_kind,
+                "attempts": job.attempts,
+                "max_retries": job.max_retries,
+                "last_error": job.last_error,
+                "failed_at": job.failed_at.isoformat() if job.failed_at else None,
+            }
+            for job in recent_failed
+        ],
+    }
+
+
+@router.get("/inference-jobs")
+def list_inference_jobs(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    status_filter: str | None = Query(None, alias="status"),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_admin),
+):
+    """Paginated job-status tracking for durable inference processing."""
+    query = db.query(models.InferenceJob)
+    if status_filter:
+        query = query.filter(models.InferenceJob.status == status_filter.strip().lower())
+    total = query.count()
+    jobs = query.order_by(models.InferenceJob.created_at.desc()).offset(offset).limit(limit).all()
+    return {
+        "items": [
+            {
+                "id": job.id,
+                "report_id": job.report_id,
+                "report_kind": job.report_kind,
+                "queue_backend": job.queue_backend,
+                "queue_job_id": job.queue_job_id,
+                "status": job.status,
+                "attempts": job.attempts,
+                "max_retries": job.max_retries,
+                "last_error": job.last_error,
+                "queued_at": job.queued_at.isoformat() if job.queued_at else None,
+                "started_at": job.started_at.isoformat() if job.started_at else None,
+                "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+                "failed_at": job.failed_at.isoformat() if job.failed_at else None,
+            }
+            for job in jobs
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+@router.post("/storage/cleanup")
+def cleanup_storage_orphans(
+    older_than_seconds: int = Query(24 * 60 * 60, ge=60, le=30 * 24 * 60 * 60),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_admin),
+):
+    """Delete local evidence files that are not referenced by evidence_files."""
+    known_paths = {
+        path
+        for (path,) in db.query(models.EvidenceFile.storage_path)
+        .filter(models.EvidenceFile.storage_backend == "local", models.EvidenceFile.storage_path.isnot(None))
+        .all()
+    }
+    deleted = cleanup_orphaned_local_files(known_paths, older_than_seconds=older_than_seconds)
+    log_audit_action(
+        db,
+        current_user.id,
+        "ADMIN_STORAGE_CLEANUP",
+        "EvidenceStorage",
+        details={"deleted_files": deleted, "older_than_seconds": older_than_seconds},
+    )
+    return {"deleted_files": deleted, "known_storage_paths": len(known_paths)}
+
 # --- HEATMAP STRUCTURE ---
 
 @router.get("/analytics/heatmap")
 def get_heatmap_data(db: Session = Depends(get_db), current_user: models.User = Depends(get_admin)):
     """Aggregate validated report locations rounded to 3 decimal places."""
+    cached = _cache_get("heatmap")
+    if cached is not None:
+        return cached
     reports = db.query(models.Report.location_lat, models.Report.location_lng) \
         .filter(models.Report.status == models.StatusEnum.VALIDATED).all()
     evidence_reports = db.query(models.EvidenceReport.location_lat, models.EvidenceReport.location_lng) \
@@ -185,7 +317,7 @@ def get_heatmap_data(db: Session = Depends(get_db), current_user: models.User = 
             coord = f"{grid_lat},{grid_lng}"
             heatmap_grid[coord] = heatmap_grid.get(coord, 0) + 1
             
-    return [{"lat": float(c.split(',')[0]), "lng": float(c.split(',')[1]), "weight": w} for c, w in heatmap_grid.items()]
+    return _cache_set("heatmap", [{"lat": float(c.split(',')[0]), "lng": float(c.split(',')[1]), "weight": w} for c, w in heatmap_grid.items()])
 
 # --- CSV EXPORT ENDPOINTS ---
 

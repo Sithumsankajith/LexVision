@@ -8,6 +8,9 @@ const readApiBaseUrl = (): string => {
 };
 
 export const API_BASE_URL = readApiBaseUrl();
+export const API_ORIGIN = API_BASE_URL.endsWith('/api')
+    ? API_BASE_URL.slice(0, -4)
+    : API_BASE_URL.replace(/\/api\/?$/, '');
 const DEMO_FIREBASE_UID_PREFIX = 'demo-otp:';
 
 type CitizenAuthProvider = 'firebase' | 'demo';
@@ -112,6 +115,7 @@ export const auth = {
 
         const response = await fetch(`${API_BASE_URL}/auth/login`, {
             method: 'POST',
+            credentials: 'include',
             body: formData,
         });
 
@@ -178,6 +182,7 @@ export const auth = {
     ): Promise<CitizenTokenExchange> => {
         const response = await fetch(`${API_BASE_URL}/auth/firebase-phone-login`, {
             method: 'POST',
+            credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 firebase_id_token: idToken,
@@ -235,6 +240,7 @@ export const auth = {
     ): Promise<CitizenTokenExchange> => {
         const response = await fetch(`${API_BASE_URL}/auth/citizen/demo-login`, {
             method: 'POST',
+            credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ phone_number: phoneNumber.trim() }),
         });
@@ -265,6 +271,7 @@ export const auth = {
 
     logoutCitizen: () => {
         localStorage.removeItem(CITIZEN_SESSION_KEY);
+        void fetch(`${API_BASE_URL}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(() => undefined);
     },
 
     /**
@@ -284,6 +291,7 @@ export const auth = {
      */
     logout: () => {
         localStorage.removeItem(SESSION_KEY);
+        void fetch(`${API_BASE_URL}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(() => undefined);
     },
 
     /**

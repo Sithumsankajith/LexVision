@@ -28,6 +28,7 @@ from ..database import get_db
 from ..dependencies import get_police, log_audit_action
 from ..tracking import apply_ticket_status, is_valid_ticket_status_transition
 from ..services.pdf_generator import generate_ticket_pdf
+from ..services.notifications import notify_citizen, notify_admins
 from ..violation_types import canonical_or_original_violation_type, deduplicate_violation_types, violation_type_variants
 
 router = APIRouter(prefix="/api/tickets", tags=["tickets"])
@@ -291,6 +292,41 @@ def create_ticket(
             "evidence_report_id": new_ticket.evidence_report_id,
         },
     )
+
+    # Notify the citizen who submitted the underlying evidence report.
+    try:
+        citizen_id: str | None = None
+        if new_ticket.evidence_report_id:
+            ev_report = db.query(models.EvidenceReport).filter(
+                models.EvidenceReport.id == new_ticket.evidence_report_id
+            ).first()
+            if ev_report:
+                citizen_id = ev_report.citizen_id
+        if citizen_id:
+            notify_citizen(
+                db, citizen_id,
+                title="Ticket issued",
+                message=f"A fine ticket ({new_ticket.ticket_number}) has been issued for a validated violation. Amount: {new_ticket.fine_amount} {getattr(new_ticket.fine_rule, 'currency', 'LKR') if new_ticket.fine_rule else 'LKR'}.",
+                notification_type="ticket_issued",
+                related_entity_type="ticket",
+                related_entity_id=new_ticket.id,
+                priority="high",
+                metadata={"ticket_number": new_ticket.ticket_number, "fine_amount": new_ticket.fine_amount},
+            )
+        notify_admins(
+            db,
+            title="Ticket issued",
+            message=f"Ticket {new_ticket.ticket_number} has been issued by an officer.",
+            notification_type="ticket_issued",
+            related_entity_type="ticket",
+            related_entity_id=new_ticket.id,
+            priority="normal",
+            metadata={"ticket_number": new_ticket.ticket_number, "officer_id": current_user.id},
+        )
+        db.commit()
+    except Exception as _exc:
+        import logging
+        logging.getLogger(__name__).error("Notification dispatch failed after ticket creation: %s", _exc)
 
     # Re-fetch with relationships loaded.
     return _ticket_query(db).filter(

@@ -5,6 +5,7 @@ import { Queue } from './pages/Queue';
 import { ViolationDetails } from './pages/ViolationDetails';
 import { History } from './pages/History';
 import { Settings } from './pages/Settings';
+import { Notifications } from './pages/Notifications';
 import { DashboardLayout } from './layouts/DashboardLayout';
 import { auth } from '@lexvision/api-client';
 
@@ -37,6 +38,7 @@ function App() {
                     <Route path="queue" element={<Queue />} />
                     <Route path="queue/:id" element={<ViolationDetails />} />
                     <Route path="history" element={<History />} />
+                    <Route path="notifications" element={<Notifications />} />
                     <Route path="settings" element={<Settings />} />
                 </Route>
             </Routes>

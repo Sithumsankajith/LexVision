@@ -60,6 +60,7 @@ export const ViolationDetails: React.FC = () => {
     const [ticketLoading, setTicketLoading] = useState(false);
     const [ticketError, setTicketError] = useState('');
     const [imageNaturalSize, setImageNaturalSize] = useState({ width: 0, height: 0 });
+    const [evidenceLoadError, setEvidenceLoadError] = useState(false);
     const [rerunLoading, setRerunLoading] = useState(false);
     const [rerunError, setRerunError] = useState('');
     const [zoom, setZoom] = useState(1);
@@ -68,6 +69,7 @@ export const ViolationDetails: React.FC = () => {
         try {
             const data = await mockDb.getReportById(reportId);
             setReport(data);
+            setEvidenceLoadError(false);
 
             if (data && (data.status === 'verified' || data.status === 'closed')) {
                 setTicketLoading(true);
@@ -341,7 +343,7 @@ export const ViolationDetails: React.FC = () => {
                         </div>
 
                         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'auto', padding: 'var(--space-4)' }}>
-                            {mainEvidence?.type === 'image' ? (
+                            {mainEvidence?.type === 'image' && !evidenceLoadError ? (
                                 <div
                                     style={{
                                         position: 'relative',
@@ -359,7 +361,9 @@ export const ViolationDetails: React.FC = () => {
                                                 width: event.currentTarget.naturalWidth,
                                                 height: event.currentTarget.naturalHeight,
                                             });
+                                            setEvidenceLoadError(false);
                                         }}
+                                        onError={() => setEvidenceLoadError(true)}
                                         style={{
                                             maxWidth: '100%',
                                             maxHeight: '72vh',
@@ -416,7 +420,13 @@ export const ViolationDetails: React.FC = () => {
                             ) : (
                                 <div style={{ color: '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-4)' }}>
                                     {mainEvidence?.type === 'video' ? <PlayCircle size={64} /> : <ImageIcon size={64} />}
-                                    <span>{mainEvidence ? 'Playback Evidence Clip' : 'No Evidence Available'}</span>
+                                    <span>
+                                        {evidenceLoadError
+                                            ? 'Evidence preview could not be loaded. Use the case record and request a fresh upload if needed.'
+                                            : mainEvidence
+                                                ? 'Playback Evidence Clip'
+                                                : 'No Evidence Available'}
+                                    </span>
                                 </div>
                             )}
                         </div>

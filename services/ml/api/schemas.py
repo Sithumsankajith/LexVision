@@ -91,6 +91,10 @@ class CitizenEvidenceFileCreate(BaseModel):
     name: str
     size: float
     mime_type: Optional[str] = None
+    storage_backend: Optional[str] = None
+    storage_path: Optional[str] = None
+    checksum_sha256: Optional[str] = None
+    access_metadata: Optional[dict] = None
 
     @field_validator("type")
     def validate_file_type(cls, value: str) -> str:
@@ -107,11 +111,12 @@ class CitizenEvidenceFileCreate(BaseModel):
         if not (
             cleaned.startswith("data:image/")
             or cleaned.startswith("data:video/")
+            or cleaned.startswith("local://")
             or cleaned.startswith("https://")
             or cleaned.startswith("http://localhost")
             or cleaned.startswith("/")
         ):
-            raise ValueError("Evidence URL must be a data URI, HTTPS URL, localhost URL, or server file path")
+            raise ValueError("Evidence URL must be a data URI, local storage URL, HTTPS URL, localhost URL, or server file path")
         return cleaned
 
     @field_validator("size")
@@ -509,3 +514,32 @@ class ProfileResponse(BaseModel):
     reports_count: int
     validated_reports_count: int
     claimed_rewards: List[UserRewardResponse]
+
+
+# --- Notification Schemas ---
+
+class NotificationResponse(BaseModel):
+    id: str
+    recipient_role: str
+    title: str
+    message: str
+    notification_type: str
+    related_entity_type: Optional[str] = None
+    related_entity_id: Optional[str] = None
+    priority: str
+    is_read: bool
+    read_at: Optional[datetime] = None
+    created_at: datetime
+    extra_data: Optional[Any] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class NotificationListResponse(BaseModel):
+    items: List[NotificationResponse]
+    total: int
+    unread_count: int
+
+
+class UnreadCountResponse(BaseModel):
+    count: int

@@ -89,15 +89,6 @@ const SRI_LANKAN_CITIES = [
     { value: 'Eravur', label: 'Eravur' },
 ];
 
-const getBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = error => reject(error);
-    });
-};
-
 const MAX_EVIDENCE_FILES = 5;
 const MAX_EVIDENCE_FILE_SIZE_BYTES = 25 * 1024 * 1024;
 
@@ -260,6 +251,7 @@ export const ReportWizard: React.FC = () => {
     const [gpsError, setGpsError] = useState('');
     const [draftReady, setDraftReady] = useState(false);
     const [resumeNotice, setResumeNotice] = useState<string | null>(null);
+    const [submitStatus, setSubmitStatus] = useState<string | null>(null);
 
     // Form State
     const [formData, setFormData] = useState<ReportFormData>(() => getDefaultReportFormData());
@@ -471,9 +463,10 @@ export const ReportWizard: React.FC = () => {
     };
 
     const buildCitizenReportPayload = async () => {
+        const localDate = new Date(`${formData.date}T${formData.time}`);
         return {
             violationType: formData.violationType as ViolationType,
-            datetime: `${formData.date}T${formData.time}`,
+            datetime: localDate.toISOString(),
             location: {
                 lat: formData.lat,
                 lng: formData.lng,
@@ -484,10 +477,11 @@ export const ReportWizard: React.FC = () => {
                 formData.evidenceFiles.map(async (f, i) => ({
                     id: `ev-${i}`,
                     type: f.type.startsWith('video') ? ('video' as const) : ('image' as const),
-                    url: await getBase64(f),
+                    url: URL.createObjectURL(f),
                     name: f.name,
                     size: f.size,
                     mimeType: f.type || undefined,
+                    file: f,
                 }))
             ),
             vehicle: {
@@ -502,8 +496,10 @@ export const ReportWizard: React.FC = () => {
         submitRequest: (payload: Awaited<ReturnType<typeof buildCitizenReportPayload>>) => Promise<{ trackingId: string }>
     ) => {
         setIsSubmitting(true);
+        setSubmitStatus('Uploading evidence securely...');
         try {
             const payload = await buildCitizenReportPayload();
+            setSubmitStatus('Creating report and queueing AI review...');
             const report = await submitRequest(payload);
             await clearPendingReportDraft().catch(() => undefined);
             setSubmittedId(report.trackingId);
@@ -517,6 +513,7 @@ export const ReportWizard: React.FC = () => {
             setErrors({ submit: message });
             throw new Error(message);
         } finally {
+            setSubmitStatus(null);
             setIsSubmitting(false);
         }
     };
@@ -895,6 +892,12 @@ export const ReportWizard: React.FC = () => {
                     {currentStep === 4 ? (hasReusableCitizenSession ? 'Submit Report' : 'Verify Phone & Submit') : 'Next Step'}
                 </Button>
             </div>
+
+            {isSubmitting && submitStatus && (
+                <div style={{ marginTop: 'var(--space-3)', color: 'var(--color-text-secondary)', fontWeight: 600 }}>
+                    {submitStatus}
+                </div>
+            )}
 
             <CitizenOtpLoginModal
                 isOpen={isOtpModalOpen}

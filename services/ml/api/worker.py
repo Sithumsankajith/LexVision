@@ -51,6 +51,7 @@ except ModuleNotFoundError as exc:
     from inference.anpr_pipeline import run_anpr_pipeline
 
 from .violation_types import normalize_claimed_violation_type
+from .services.notifications import notify_citizen, notify_police, notify_admins
 
 # Configure logging once for the background worker entrypoint.
 logging.basicConfig(level=logging.INFO)
@@ -1093,6 +1094,56 @@ def attempt_inference(
     db.add(audit)
     db.commit()
 
+    # In-app notifications for AI analysis completion — best-effort.
+    if report_kind == "evidence":
+        try:
+            citizen_id = getattr(report, "citizen_id", None)
+            report_id_val = report.id
+            tracking_id_val = getattr(report, "tracking_id", report_id_val)
+            inference_failed = bool(violation_result.get("error"))
+
+            if citizen_id:
+                notify_citizen(
+                    db, citizen_id,
+                    title="AI analysis completed",
+                    message="Your report has been analysed by AI and is now waiting for police review.",
+                    notification_type="ai_analysis_completed",
+                    related_entity_type="evidence_report",
+                    related_entity_id=report_id_val,
+                    metadata={"tracking_id": tracking_id_val, "confidence": overall_confidence},
+                )
+
+            review_priority = "high" if (overall_confidence >= HIGH_CONFIDENCE_THRESHOLD and not manual_review_required) else "normal"
+            notify_police(
+                db,
+                title="AI analysis completed" if not inference_failed else "AI analysis needs review",
+                message=(
+                    f"AI results are available for report {tracking_id_val}. "
+                    + (f"High-confidence ({overall_confidence:.0%}) — ready for officer decision." if review_priority == "high" else "Manual review is recommended.")
+                ),
+                notification_type="ai_analysis_completed",
+                related_entity_type="evidence_report",
+                related_entity_id=report_id_val,
+                priority=review_priority,
+                metadata={"tracking_id": tracking_id_val, "confidence": overall_confidence, "manual_review_required": manual_review_required},
+            )
+
+            if inference_failed:
+                notify_admins(
+                    db,
+                    title="AI inference failed",
+                    message=f"AI inference failed for report {tracking_id_val}: {violation_result.get('error')}",
+                    notification_type="ai_inference_failed",
+                    related_entity_type="evidence_report",
+                    related_entity_id=report_id_val,
+                    priority="high",
+                    metadata={"tracking_id": tracking_id_val, "error": violation_result.get("error")},
+                )
+
+            db.commit()
+        except Exception as _notif_exc:
+            logger.error("Notification dispatch failed after inference: %s", _notif_exc)
+
     logger.info(
         "Inference complete for %s/%s | claimed=%s | inferred=%s | plate_text=%s | confidence=%.4f (%s) | validation=%s | report_status=%s",
         report_kind,
@@ -1137,6 +1188,21 @@ def run_inference(report_id: str, report_kind: Literal["legacy", "evidence"] = "
                     else:
                         report.status = StatusEnum.REJECTED
                     db.commit()
+                    # Notify admins of persistent inference failure.
+                    try:
+                        notify_admins(
+                            db,
+                            title="AI inference failed",
+                            message=f"AI inference failed for {report_kind} report {report_id} after {max_retries} retries: {exc}",
+                            notification_type="ai_inference_failed",
+                            related_entity_type="evidence_report" if report_kind == "evidence" else "report",
+                            related_entity_id=report_id,
+                            priority="high",
+                            metadata={"report_kind": report_kind, "error": str(exc), "attempts": max_retries},
+                        )
+                        db.commit()
+                    except Exception as _n_exc:
+                        logger.error("Failed to send inference-failure admin notification: %s", _n_exc)
                     raise
                 time.sleep(2)
     finally:

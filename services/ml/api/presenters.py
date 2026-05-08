@@ -4,6 +4,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from . import schemas
+from .services.evidence_storage import sign_evidence_url
 
 
 def _schema_from_orm(schema_cls, obj):
@@ -76,6 +77,21 @@ def build_ai_summary(report: Any) -> schemas.AISummaryResponse | None:
     return _schema_from_orm(schemas.AISummaryResponse, payload)
 
 
+def _attach_signed_evidence_urls(response: Any) -> Any:
+    files = getattr(response, "files", None)
+    if not files:
+        return response
+
+    for evidence_file in files:
+        storage_url = getattr(evidence_file, "storage_url", None)
+        if isinstance(storage_url, str) and storage_url.startswith("data:"):
+            continue
+        file_id = getattr(evidence_file, "id", None)
+        if file_id:
+            evidence_file.storage_url = sign_evidence_url(file_id)
+    return response
+
+
 def present_report(report: Any) -> schemas.ReportResponse:
     response = _schema_from_orm(schemas.ReportResponse, report)
     response.ai_summary = build_ai_summary(report)
@@ -89,7 +105,7 @@ def present_reports(reports: Iterable[Any]) -> list[schemas.ReportResponse]:
 def present_evidence_report(report: Any):
     response = _schema_from_orm(schemas.StaffEvidenceReportResponse, report)
     response.ai_summary = build_ai_summary(report)
-    return response
+    return _attach_signed_evidence_urls(response)
 
 
 def present_evidence_reports(reports: Iterable[Any]):
@@ -99,10 +115,10 @@ def present_evidence_reports(reports: Iterable[Any]):
 def present_citizen_evidence_report(report: Any):
     response = _schema_from_orm(schemas.CitizenEvidenceReportResponse, report)
     response.ai_summary = build_ai_summary(report)
-    return response
+    return _attach_signed_evidence_urls(response)
 
 
 def present_citizen_report_detail(report: Any):
     response = _schema_from_orm(schemas.CitizenReportDetailResponse, report)
     response.ai_summary = build_ai_summary(report)
-    return response
+    return _attach_signed_evidence_urls(response)

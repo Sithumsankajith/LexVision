@@ -1,5 +1,16 @@
-import type { CitizenReportDetail, ConfidenceBand, Report, ReportStatusHistoryEntry, ReportStatusSource, TicketStatus, TicketStatusHistoryEntry, TrafficTicket } from '@lexvision/types';
-import { API_BASE_URL, auth } from './auth';
+import type { AppNotification, CitizenReportDetail, ConfidenceBand, NotificationListResult, Report, ReportStatusHistoryEntry, ReportStatusSource, TicketStatus, TicketStatusHistoryEntry, TrafficTicket } from '@lexvision/types';
+
+const extractErrorMessage = (errorData: any, fallback: string) => {
+    if (typeof errorData?.detail === 'string') {
+        return errorData.detail;
+    }
+    if (Array.isArray(errorData?.detail)) {
+        return errorData.detail.map((e: any) => e.msg || JSON.stringify(e)).join(', ');
+    }
+    return fallback;
+};
+
+import { API_BASE_URL, API_ORIGIN, auth } from './auth';
 
 const DEMO_CITIZEN_REPORTS_KEY = 'lexvision_demo_citizen_reports';
 
@@ -10,10 +21,15 @@ interface CitizenReportPayload {
     evidence: Array<{
         id?: string;
         type: 'image' | 'video';
-        url: string;
+        url?: string;
         name: string;
         size: number;
         mimeType?: string;
+        file?: File;
+        storageBackend?: string;
+        storagePath?: string;
+        checksumSha256?: string;
+        accessMetadata?: Record<string, unknown>;
     }>;
     vehicle: Report['vehicle'];
 }
@@ -43,6 +59,16 @@ const getHeaders = (token?: string) => {
         headers['Authorization'] = `Bearer ${bearerToken}`;
     }
     return headers;
+};
+
+const resolveMediaUrl = (url?: string | null): string => {
+    if (!url) {
+        return '';
+    }
+    if (url.startsWith('/api/')) {
+        return `${API_ORIGIN}${url}`;
+    }
+    return url;
 };
 
 const readDemoCitizenReports = (): DemoCitizenReportRecord[] => {
@@ -214,7 +240,7 @@ const buildDemoCitizenReport = (reportData: CitizenReportPayload): DemoCitizenRe
         evidence: reportData.evidence.map((e, index) => ({
             id: e.id || `demo-file-${index}`,
             type: e.type,
-            url: e.url,
+            url: e.url || '',
             name: e.name,
             size: e.size,
         })),
@@ -447,7 +473,7 @@ const mapCitizenReportToFrontend = (b: any): Report => ({
     evidence: (b.files || []).map((file: any, index: number) => ({
         id: file.id || `citizen-file-${index}`,
         type: file.file_type,
-        url: file.storage_url,
+        url: resolveMediaUrl(file.storage_url),
         name: file.original_name,
         size: file.size_bytes,
     })),
@@ -548,7 +574,89 @@ const mapFineRuleToFrontend = (rule: any) => {
     };
 };
 
+const uploadCitizenEvidenceFile = async (file: File, citizenToken: string) => {
+    const formData = new FormData();
+    formData.append('upload', file);
+
+    const response = await fetch(`${API_BASE_URL}/media/evidence-uploads`, {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${citizenToken}`,
+        },
+        body: formData,
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+            throw new Error(extractErrorMessage(errorData, `Failed to upload ${file.name}`));
+    }
+
+    const uploaded = await response.json();
+    return {
+        type: uploaded.type as 'image' | 'video',
+        url: uploaded.url as string,
+        name: uploaded.name as string,
+        size: uploaded.size as number,
+        mimeType: uploaded.mime_type as string | undefined,
+        storageBackend: uploaded.storage_backend as string | undefined,
+        storagePath: uploaded.storage_path as string | undefined,
+        checksumSha256: uploaded.checksum_sha256 as string | undefined,
+        accessMetadata: uploaded.access_metadata as Record<string, unknown> | undefined,
+    };
+};
+
+const prepareCitizenEvidenceForSubmit = async (
+    evidence: CitizenReportPayload['evidence'],
+    citizenToken: string,
+): Promise<CitizenReportPayload['evidence']> => {
+    const prepared: CitizenReportPayload['evidence'] = [];
+    for (const item of evidence) {
+        if (item.file) {
+            prepared.push(await uploadCitizenEvidenceFile(item.file, citizenToken));
+        } else {
+            prepared.push(item);
+        }
+    }
+    return prepared;
+};
+
 export const mockDb = {
+    getEvidenceReportsPage: async (params: {
+        limit?: number;
+        offset?: number;
+        status?: string;
+        violationType?: string;
+        search?: string;
+        sort?: string;
+        dateFrom?: string;
+        dateTo?: string;
+    } = {}): Promise<{ items: Report[]; total: number; limit: number; offset: number }> => {
+        const query = new URLSearchParams();
+        query.set('limit', String(params.limit ?? 25));
+        query.set('offset', String(params.offset ?? 0));
+        if (params.status && params.status !== 'all') query.set('status', params.status);
+        if (params.violationType && params.violationType !== 'all') query.set('violation_type', params.violationType);
+        if (params.search) query.set('search', params.search);
+        if (params.sort) query.set('sort', params.sort);
+        if (params.dateFrom) query.set('date_from', params.dateFrom);
+        if (params.dateTo) query.set('date_to', params.dateTo);
+
+        const response = await fetch(`${API_BASE_URL}/evidence-reports/page?${query.toString()}`, {
+            headers: getHeaders(),
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(extractErrorMessage(errorData, 'Failed to load paginated reports.'));
+        }
+        const data = await response.json();
+        return {
+            items: data.items.map(mapCitizenReportToFrontend),
+            total: data.total,
+            limit: data.limit,
+            offset: data.offset,
+        };
+    },
+
     createReport: async (reportData: Omit<Report, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'trackingId'>): Promise<Report> => {
         const payload = {
             violation_type: normalizeViolationType(reportData.violationType),
@@ -560,7 +668,7 @@ export const mockDb = {
             evidence: reportData.evidence.map((e: any) => ({
                 id: e.id,
                 type: e.type,
-                url: e.url,
+                url: e.url || '',
                 name: e.name,
                 size: e.size
             }))
@@ -577,7 +685,7 @@ export const mockDb = {
         }
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.detail || 'Failed to create report');
+            throw new Error(extractErrorMessage(errorData, 'Failed to create report'));
         }
         const data = await response.json();
         return mapReportToFrontend(data);
@@ -608,6 +716,8 @@ export const mockDb = {
             return report;
         }
 
+        const token = citizenToken || requireCitizenSessionToken();
+        const preparedEvidence = await prepareCitizenEvidenceForSubmit(reportData.evidence, token);
         const payload = {
             violation_type: normalizeViolationType(reportData.violationType),
             incident_at: reportData.datetime,
@@ -618,27 +728,28 @@ export const mockDb = {
             description: reportData.vehicle.notes,
             vehicle_plate: reportData.vehicle.plate,
             vehicle_type: reportData.vehicle.type,
-            evidence: reportData.evidence.map((e) => ({
+            evidence: preparedEvidence.map((e) => ({
                 type: e.type,
                 url: e.url,
                 name: e.name,
                 size: e.size,
                 mime_type: e.mimeType,
+                storage_backend: e.storageBackend,
+                storage_path: e.storagePath,
+                checksum_sha256: e.checksumSha256,
+                access_metadata: e.accessMetadata,
             })),
         };
 
         const response = await fetch(`${API_BASE_URL}/citizen-reports`, {
             method: 'POST',
-            headers: getHeaders(citizenToken || requireCitizenSessionToken()),
+            headers: getHeaders(token),
             body: JSON.stringify(payload),
         });
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            throw new Error(
-                errorData.detail ||
-                'Your phone number was verified, but the evidence report could not be submitted. Your draft is still saved, so you can try again.'
-            );
+            throw new Error(extractErrorMessage(errorData, 'Your phone number was verified, but the evidence report could not be submitted. Your draft is still saved, so you can try again.'));
         }
 
         const data = await response.json();
@@ -663,7 +774,7 @@ export const mockDb = {
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.detail || 'Failed to load your reports.');
+            throw new Error(extractErrorMessage(errorData, 'Failed to load your reports.'));
         }
 
         const data = await response.json();
@@ -719,7 +830,7 @@ export const mockDb = {
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.detail || 'Failed to load this report.');
+            throw new Error(extractErrorMessage(errorData, 'Failed to load this report.'));
         }
 
         const data = await response.json();
@@ -816,7 +927,7 @@ export const mockDb = {
             });
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.detail || 'Failed to update report status');
+            throw new Error(extractErrorMessage(errorData, 'Failed to update report status'));
             }
             const data = await response.json();
             return report.source === 'evidence-report'
@@ -832,7 +943,7 @@ export const mockDb = {
         });
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.detail || 'Failed to re-run AI analysis');
+            throw new Error(extractErrorMessage(errorData, 'Failed to re-run AI analysis'));
         }
         const data = await response.json();
         return mapCitizenReportToFrontend(data);
@@ -881,7 +992,7 @@ export const mockDb = {
         });
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.detail || 'Failed to claim reward');
+            throw new Error(extractErrorMessage(errorData, 'Failed to claim reward'));
         }
         return response.json();
     },
@@ -1012,7 +1123,7 @@ export const mockDb = {
         });
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.detail || 'Failed to create fine rule');
+            throw new Error(extractErrorMessage(errorData, 'Failed to create fine rule'));
         }
         return mapFineRuleToFrontend(await response.json());
     },
@@ -1032,7 +1143,7 @@ export const mockDb = {
         });
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.detail || 'Failed to update fine rule');
+            throw new Error(extractErrorMessage(errorData, 'Failed to update fine rule'));
         }
         return mapFineRuleToFrontend(await response.json());
     },
@@ -1091,7 +1202,7 @@ export const mockDb = {
         });
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.detail || 'Failed to issue ticket');
+            throw new Error(extractErrorMessage(errorData, 'Failed to issue ticket'));
         }
         return mapTicketToFrontend(await response.json());
     },
@@ -1113,7 +1224,7 @@ export const mockDb = {
         });
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.detail || 'Failed to fetch ticket');
+            throw new Error(extractErrorMessage(errorData, 'Failed to fetch ticket'));
         }
         return mapTicketToFrontend(await response.json());
     },
@@ -1141,7 +1252,7 @@ export const mockDb = {
         });
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.detail || 'Failed to update ticket status');
+            throw new Error(extractErrorMessage(errorData, 'Failed to update ticket status'));
         }
         return mapTicketToFrontend(await response.json());
     },
@@ -1162,7 +1273,7 @@ export const mockDb = {
         });
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.detail || 'Failed to download PDF notice');
+            throw new Error(extractErrorMessage(errorData, 'Failed to download PDF notice'));
         }
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
@@ -1173,5 +1284,121 @@ export const mockDb = {
         a.click();
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
+    },
+
+    // ---------------------------------------------------------------------------
+    // Staff notifications (police / admin) — /api/notifications
+    // ---------------------------------------------------------------------------
+
+    getStaffNotifications: async (params: {
+        unreadOnly?: boolean;
+        limit?: number;
+        offset?: number;
+        notificationType?: string;
+    } = {}): Promise<NotificationListResult> => {
+        const query = new URLSearchParams();
+        if (params.unreadOnly) query.set('unread_only', 'true');
+        if (params.limit !== undefined) query.set('limit', String(params.limit));
+        if (params.offset !== undefined) query.set('offset', String(params.offset));
+        if (params.notificationType) query.set('notification_type', params.notificationType);
+        const response = await fetch(`${API_BASE_URL}/notifications?${query}`, { headers: getHeaders() });
+        if (response.status === 401) {
+            auth.logout();
+            if (typeof window !== 'undefined') window.location.href = '/login';
+            throw new Error('Your session has expired. Please sign in again.');
+        }
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(extractErrorMessage(errorData, 'Failed to load notifications'));
+        }
+        const data = await response.json();
+        return {
+            items: data.items as AppNotification[],
+            total: data.total,
+            unread_count: data.unread_count,
+        };
+    },
+
+    getStaffUnreadCount: async (): Promise<number> => {
+        const response = await fetch(`${API_BASE_URL}/notifications/unread-count`, { headers: getHeaders() });
+        if (!response.ok) return 0;
+        const data = await response.json();
+        return data.count ?? 0;
+    },
+
+    markStaffNotificationRead: async (notificationId: string): Promise<AppNotification | null> => {
+        const response = await fetch(`${API_BASE_URL}/notifications/${notificationId}/read`, {
+            method: 'PATCH',
+            headers: getHeaders(),
+        });
+        if (!response.ok) return null;
+        return response.json();
+    },
+
+    markAllStaffNotificationsRead: async (): Promise<void> => {
+        await fetch(`${API_BASE_URL}/notifications/read-all`, { method: 'PATCH', headers: getHeaders() });
+    },
+
+    deleteStaffNotification: async (notificationId: string): Promise<void> => {
+        await fetch(`${API_BASE_URL}/notifications/${notificationId}`, { method: 'DELETE', headers: getHeaders() });
+    },
+
+    // ---------------------------------------------------------------------------
+    // Citizen notifications — /api/citizen-notifications
+    // ---------------------------------------------------------------------------
+
+    getCitizenNotifications: async (params: {
+        unreadOnly?: boolean;
+        limit?: number;
+        offset?: number;
+    } = {}): Promise<NotificationListResult> => {
+        const token = requireCitizenSessionToken();
+        const query = new URLSearchParams();
+        if (params.unreadOnly) query.set('unread_only', 'true');
+        if (params.limit !== undefined) query.set('limit', String(params.limit));
+        if (params.offset !== undefined) query.set('offset', String(params.offset));
+        const response = await fetch(`${API_BASE_URL}/citizen-notifications?${query}`, { headers: getHeaders(token) });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(extractErrorMessage(errorData, 'Failed to load notifications'));
+        }
+        const data = await response.json();
+        return {
+            items: data.items as AppNotification[],
+            total: data.total,
+            unread_count: data.unread_count,
+        };
+    },
+
+    getCitizenUnreadCount: async (): Promise<number> => {
+        try {
+            const token = requireCitizenSessionToken();
+            const response = await fetch(`${API_BASE_URL}/citizen-notifications/unread-count`, { headers: getHeaders(token) });
+            if (!response.ok) return 0;
+            const data = await response.json();
+            return data.count ?? 0;
+        } catch {
+            return 0;
+        }
+    },
+
+    markCitizenNotificationRead: async (notificationId: string): Promise<AppNotification | null> => {
+        const token = requireCitizenSessionToken();
+        const response = await fetch(`${API_BASE_URL}/citizen-notifications/${notificationId}/read`, {
+            method: 'PATCH',
+            headers: getHeaders(token),
+        });
+        if (!response.ok) return null;
+        return response.json();
+    },
+
+    markAllCitizenNotificationsRead: async (): Promise<void> => {
+        const token = requireCitizenSessionToken();
+        await fetch(`${API_BASE_URL}/citizen-notifications/read-all`, { method: 'PATCH', headers: getHeaders(token) });
+    },
+
+    deleteCitizenNotification: async (notificationId: string): Promise<void> => {
+        const token = requireCitizenSessionToken();
+        await fetch(`${API_BASE_URL}/citizen-notifications/${notificationId}`, { method: 'DELETE', headers: getHeaders(token) });
     },
 };
