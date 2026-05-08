@@ -40,6 +40,20 @@
     font-weight: 700;
 }
 
+.profileLink span {
+    font-weight: 500;
+}
+
+.pointsBadge {
+    background: var(--color-secondary);
+    color: var(--color-primary);
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    margin-left: 4px;
+}
+
 .logo:hover {
     opacity: 0.8;
     color: var(--color-surface);

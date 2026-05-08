@@ -54,9 +54,9 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
                 <div className={styles.actions}>
                     {user ? (
                         <div className={styles.userActions}>
-                            <Link to="/portal/profile" className={styles.profileLink}>
+                            <Link to="/portal/my-reports" className={styles.profileLink}>
                                 <User size={18} />
-                                <span>{user.email.split('@')[0]}</span>
+                                <span>{user.email.includes('@') ? user.email.split('@')[0] : user.email}</span>
                             </Link>
                             <Button variant="ghost" size="sm" onClick={onLogout} title="Logout">
                                 <LogOut size={18} />

@@ -209,3 +209,30 @@ export interface FineRule {
   createdAt: string;
   updatedAt: string;
 }
+
+// --- Rewards & Profile Types ---
+export interface Reward {
+  id: string;
+  title: string;
+  description: string;
+  points_cost: number;
+  image_url?: string;
+}
+
+export interface UserReward {
+  id: string;
+  reward: Reward;
+  claimed_at: string;
+}
+
+export interface UserProfile {
+  user: {
+    id: string;
+    email: string;
+    reward_points: number;
+    role: string;
+  };
+  reports_count: number;
+  validated_reports_count: number;
+  claimed_rewards: UserReward[];
+}

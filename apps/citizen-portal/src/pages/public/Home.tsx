@@ -34,26 +34,6 @@ export const Home: React.FC = () => {
                 </div>
             </section>
 
-            {/* Why Road Safety Matters */}
-            <section className={styles.stats}>
-                <div className="container">
-                    <div className={styles.statsGrid}>
-                        <div className={styles.statItem}>
-                            <div className={styles.statValue}>Safety</div>
-                            <div className={styles.statLabel}>Protecting Families</div>
-                        </div>
-                        <div className={styles.statItem}>
-                            <div className={styles.statValue}>Trust</div>
-                            <div className={styles.statLabel}>Fair & Transparent</div>
-                        </div>
-                        <div className={styles.statItem}>
-                            <div className={styles.statValue}>Community</div>
-                            <div className={styles.statLabel}>Safer Together</div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
             {/* Problem Section -> Why It Matters */}
             <section className={styles.problem}>
                 <div className="container">
