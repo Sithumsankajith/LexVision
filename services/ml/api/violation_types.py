@@ -7,6 +7,7 @@ SUPPORTED_CLAIMED_VIOLATION_TYPES = {
     "helmet",
     "red_light",
     "white_line",
+    "other",
 }
 
 _VIOLATION_TYPE_ALIASES = {
@@ -19,12 +20,14 @@ _VIOLATION_TYPE_ALIASES = {
     "whiteline": "white_line",
     "white-line": "white_line",
     "white_line": "white_line",
+    "other": "other",
 }
 
 _STORED_TYPE_VARIANTS = {
     "helmet": {"helmet"},
     "red_light": {"red_light", "red-light"},
     "white_line": {"white_line", "white-line"},
+    "other": {"other"},
 }
 
 

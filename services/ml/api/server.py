@@ -35,12 +35,26 @@ def ensure_sqlite_schema_compatibility():
 
     with engine.begin() as connection:
         inspector = inspect(connection)
-        inference_log_columns = {column["name"] for column in inspector.get_columns("inference_logs")} if "inference_logs" in inspector.get_table_names() else set()
-        if "inference_logs" in inspector.get_table_names() and "evidence_report_id" not in inference_log_columns:
+        table_names = set(inspector.get_table_names())
+
+        def add_report_location_columns(table_name: str) -> None:
+            if table_name not in table_names:
+                return
+            columns = {column["name"] for column in inspector.get_columns(table_name)}
+            if "location_district" not in columns:
+                connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN location_district VARCHAR"))
+            if "custom_violation_description" not in columns:
+                connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN custom_violation_description TEXT"))
+            if "manual_review_required" not in columns:
+                connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN manual_review_required BOOLEAN DEFAULT 0 NOT NULL"))
+            connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_{table_name}_location_district ON {table_name} (location_district)"))
+
+        inference_log_columns = {column["name"] for column in inspector.get_columns("inference_logs")} if "inference_logs" in table_names else set()
+        if "inference_logs" in table_names and "evidence_report_id" not in inference_log_columns:
             connection.execute(text("ALTER TABLE inference_logs ADD COLUMN evidence_report_id VARCHAR"))
             connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_inference_logs_evidence_report_id ON inference_logs (evidence_report_id)"))
 
-        if "evidence_files" in inspector.get_table_names():
+        if "evidence_files" in table_names:
             evidence_file_columns = {column["name"] for column in inspector.get_columns("evidence_files")}
             if "storage_backend" not in evidence_file_columns:
                 connection.execute(text("ALTER TABLE evidence_files ADD COLUMN storage_backend VARCHAR DEFAULT 'legacy' NOT NULL"))
@@ -52,11 +66,14 @@ def ensure_sqlite_schema_compatibility():
                 connection.execute(text("ALTER TABLE evidence_files ADD COLUMN access_metadata JSON"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_evidence_files_checksum_sha256 ON evidence_files (checksum_sha256)"))
 
-        if "evidence_reports" in inspector.get_table_names():
+        add_report_location_columns("reports")
+        add_report_location_columns("evidence_reports")
+
+        if "evidence_reports" in table_names:
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_evidence_reports_violation_created_at ON evidence_reports (violation_type, created_at)"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_evidence_reports_vehicle_plate ON evidence_reports (vehicle_plate)"))
 
-        if "notifications" in inspector.get_table_names():
+        if "notifications" in table_names:
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_notifications_recipient_user_id ON notifications (recipient_user_id)"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_notifications_recipient_citizen_id ON notifications (recipient_citizen_id)"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_notifications_is_read_created_at ON notifications (is_read, created_at)"))

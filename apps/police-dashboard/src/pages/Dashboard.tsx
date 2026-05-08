@@ -18,18 +18,30 @@ import {
 import { mockDb } from '@lexvision/api-client';
 import type { Report } from '@lexvision/types';
 
-const formatViolation = (value?: string | null, emptyLabel = 'Pending police validation') => value ? value.replace(/-/g, ' ') : emptyLabel;
+const formatViolation = (value?: string | null, emptyLabel = 'Pending police validation') => {
+    if (!value) return emptyLabel;
+    const normalized = value.toLowerCase().replace(/-/g, '_');
+    if (normalized === 'other') return 'Custom Violation Report';
+    return normalized.replace(/_/g, ' ');
+};
 
 export const Dashboard: React.FC = () => {
     const [reports, setReports] = useState<Report[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const navigate = useNavigate();
 
     React.useEffect(() => {
         const fetchReports = async () => {
-            const data = await mockDb.getAllReports();
-            setReports(data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-            setLoading(false);
+            try {
+                const data = await mockDb.getAllReports();
+                setReports(data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+                setLoadError(null);
+            } catch (error: unknown) {
+                setLoadError(error instanceof Error ? error.message : 'Failed to load dashboard reports.');
+            } finally {
+                setLoading(false);
+            }
         };
         fetchReports();
         const interval = setInterval(fetchReports, 3000);
@@ -56,9 +68,23 @@ export const Dashboard: React.FC = () => {
     const recentReports = reports.slice(0, 10);
     // Active cases needing attention
     const activeCases = reports.filter(r => r.status === 'submitted' || r.status === 'under-review');
+    const districtWorkload = Object.entries(
+        activeCases.reduce<Record<string, number>>((acc, report) => {
+            const district = report.location.district || 'Not set';
+            acc[district] = (acc[district] || 0) + 1;
+            return acc;
+        }, {})
+    ).sort((a, b) => b[1] - a[1]);
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+            {loadError && (
+                <Panel>
+                    <div style={{ color: 'var(--color-error)', fontWeight: 700 }}>
+                        {loadError}
+                    </div>
+                </Panel>
+            )}
 
             {/* Row 1: KPI Cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 'var(--space-6)' }}>
@@ -76,6 +102,19 @@ export const Dashboard: React.FC = () => {
             </div>
 
             {/* Active Queue Panel */}
+            {districtWorkload.length > 0 && (
+                <Panel title="District Workload" action={<Badge variant="info">Active cases</Badge>}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 'var(--space-3)' }}>
+                        {districtWorkload.slice(0, 6).map(([district, count]) => (
+                            <div key={district} style={{ padding: 'var(--space-3)', borderRadius: 'var(--radius-md)', background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
+                                <div style={{ fontSize: '0.78rem', color: 'var(--color-text-secondary)', fontWeight: 700 }}>{district}</div>
+                                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--color-text)' }}>{count}</div>
+                            </div>
+                        ))}
+                    </div>
+                </Panel>
+            )}
+
             {activeCases.length > 0 && (
                 <Panel
                     noPadding
@@ -86,7 +125,7 @@ export const Dashboard: React.FC = () => {
                         </Button>
                     }
                 >
-                    <DataTable headers={['Case ID', 'Type', 'Location', 'Time', 'Priority', 'AI Confidence', 'Action']}>
+                    <DataTable headers={['Case ID', 'Type', 'District', 'Location', 'Time', 'Priority', 'AI Confidence', 'Action']}>
                         {activeCases.slice(0, 5).map((item) => (
                             <tr key={item.id}>
                                 <td style={{ fontFamily: 'monospace', fontWeight: '500' }}>{item.trackingId}</td>
@@ -101,6 +140,7 @@ export const Dashboard: React.FC = () => {
                                         </span>
                                     </div>
                                 </td>
+                                <td><Badge variant="neutral">{item.location.district || 'Not set'}</Badge></td>
                                 <td>{item.location.address || item.location.city}</td>
                                 <td style={{ color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>
                                     <Clock size={14} style={{ verticalAlign: 'text-bottom', marginRight: '4px' }} />
@@ -109,9 +149,11 @@ export const Dashboard: React.FC = () => {
                                 <td>
                                     <Badge variant={
                                         item.violationType === 'red-light' ? 'error' :
+                                            item.violationType === 'other' ? 'warning' :
                                             item.violationType === 'helmet' || item.violationType === 'no-helmet' ? 'warning' : 'info'
                                     }>
                                         {item.violationType === 'red-light' ? 'HIGH' :
+                                            item.violationType === 'other' ? 'MANUAL' :
                                             item.violationType === 'helmet' || item.violationType === 'no-helmet' ? 'MEDIUM' : 'LOW'}
                                     </Badge>
                                 </td>
@@ -142,7 +184,7 @@ export const Dashboard: React.FC = () => {
                     </Button>
                 }
             >
-                <DataTable headers={['Case ID', 'Type', 'Location', 'Date', 'Status', 'AI', 'Action']}>
+                <DataTable headers={['Case ID', 'Type', 'District', 'Location', 'Date', 'Status', 'AI', 'Action']}>
                     {recentReports.map((item) => (
                             <tr key={item.id}>
                                 <td style={{ fontFamily: 'monospace', fontWeight: '500' }}>{item.trackingId}</td>
@@ -157,6 +199,7 @@ export const Dashboard: React.FC = () => {
                                         </span>
                                     </div>
                                 </td>
+                                <td><Badge variant="neutral">{item.location.district || 'Not set'}</Badge></td>
                                 <td>{item.location.address || item.location.city}</td>
                             <td style={{ color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>
                                 {new Date(item.datetime).toLocaleDateString()}{' '}
@@ -193,7 +236,7 @@ export const Dashboard: React.FC = () => {
                     ))}
                     {reports.length === 0 && !loading && (
                         <tr>
-                            <td colSpan={7} style={{ textAlign: 'center', padding: '2rem' }}>No citizen submissions yet.</td>
+                            <td colSpan={8} style={{ textAlign: 'center', padding: '2rem' }}>No citizen submissions yet.</td>
                         </tr>
                     )}
                 </DataTable>

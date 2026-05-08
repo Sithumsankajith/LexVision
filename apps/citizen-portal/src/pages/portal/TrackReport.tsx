@@ -105,9 +105,15 @@ export const TrackReport: React.FC = () => {
                                 <div className={styles.detailRow}>
                                     <span className={styles.detailLabel}>Type</span>
                                     <span className={styles.detailValue} style={{ textTransform: 'capitalize' }}>
-                                        {report.violationType.replace('-', ' ')}
+                                        {report.violationType === 'other' ? 'Custom Violation Report' : report.violationType.replace('-', ' ')}
                                     </span>
                                 </div>
+                                {report.customViolationDescription && (
+                                    <div className={styles.detailRow}>
+                                        <span className={styles.detailLabel}>Custom Description</span>
+                                        <span className={styles.detailValue}>{report.customViolationDescription}</span>
+                                    </div>
+                                )}
                                 {report.vehicle.plate && (
                                     <div className={styles.detailRow}>
                                         <span className={styles.detailLabel}>Vehicle Type</span>
@@ -129,6 +135,10 @@ export const TrackReport: React.FC = () => {
                                 <div className={styles.detailRow}>
                                     <span className={styles.detailLabel}>City</span>
                                     <span className={styles.detailValue}>{report.location.city}</span>
+                                </div>
+                                <div className={styles.detailRow}>
+                                    <span className={styles.detailLabel}>District</span>
+                                    <span className={styles.detailValue}>{report.location.district || 'Not available'}</span>
                                 </div>
                                 <div className={styles.detailRow}>
                                     <span className={styles.detailLabel}>Date/Time</span>

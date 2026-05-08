@@ -136,26 +136,35 @@ export const Dashboard: React.FC = () => {
     const [reports, setReports] = React.useState<Report[]>([]);
     const [auditLogs, setAuditLogs] = React.useState<any[]>([]);
     const [violationStats, setViolationStats] = React.useState<{ type: string, count: number }[]>([]);
+    const [districtStats, setDistrictStats] = React.useState<{ district: string, count: number }[]>([]);
     const [statusRatio, setStatusRatio] = React.useState<{ status: string, count: number }[]>([]);
     const [reportsTrend, setReportsTrend] = React.useState<{ date: string, count: number }[]>([]);
     const [aiMetrics, setAiMetrics] = React.useState<{ avg_helmet_confidence: number, avg_ocr_confidence: number, avg_inference_latency_seconds: number } | null>(null);
+    const [loadError, setLoadError] = React.useState<string | null>(null);
 
     React.useEffect(() => {
         const fetchData = async () => {
-            const [reportsData, logs, stats, ratioData, trendData, aiData] = await Promise.all([
-                mockDb.getAllReports(),
-                mockDb.adminGetAuditLogs(),
-                mockDb.adminGetViolationTypes(),
-                mockDb.adminGetStatusRatio(),
-                mockDb.adminGetReportsTrend(),
-                mockDb.adminGetAiMetrics()
-            ]);
-            setReports(reportsData.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-            setAuditLogs(logs);
-            setViolationStats(stats);
-            if (Array.isArray(ratioData)) setStatusRatio(ratioData);
-            setReportsTrend(trendData);
-            setAiMetrics(aiData);
+            try {
+                const [reportsData, logs, stats, districtData, ratioData, trendData, aiData] = await Promise.all([
+                    mockDb.getAllReports(),
+                    mockDb.adminGetAuditLogs(),
+                    mockDb.adminGetViolationTypes(),
+                    mockDb.adminGetDistrictAnalytics(),
+                    mockDb.adminGetStatusRatio(),
+                    mockDb.adminGetReportsTrend(),
+                    mockDb.adminGetAiMetrics()
+                ]);
+                setReports(reportsData.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+                setAuditLogs(logs);
+                setViolationStats(stats);
+                setDistrictStats(districtData);
+                if (Array.isArray(ratioData)) setStatusRatio(ratioData);
+                setReportsTrend(trendData);
+                setAiMetrics(aiData);
+                setLoadError(null);
+            } catch (error: unknown) {
+                setLoadError(error instanceof Error ? error.message : 'Failed to load dashboard data.');
+            }
         };
         fetchData();
         const interval = setInterval(fetchData, 8000);
@@ -192,6 +201,13 @@ export const Dashboard: React.FC = () => {
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-8)' }}>
+            {loadError && (
+                <Panel>
+                    <div style={{ color: 'var(--color-error)', fontWeight: 700 }}>
+                        {loadError}
+                    </div>
+                </Panel>
+            )}
 
             {/* KPI Cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 'var(--space-6)' }}>
@@ -261,7 +277,7 @@ export const Dashboard: React.FC = () => {
                             return violationStats.map((stat, i) => {
                                 const heightPercent = Math.max(8, Math.round((stat.count / maxCount) * 100));
                                 const [baseColor, darkColor] = colors[stat.type] || colors['other'];
-                                const label = stat.type.replace(/-/g, ' ');
+                                const label = stat.type === 'other' ? 'Custom' : stat.type.replace(/-/g, ' ');
 
                                 return (
                                     <div key={i} title={`${stat.count} reports`} style={{
@@ -307,6 +323,29 @@ export const Dashboard: React.FC = () => {
                                 );
                             });
                         })()}
+                    </div>
+                </Panel>
+
+                <Panel title="Reports by District">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', minHeight: '250px', justifyContent: districtStats.length ? 'flex-start' : 'center' }}>
+                        {districtStats.length === 0 ? (
+                            <div style={{ textAlign: 'center', color: 'var(--color-text-secondary)', opacity: 0.6 }}>
+                                No district data reported yet
+                            </div>
+                        ) : (
+                            districtStats.slice(0, 8).map((stat) => {
+                                const maxDistrictCount = Math.max(1, ...districtStats.map((item) => item.count));
+                                return (
+                                    <div key={stat.district} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                                        <span style={{ minWidth: '110px', fontWeight: 700, fontSize: '0.82rem' }}>{stat.district}</span>
+                                        <div style={{ flex: 1, height: '10px', borderRadius: '999px', background: 'var(--color-background)', overflow: 'hidden' }}>
+                                            <div style={{ width: `${Math.max(6, (stat.count / maxDistrictCount) * 100)}%`, height: '100%', background: 'linear-gradient(90deg, #2563eb, #38bdf8)' }} />
+                                        </div>
+                                        <span style={{ fontWeight: 800, color: 'var(--color-text)' }}>{stat.count}</span>
+                                    </div>
+                                );
+                            })
+                        )}
                     </div>
                 </Panel>
 
@@ -387,7 +426,7 @@ export const Dashboard: React.FC = () => {
                     {reports.slice(0, 10).map((report) => (
                         <tr key={report.id}>
                             <td style={{ fontFamily: 'monospace', fontWeight: '700', color: 'var(--color-primary)' }}>#{report.trackingId}</td>
-                            <td style={{ fontWeight: '600' }}>{report.violationType.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}</td>
+                            <td style={{ fontWeight: '600' }}>{report.violationType === 'other' ? 'Custom Violation Report' : report.violationType.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}</td>
                             <td>
                                 <span style={{
                                     color: report.aiAnalysis?.confidence ? (report.aiAnalysis.confidence > 0.8 ? 'var(--color-success)' : 'var(--color-warning)') : 'var(--color-text-secondary)',
@@ -397,7 +436,10 @@ export const Dashboard: React.FC = () => {
                                 </span>
                             </td>
                             <td style={{ color: 'var(--color-text-secondary)', fontWeight: '500' }}>{new Date(report.datetime).toLocaleDateString()}</td>
-                            <td style={{ fontWeight: '600' }}>{report.location.address || report.location.city}</td>
+                            <td style={{ fontWeight: '600' }}>
+                                <div>{report.location.address || report.location.city}</div>
+                                <div style={{ fontSize: '0.72rem', color: 'var(--color-text-secondary)' }}>{report.location.district || 'District not set'}</div>
+                            </td>
                             <td>
                                 <Badge variant={
                                     report.status === 'submitted' ? 'info' :

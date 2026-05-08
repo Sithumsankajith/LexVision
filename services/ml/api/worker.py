@@ -852,6 +852,13 @@ def _run_selected_violation_detection(image_path: str | None, claimed_violation_
             status="failed",
         )
 
+    if claimed_violation_type == "other":
+        return _manual_review_violation_result(
+            claimed_violation_type,
+            reason="Citizen selected Other. Specialized violation models were skipped; ANPR and OCR were still attempted.",
+            status="manual_review_required",
+        )
+
     if claimed_violation_type == "helmet":
         result = run_helmet_detection(image_path)
         if result.get("status") in {"api_error", "configuration_error", "dependency_error", "timeout", "failed"}:
@@ -969,6 +976,8 @@ def attempt_inference(
             violation_result.get("needs_manual_review", True),
         )
     )
+    if hasattr(report, "manual_review_required"):
+        report.manual_review_required = manual_review_required
 
     bbox_payload = {
         "model_version": {
@@ -995,6 +1004,7 @@ def attempt_inference(
         "confidence_band": confidence_band,
         "claimed_violation_type": claimed_violation_type,
         "inferred_violation_type": inferred_violation_type,
+        "custom_violation_description": getattr(report, "custom_violation_description", None),
         "plate_text": anpr_result["plate_text"],
         "plate_confidence": round(anpr_result["plate_confidence"], 4),
         "validation_status": anpr_result["validation_status"],
@@ -1100,6 +1110,7 @@ def attempt_inference(
             citizen_id = getattr(report, "citizen_id", None)
             report_id_val = report.id
             tracking_id_val = getattr(report, "tracking_id", report_id_val)
+            district_val = getattr(report, "location_district", None)
             inference_failed = bool(violation_result.get("error"))
 
             if citizen_id:
@@ -1110,7 +1121,11 @@ def attempt_inference(
                     notification_type="ai_analysis_completed",
                     related_entity_type="evidence_report",
                     related_entity_id=report_id_val,
-                    metadata={"tracking_id": tracking_id_val, "confidence": overall_confidence},
+                    metadata={
+                        "tracking_id": tracking_id_val,
+                        "confidence": overall_confidence,
+                        "district": district_val,
+                    },
                 )
 
             review_priority = "high" if (overall_confidence >= HIGH_CONFIDENCE_THRESHOLD and not manual_review_required) else "normal"
@@ -1118,14 +1133,21 @@ def attempt_inference(
                 db,
                 title="AI analysis completed" if not inference_failed else "AI analysis needs review",
                 message=(
-                    f"AI results are available for report {tracking_id_val}. "
+                    f"AI results are available for report {tracking_id_val}"
+                    + (f" from {district_val}" if district_val else "")
+                    + ". "
                     + (f"High-confidence ({overall_confidence:.0%}) — ready for officer decision." if review_priority == "high" else "Manual review is recommended.")
                 ),
                 notification_type="ai_analysis_completed",
                 related_entity_type="evidence_report",
                 related_entity_id=report_id_val,
                 priority=review_priority,
-                metadata={"tracking_id": tracking_id_val, "confidence": overall_confidence, "manual_review_required": manual_review_required},
+                metadata={
+                    "tracking_id": tracking_id_val,
+                    "confidence": overall_confidence,
+                    "manual_review_required": manual_review_required,
+                    "district": district_val,
+                },
             )
 
             if inference_failed:
@@ -1137,7 +1159,11 @@ def attempt_inference(
                     related_entity_type="evidence_report",
                     related_entity_id=report_id_val,
                     priority="high",
-                    metadata={"tracking_id": tracking_id_val, "error": violation_result.get("error")},
+                    metadata={
+                        "tracking_id": tracking_id_val,
+                        "error": violation_result.get("error"),
+                        "district": district_val,
+                    },
                 )
 
             db.commit()

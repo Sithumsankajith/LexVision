@@ -4,6 +4,7 @@ import { Filter, FileText, History } from 'lucide-react';
 import { Button, Input, Select } from '@lexvision/ui';
 import { Badge, DataTable, Panel } from '@lexvision/ui';
 import { mockDb } from '@lexvision/api-client';
+import { SRI_LANKA_DISTRICTS } from '@lexvision/types';
 import type { Report } from '@lexvision/types';
 import {
     formatViolationLabel,
@@ -34,6 +35,7 @@ export const Queue: React.FC = () => {
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
     const [violationFilter, setViolationFilter] = useState('all');
+    const [districtFilter, setDistrictFilter] = useState('all');
     const [sort, setSort] = useState('newest');
     const [offset, setOffset] = useState(0);
     const [total, setTotal] = useState(0);
@@ -49,6 +51,7 @@ export const Queue: React.FC = () => {
                     offset,
                     status: statusFilter,
                     violationType: violationFilter,
+                    district: districtFilter,
                     search,
                     sort,
                 });
@@ -66,7 +69,7 @@ export const Queue: React.FC = () => {
         fetchReports();
         const interval = setInterval(fetchReports, 5000);
         return () => clearInterval(interval);
-    }, [offset, search, sort, statusFilter, violationFilter]);
+    }, [districtFilter, offset, search, sort, statusFilter, violationFilter]);
 
     const filteredReports = useMemo(() => {
         return reports;
@@ -76,6 +79,7 @@ export const Queue: React.FC = () => {
         setSearch('');
         setStatusFilter('all');
         setViolationFilter('all');
+        setDistrictFilter('all');
         setSort('newest');
         setOffset(0);
     };
@@ -124,7 +128,7 @@ export const Queue: React.FC = () => {
             >
                 <div style={{ flex: 1, minWidth: '280px' }}>
                     <Input
-                        placeholder="Search by Case ID, plate number, or citizen phone..."
+                        placeholder="Search by Case ID, plate number, district, or citizen phone..."
                         fullWidth
                         style={{ height: '52px', fontSize: '1rem' }}
                         value={search}
@@ -166,8 +170,21 @@ export const Queue: React.FC = () => {
                             { value: 'helmet', label: 'Helmet' },
                             { value: 'red_light', label: 'Red Light' },
                             { value: 'white_line', label: 'White Line' },
+                            { value: 'other', label: 'Other' },
                         ]}
                         style={{ width: '180px', height: '52px' }}
+                    />
+                    <Select
+                        value={districtFilter}
+                        onChange={(event) => {
+                            setDistrictFilter(event.target.value);
+                            setOffset(0);
+                        }}
+                        options={[
+                            { value: 'all', label: 'All Districts' },
+                            ...SRI_LANKA_DISTRICTS.map((district) => ({ value: district, label: district })),
+                        ]}
+                        style={{ width: '190px', height: '52px' }}
                     />
                     <Select
                         value={sort}
@@ -201,7 +218,7 @@ export const Queue: React.FC = () => {
                         {error}
                     </div>
                 )}
-                <DataTable headers={['Case ID', 'Citizen Reported Violation', 'AI Suggestion', 'Review Priority', 'Submitted Time', 'Status', 'Action']}>
+                <DataTable headers={['Case ID', 'Citizen Reported Violation', 'District', 'AI Suggestion', 'Review Priority', 'Submitted Time', 'Status', 'Action']}>
                     {filteredReports.map((item) => {
                         const suggestion = getQueueAISuggestion(item.aiSummary);
                         const reviewPriority = getOfficerReviewPriority(item.aiSummary);
@@ -219,7 +236,15 @@ export const Queue: React.FC = () => {
                                         <span style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>
                                             {item.location.address || item.location.city}
                                         </span>
+                                        {item.customViolationDescription && (
+                                            <span style={{ fontSize: '0.78rem', color: 'var(--color-text-secondary)', fontStyle: 'italic' }}>
+                                                {item.customViolationDescription}
+                                            </span>
+                                        )}
                                     </div>
+                                </td>
+                                <td>
+                                    <Badge variant="neutral">{item.location.district || 'Not set'}</Badge>
                                 </td>
                                 <td>
                                     <Badge variant={getSuggestionBadgeVariant(suggestion)}>
@@ -258,9 +283,9 @@ export const Queue: React.FC = () => {
                     })}
                     {filteredReports.length === 0 && !loading && (
                         <tr>
-                            <td colSpan={7} style={{ textAlign: 'center', padding: '4rem' }}>
+                            <td colSpan={8} style={{ textAlign: 'center', padding: '4rem' }}>
                                 <div style={{ opacity: 0.5, fontSize: '1.25rem' }}>
-                                    {search || statusFilter !== 'all' ? 'No cases match your filters' : 'No violation cases in the queue'}
+                                    {search || statusFilter !== 'all' || violationFilter !== 'all' || districtFilter !== 'all' ? 'No cases match your filters' : 'No violation cases in the queue'}
                                 </div>
                             </td>
                         </tr>

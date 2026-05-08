@@ -34,6 +34,9 @@ export const formatViolationLabel = (value?: string | null, emptyLabel = 'Pendin
     if (normalized === 'no_helmet') {
         return 'no helmet';
     }
+    if (normalized === 'other') {
+        return 'Custom Violation Report';
+    }
     return normalized.replace(/_/g, ' ');
 };
 
@@ -88,7 +91,9 @@ export const getRelevantDetections = (detections: AIDetection[] = [], violationF
 
 export const getOfficerGuidance = (aiSummary: AISummary | null | undefined, claimedViolation: string | null | undefined) => {
     const violationType = normalizeViolationType(aiSummary?.violationFamily || claimedViolation);
-    const baseGuidance = violationType === 'red_light'
+    const baseGuidance = violationType === 'other'
+        ? 'Review the citizen description, evidence, and license plate details manually'
+        : violationType === 'red_light'
         ? 'Check if vehicle crossed during red signal'
         : violationType === 'white_line'
             ? 'Check if vehicle crossed white line illegally'

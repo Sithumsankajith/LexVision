@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { AlertCircle, CheckCircle2, ChevronRight, Clock3, FileText, RefreshCcw, Smartphone, Gift, Trophy, Star } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ChevronRight, Clock3, FileText, RefreshCcw, Smartphone, Gift, Trophy, Star, MapPin } from 'lucide-react';
 import { Button, Card } from '@lexvision/ui';
 import { auth, mockDb } from '@lexvision/api-client';
 import type { Report, Reward, UserProfile } from '@lexvision/types';
@@ -223,6 +223,7 @@ export const MyReports: React.FC = () => {
                                             <div className={styles.reportMeta}>
                                                 <span><Clock3 size={14} /> Submitted {new Date(report.createdAt).toLocaleString()}</span>
                                                 <span><CheckCircle2 size={14} /> Last updated {new Date(report.updatedAt).toLocaleString()}</span>
+                                                {report.location.district && <span><MapPin size={14} /> {report.location.district}</span>}
                                             </div>
                                         </div>
                                         <ChevronRight size={18} className={styles.chevron} />

@@ -4,7 +4,7 @@ import { Card, Button, Input } from '@lexvision/ui';
 import { auth } from '@lexvision/api-client';
 
 export const Login: React.FC = () => {
-    const [badge, setBadge] = useState('');
+    const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
@@ -14,17 +14,17 @@ export const Login: React.FC = () => {
         e.preventDefault();
         setError('');
 
-        if (!badge || !password) {
-            setError('Please enter both badge number and password.');
+        if (!email.trim() || !password) {
+            setError('Please enter both email and password.');
             return;
         }
 
         setLoading(true);
         try {
-            await auth.login(badge, password);
+            await auth.login(email, password);
             navigate('/dashboard');
-        } catch (err: any) {
-            setError(err.message || 'Login failed.');
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : 'Login failed.');
         } finally {
             setLoading(false);
         }
@@ -43,11 +43,12 @@ export const Login: React.FC = () => {
 
                 <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
                     <Input
-                        label="Badge Number"
-                        placeholder="P-12345"
+                        label="Email Address"
+                        placeholder="officer@lexvision.lk"
+                        type="email"
                         fullWidth
-                        value={badge}
-                        onChange={(e) => setBadge(e.target.value)}
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
                         disabled={loading}
                     />
                     <Input

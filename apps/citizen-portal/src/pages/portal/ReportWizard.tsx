@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Camera, MapPin, Radio, Upload, X, CheckCircle, FileText, ArrowRight, ArrowLeft, Locate, Loader2 } from 'lucide-react';
 import { Stepper, Button, Card, Input, Select } from '@lexvision/ui';
 import { auth, mockDb } from '@lexvision/api-client';
+import { SRI_LANKA_DISTRICTS } from '@lexvision/types';
 import type { ViolationType } from '@lexvision/types';
 import { CitizenOtpLoginModal, type CitizenOtpVerificationResult } from '@/components/CitizenOtpLoginModal';
 import {
@@ -91,6 +92,68 @@ const SRI_LANKAN_CITIES = [
 
 const MAX_EVIDENCE_FILES = 5;
 const MAX_EVIDENCE_FILE_SIZE_BYTES = 25 * 1024 * 1024;
+type LeafletBounds = [[number, number], [number, number]];
+
+const SRI_LANKA_BOUNDS = {
+    north: 9.9,
+    south: 5.9,
+    east: 81.9,
+    west: 79.5,
+};
+const SRI_LANKA_LEAFLET_BOUNDS: LeafletBounds = [
+    [SRI_LANKA_BOUNDS.south, SRI_LANKA_BOUNDS.west],
+    [SRI_LANKA_BOUNDS.north, SRI_LANKA_BOUNDS.east],
+];
+const COLOMBO_CENTER: [number, number] = [6.9271, 79.8612];
+const DISTRICT_OPTIONS = [
+    { value: '', label: 'Select District' },
+    ...SRI_LANKA_DISTRICTS.map((district) => ({ value: district, label: district })),
+];
+const DISTRICT_CENTERS: Record<string, [number, number]> = {
+    Colombo: [6.9271, 79.8612],
+    Gampaha: [7.0873, 80.0144],
+    Kalutara: [6.5854, 79.9607],
+    Kandy: [7.2906, 80.6337],
+    Matale: [7.4675, 80.6234],
+    'Nuwara Eliya': [6.9497, 80.7891],
+    Galle: [6.0535, 80.2210],
+    Matara: [5.9549, 80.5550],
+    Hambantota: [6.1248, 81.1185],
+    Jaffna: [9.6615, 80.0255],
+    Kilinochchi: [9.3803, 80.3770],
+    Mannar: [8.9810, 79.9044],
+    Mullaitivu: [9.2671, 80.8142],
+    Vavuniya: [8.7514, 80.4971],
+    Trincomalee: [8.5874, 81.2152],
+    Batticaloa: [7.7170, 81.7000],
+    Ampara: [7.3018, 81.6747],
+    Kurunegala: [7.4863, 80.3623],
+    Puttalam: [8.0408, 79.8394],
+    Anuradhapura: [8.3114, 80.4037],
+    Polonnaruwa: [7.9403, 81.0188],
+    Badulla: [6.9934, 81.0550],
+    Monaragala: [6.8728, 81.3507],
+    Ratnapura: [6.6828, 80.3992],
+    Kegalle: [7.2513, 80.3464],
+};
+
+type ReverseGeocodeAddress = {
+    road?: string;
+    suburb?: string;
+    neighbourhood?: string;
+    state_district?: string;
+    county?: string;
+    city_district?: string;
+    municipality?: string;
+    city?: string;
+    town?: string;
+    village?: string;
+};
+
+type ReverseGeocodeResponse = {
+    address?: ReverseGeocodeAddress;
+    display_name?: string;
+};
 
 interface LeafletLatLng {
     lat: number;
@@ -122,12 +185,18 @@ interface LeafletTileLayer {
 }
 
 interface LeafletApi {
-    map(element: HTMLElement): LeafletMapInstance;
+    map(element: HTMLElement, options?: {
+        maxBounds?: LeafletBounds;
+        maxBoundsViscosity?: number;
+        minZoom?: number;
+    }): LeafletMapInstance;
     tileLayer(
         url: string,
         options: {
             attribution: string;
             maxZoom: number;
+            maxNativeZoom?: number;
+            bounds?: LeafletBounds;
         },
     ): LeafletTileLayer;
     marker(position: [number, number], options: { draggable: boolean }): LeafletMarkerInstance;
@@ -146,12 +215,66 @@ const getErrorMessage = (error: unknown, fallback: string) => {
     return fallback;
 };
 
+const isWithinSriLankaBounds = (lat: number, lng: number) =>
+    lat >= SRI_LANKA_BOUNDS.south &&
+    lat <= SRI_LANKA_BOUNDS.north &&
+    lng >= SRI_LANKA_BOUNDS.west &&
+    lng <= SRI_LANKA_BOUNDS.east;
+
+const clampToSriLankaBounds = (lat: number, lng: number): [number, number] => [
+    Math.min(Math.max(lat, SRI_LANKA_BOUNDS.south), SRI_LANKA_BOUNDS.north),
+    Math.min(Math.max(lng, SRI_LANKA_BOUNDS.west), SRI_LANKA_BOUNDS.east),
+];
+
+const normalizeDistrictName = (value?: string | null) => {
+    const cleaned = value?.replace(/\s+district$/i, '').trim().toLowerCase();
+    if (!cleaned) return '';
+    return SRI_LANKA_DISTRICTS.find((district) => district.toLowerCase() === cleaned) || '';
+};
+
+const getNearestDistrict = (lat: number, lng: number) => {
+    let bestDistrict = 'Colombo';
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    Object.entries(DISTRICT_CENTERS).forEach(([district, [districtLat, districtLng]]) => {
+        const distance = ((lat - districtLat) ** 2) + ((lng - districtLng) ** 2);
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            bestDistrict = district;
+        }
+    });
+
+    return bestDistrict;
+};
+
+const extractDistrictFromReverseGeocode = (data: ReverseGeocodeResponse | null, lat: number, lng: number) => {
+    const address = data?.address || {};
+    const candidates = [
+        address.state_district,
+        address.county,
+        address.city_district,
+        address.municipality,
+        address.city,
+        address.town,
+        address.village,
+        ...(typeof data?.display_name === 'string' ? data.display_name.split(',') : []),
+    ];
+
+    for (const candidate of candidates) {
+        const district = normalizeDistrictName(candidate);
+        if (district) return district;
+    }
+
+    return getNearestDistrict(lat, lng);
+};
+
 // --- Interactive Map Component (Leaflet via CDN) ---
 const LocationMap: React.FC<{
     lat: number;
     lng: number;
+    district: string;
     onLocationChange: (lat: number, lng: number) => void;
-}> = ({ lat, lng, onLocationChange }) => {
+}> = ({ lat, lng, district, onLocationChange }) => {
     const mapRef = useRef<HTMLDivElement>(null);
     const mapInstanceRef = useRef<LeafletMapInstance | null>(null);
     const markerRef = useRef<LeafletMarkerInstance | null>(null);
@@ -183,23 +306,33 @@ const LocationMap: React.FC<{
         loadLeaflet().then((L) => {
             if (!mapRef.current || mapInstanceRef.current) return;
 
-            const map = L.map(mapRef.current).setView([lat, lng], 14);
+            const isDefaultLocation = isDefaultReportCoordinates(lat, lng);
+            const map = L.map(mapRef.current, {
+                maxBounds: SRI_LANKA_LEAFLET_BOUNDS,
+                maxBoundsViscosity: 1,
+                minZoom: 7,
+            }).setView(isDefaultLocation ? COLOMBO_CENTER : [lat, lng], isDefaultLocation ? 7 : 14);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '© OpenStreetMap contributors',
                 maxZoom: 19,
+                maxNativeZoom: 19,
+                bounds: SRI_LANKA_LEAFLET_BOUNDS,
             }).addTo(map);
 
             const marker = L.marker([lat, lng], { draggable: true }).addTo(map);
-            marker.bindPopup('📍 Drag me to the incident location').openPopup();
+            marker.bindPopup('Drag the pin to the incident location').openPopup();
 
             marker.on('dragend', () => {
                 const pos = marker.getLatLng();
-                onLocationChange(pos.lat, pos.lng);
+                const [boundedLat, boundedLng] = clampToSriLankaBounds(pos.lat, pos.lng);
+                marker.setLatLng([boundedLat, boundedLng]);
+                onLocationChange(boundedLat, boundedLng);
             });
 
             map.on('click', (e: LeafletMouseEvent) => {
-                marker.setLatLng(e.latlng);
-                onLocationChange(e.latlng.lat, e.latlng.lng);
+                const [boundedLat, boundedLng] = clampToSriLankaBounds(e.latlng.lat, e.latlng.lng);
+                marker.setLatLng([boundedLat, boundedLng]);
+                onLocationChange(boundedLat, boundedLng);
             });
 
             mapInstanceRef.current = map;
@@ -223,21 +356,17 @@ const LocationMap: React.FC<{
     useEffect(() => {
         if (markerRef.current && mapInstanceRef.current) {
             markerRef.current.setLatLng([lat, lng]);
-            mapInstanceRef.current.setView([lat, lng], 14);
+            mapInstanceRef.current.setView([lat, lng], isDefaultReportCoordinates(lat, lng) ? 7 : 14);
         }
     }, [lat, lng]);
 
     return (
-        <div
-            ref={mapRef}
-            style={{
-                height: '300px',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-border)',
-                overflow: 'hidden',
-                zIndex: 1
-            }}
-        />
+        <div className={styles.mapShell}>
+            <div className={styles.mapBadge}>
+                District: {district || getNearestDistrict(lat, lng)}
+            </div>
+            <div ref={mapRef} className={styles.mapCanvas} />
+        </div>
     );
 };
 
@@ -293,6 +422,29 @@ export const ReportWizard: React.FC = () => {
         };
     }, []);
 
+    const reverseGeocodeLocation = useCallback((lat: number, lng: number, overwriteText = false) => {
+        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&accept-language=en`)
+            .then(res => res.json())
+            .then((data: ReverseGeocodeResponse) => {
+                const addr = data.address || {};
+                const locationStr = [addr.road, addr.suburb, addr.neighbourhood].filter(Boolean).join(', ') || data.display_name?.split(',').slice(0, 2).join(',') || '';
+                const cityStr = addr.city || addr.town || addr.village || addr.county || '';
+                const districtStr = extractDistrictFromReverseGeocode(data, lat, lng);
+                setFormData(prev => ({
+                    ...prev,
+                    location: overwriteText || !prev.location ? locationStr : prev.location,
+                    city: overwriteText || !prev.city ? cityStr : prev.city,
+                    district: districtStr || getNearestDistrict(lat, lng),
+                }));
+            })
+            .catch(() => {
+                setFormData(prev => ({
+                    ...prev,
+                    district: getNearestDistrict(lat, lng),
+                }));
+            });
+    }, []);
+
     // Auto-fetch current location on step 2
     const fetchCurrentLocation = useCallback(() => {
         if (!navigator.geolocation) {
@@ -304,28 +456,20 @@ export const ReportWizard: React.FC = () => {
         navigator.geolocation.getCurrentPosition(
             (position) => {
                 const { latitude, longitude } = position.coords;
+                if (!isWithinSriLankaBounds(latitude, longitude)) {
+                    setGpsLoading(false);
+                    setGpsError('Your current location appears outside Sri Lanka. Please place the pin within Sri Lanka.');
+                    return;
+                }
+
                 setFormData(prev => ({
                     ...prev,
                     lat: latitude,
-                    lng: longitude
+                    lng: longitude,
+                    district: getNearestDistrict(latitude, longitude),
                 }));
-                // Reverse geocode to get address
-                fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`)
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data.display_name) {
-                            const addr = data.address || {};
-                            const locationStr = [addr.road, addr.suburb, addr.neighbourhood].filter(Boolean).join(', ') || data.display_name.split(',').slice(0, 2).join(',');
-                            const cityStr = addr.city || addr.town || addr.village || addr.county || '';
-                            setFormData(prev => ({
-                                ...prev,
-                                location: locationStr,
-                                city: cityStr,
-                            }));
-                        }
-                    })
-                    .catch(() => { /* reverse geocode failed, user can enter manually */ })
-                    .finally(() => setGpsLoading(false));
+                reverseGeocodeLocation(latitude, longitude, true);
+                setGpsLoading(false);
             },
             (error) => {
                 setGpsLoading(false);
@@ -342,7 +486,7 @@ export const ReportWizard: React.FC = () => {
             },
             { enableHighAccuracy: true, timeout: 10000 }
         );
-    }, []);
+    }, [reverseGeocodeLocation]);
 
     // Auto-fetch on entering step 2
     useEffect(() => {
@@ -353,23 +497,9 @@ export const ReportWizard: React.FC = () => {
     }, [currentStep, draftReady, formData.lat, formData.lng, fetchCurrentLocation]);
 
     const handleMapLocationChange = (lat: number, lng: number) => {
-        setFormData(prev => ({ ...prev, lat, lng }));
-        // Reverse geocode the new pin location
-        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`)
-            .then(res => res.json())
-            .then(data => {
-                if (data.display_name) {
-                    const addr = data.address || {};
-                    const locationStr = [addr.road, addr.suburb, addr.neighbourhood].filter(Boolean).join(', ') || data.display_name.split(',').slice(0, 2).join(',');
-                    const cityStr = addr.city || addr.town || addr.village || addr.county || '';
-                    setFormData(prev => ({
-                        ...prev,
-                        location: prev.location || locationStr,
-                        city: prev.city || cityStr,
-                    }));
-                }
-            })
-            .catch(() => { /* continue silently */ });
+        const [boundedLat, boundedLng] = clampToSriLankaBounds(lat, lng);
+        setFormData(prev => ({ ...prev, lat: boundedLat, lng: boundedLng, district: getNearestDistrict(boundedLat, boundedLng) }));
+        reverseGeocodeLocation(boundedLat, boundedLng);
     };
 
     const handleBack = () => {
@@ -395,6 +525,9 @@ export const ReportWizard: React.FC = () => {
             if (!formData.violationType) {
                 markInvalid(1, 'violationType', 'Please select a violation type.');
             }
+            if (formData.violationType === 'other' && !formData.customViolationDescription.trim()) {
+                markInvalid(1, 'customViolationDescription', 'Describe the violation when selecting Other.');
+            }
         }
 
         if (stepsToValidate.includes(2)) {
@@ -402,6 +535,13 @@ export const ReportWizard: React.FC = () => {
             if (!formData.time) markInvalid(2, 'time', 'Time is required.');
             if (!formData.location) markInvalid(2, 'location', 'Location description is required.');
             if (!formData.city) markInvalid(2, 'city', 'City is required.');
+            if (!formData.district) markInvalid(2, 'district', 'District is required.');
+            if (!isWithinSriLankaBounds(formData.lat, formData.lng)) {
+                markInvalid(2, 'mapLocation', 'Location must be within Sri Lanka.');
+            }
+            if (isDefaultReportCoordinates(formData.lat, formData.lng)) {
+                markInvalid(2, 'mapLocation', 'Choose the exact incident location on the map or use current location.');
+            }
 
             // Future date validation
             const selectedDate = new Date(`${formData.date}T${formData.time}`);
@@ -472,7 +612,9 @@ export const ReportWizard: React.FC = () => {
                 lng: formData.lng,
                 address: formData.location,
                 city: formData.city,
+                district: formData.district,
             },
+            customViolationDescription: formData.violationType === 'other' ? formData.customViolationDescription.trim() : null,
             evidence: await Promise.all(
                 formData.evidenceFiles.map(async (f, i) => ({
                     id: `ev-${i}`,
@@ -537,6 +679,7 @@ export const ReportWizard: React.FC = () => {
                     violationType: payload.violationType,
                     datetime: payload.datetime,
                     location: payload.location,
+                    customViolationDescription: payload.customViolationDescription,
                     evidence: payload.evidence,
                     vehicle: payload.vehicle,
                 })
@@ -660,35 +803,67 @@ export const ReportWizard: React.FC = () => {
             <div className={styles.stepContent}>
                 {/* Step 1: Violation Type */}
                 {currentStep === 1 && (
-                    <div className="card-grid">
-                        {[
-                            { id: 'helmet' as ViolationType, label: 'Helmet Violation', icon: <Radio size={24} /> },
-                            { id: 'red_light' as ViolationType, label: 'Red Light Violation', icon: <X size={24} /> },
-                            { id: 'white_line' as ViolationType, label: 'White Line Crossing', icon: <FileText size={24} /> },
-                        ].map(type => (
-                            <Card
-                                key={type.id}
-                                className={`${styles.violationCard} ${formData.violationType === type.id ? styles.selected : ''}`}
-                                onClick={() => setFormData({ ...formData, violationType: type.id })}
-                                padding="lg"
-                            >
-                                <div className={styles.violationIcon}>{type.icon}</div>
-                                <div>
-                                    <h3>{type.label}</h3>
-                                </div>
-                            </Card>
-                        ))}
+                    <div className={styles.stepPanel}>
+                        <div className={styles.sectionHeader}>
+                            <h2>What happened?</h2>
+                            <p>Select the closest category. If it does not fit, choose Other and describe it.</p>
+                        </div>
+                        <div id="violationType-input" className={styles.violationGrid} tabIndex={-1}>
+                            {[
+                                { id: 'helmet' as ViolationType, label: 'Helmet Violation', icon: <Radio size={24} /> },
+                                { id: 'red_light' as ViolationType, label: 'Red Light Violation', icon: <X size={24} /> },
+                                { id: 'white_line' as ViolationType, label: 'White Line Crossing', icon: <FileText size={24} /> },
+                                { id: 'other' as ViolationType, label: 'Other Violation', icon: <FileText size={24} /> },
+                            ].map(type => (
+                                <Card
+                                    key={type.id}
+                                    className={`${styles.violationCard} ${formData.violationType === type.id ? styles.selected : ''}`}
+                                    onClick={() => setFormData({
+                                        ...formData,
+                                        violationType: type.id,
+                                        customViolationDescription: type.id === 'other' ? formData.customViolationDescription : '',
+                                    })}
+                                    padding="lg"
+                                >
+                                    <div className={styles.violationIcon}>{type.icon}</div>
+                                    <div>
+                                        <h3>{type.label}</h3>
+                                    </div>
+                                </Card>
+                            ))}
+                        </div>
                         {errors.violationType && <p className={styles.errorMessage}>{errors.violationType}</p>}
+
+                        {formData.violationType === 'other' && (
+                            <div className="form-group">
+                                <label className="form-label" htmlFor="customViolationDescription-input">
+                                    Describe the violation <span className={styles.requiredMark}>*</span>
+                                </label>
+                                <textarea
+                                    id="customViolationDescription-input"
+                                    className="form-textarea"
+                                    rows={4}
+                                    placeholder="Explain what the driver or rider did, including lane, signal, direction, and any safety risk."
+                                    value={formData.customViolationDescription}
+                                    onChange={e => setFormData({ ...formData, customViolationDescription: e.target.value })}
+                                />
+                                {errors.customViolationDescription && <p className={styles.errorMessage}>{errors.customViolationDescription}</p>}
+                            </div>
+                        )}
                     </div>
                 )}
 
                 {/* Step 2: Location & Time */}
                 {currentStep === 2 && (
-                    <div className="form-grid">
+                    <div className={`${styles.stepPanel} form-grid`}>
+                        <div className={styles.sectionHeader}>
+                            <h2>Where and when?</h2>
+                            <p>Reports are accepted only for locations inside Sri Lanka. The district can be auto-filled from the map and changed manually.</p>
+                        </div>
                         <div className="form-grid form-grid--2-col">
                             <Input
                                 id="date-input"
-                                label="Date of Incident"
+                                label="Date of Incident *"
                                 type="date"
                                 value={formData.date}
                                 onChange={e => setFormData({ ...formData, date: e.target.value })}
@@ -697,7 +872,7 @@ export const ReportWizard: React.FC = () => {
                             />
                             <Input
                                 id="time-input"
-                                label="Time of Incident"
+                                label="Time of Incident *"
                                 type="time"
                                 value={formData.time}
                                 onChange={e => setFormData({ ...formData, time: e.target.value })}
@@ -706,8 +881,18 @@ export const ReportWizard: React.FC = () => {
                         </div>
 
                         <Select
+                            id="district-input"
+                            label="District *"
+                            options={DISTRICT_OPTIONS}
+                            value={formData.district}
+                            onChange={e => setFormData({ ...formData, district: e.target.value })}
+                            error={errors.district}
+                            fullWidth
+                        />
+
+                        <Select
                             id="city-input"
-                            label="City / Town"
+                            label="City / Town *"
                             options={SRI_LANKAN_CITIES}
                             value={formData.city}
                             onChange={e => setFormData({ ...formData, city: e.target.value })}
@@ -716,7 +901,7 @@ export const ReportWizard: React.FC = () => {
 
                         <Input
                             id="location-input"
-                            label="Location / Landmark"
+                            label="Location / Landmark *"
                             placeholder="e.g. Near Liberty Plaza Junction"
                             value={formData.location}
                             onChange={e => setFormData({ ...formData, location: e.target.value })}
@@ -724,7 +909,7 @@ export const ReportWizard: React.FC = () => {
                         />
 
                         {/* GPS Fetch Button */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-2)' }}>
+                        <div className={styles.locationActionRow}>
                             <Button
                                 variant="secondary"
                                 size="sm"
@@ -732,7 +917,7 @@ export const ReportWizard: React.FC = () => {
                                 onClick={fetchCurrentLocation}
                                 disabled={gpsLoading}
                             >
-                                {gpsLoading ? 'Fetching location...' : 'Use My Current Location'}
+                                {gpsLoading ? 'Fetching location...' : 'Use Current Location'}
                             </Button>
                             {gpsError && (
                                 <span style={{ fontSize: '0.8rem', color: 'var(--color-error)' }}>{gpsError}</span>
@@ -745,34 +930,26 @@ export const ReportWizard: React.FC = () => {
                         </div>
 
                         {/* Coordinates display */}
-                        <div style={{
-                            fontSize: '0.8rem',
-                            color: 'var(--color-text-secondary)',
-                            fontFamily: 'monospace',
-                            padding: 'var(--space-2) var(--space-3)',
-                            backgroundColor: 'var(--color-background)',
-                            borderRadius: 'var(--radius-sm)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 'var(--space-3)'
-                        }}>
+                        <div className={styles.coordinateSummary}>
                             <MapPin size={14} />
-                            <span>Lat: {formData.lat.toFixed(6)}, Lng: {formData.lng.toFixed(6)}</span>
+                            <span>{formData.lat.toFixed(6)}, {formData.lng.toFixed(6)}</span>
                         </div>
 
                         {/* Interactive Map */}
-                        <div>
-                            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', marginBottom: 'var(--space-2)', color: 'var(--color-text)' }}>
-                                📍 Pin Location on Map
-                                <span style={{ fontWeight: '400', color: 'var(--color-text-secondary)', marginLeft: 'var(--space-2)', fontSize: '0.8rem' }}>
+                        <div id="mapLocation-input" tabIndex={-1}>
+                            <label className={styles.mapLabel}>
+                                Pin Location on Map <span className={styles.requiredMark}>*</span>
+                                <span>
                                     Click the map or drag the pin to set the exact incident location
                                 </span>
                             </label>
                             <LocationMap
                                 lat={formData.lat}
                                 lng={formData.lng}
+                                district={formData.district}
                                 onLocationChange={handleMapLocationChange}
                             />
+                            {errors.mapLocation && <p className={styles.errorMessage}>{errors.mapLocation}</p>}
                         </div>
                     </div>
                 )}
@@ -873,7 +1050,7 @@ export const ReportWizard: React.FC = () => {
                 )}
             </div>
 
-            <div className="form-actions form-actions--spread">
+            <div className={`form-actions form-actions--spread ${styles.footerActions}`}>
                 <Button
                     variant="secondary"
                     onClick={handleBack}

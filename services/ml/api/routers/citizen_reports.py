@@ -67,7 +67,10 @@ def create_citizen_report(
         location_lng=report_data.location_lng,
         location_address=report_data.location_address,
         location_city=report_data.location_city,
+        location_district=report_data.location_district,
         description=report_data.description,
+        custom_violation_description=report_data.custom_violation_description,
+        manual_review_required=report_data.violation_type == "other",
         vehicle_plate=report_data.vehicle_plate,
         vehicle_type=report_data.vehicle_type,
     )
@@ -125,6 +128,8 @@ def create_citizen_report(
             "citizen_id": current_citizen.id,
             "tracking_id": saved_report.tracking_id,
             "phone_number": current_citizen.phone_number,
+            "district": saved_report.location_district,
+            "violation_type": saved_report.violation_type,
         },
     )
 
@@ -160,17 +165,24 @@ def create_citizen_report(
             notification_type="report_submitted",
             related_entity_type="evidence_report",
             related_entity_id=saved_report.id,
-            metadata={"tracking_id": saved_report.tracking_id},
+            metadata={
+                "tracking_id": saved_report.tracking_id,
+                "district": saved_report.location_district,
+            },
         )
         notify_police(
             db,
             title="New report submitted",
-            message=f"A new citizen traffic violation report ({saved_report.tracking_id}) is waiting for review.",
+            message=f"A new citizen traffic violation report ({saved_report.tracking_id}) from {saved_report.location_district} is waiting for review.",
             notification_type="new_report_submitted",
             related_entity_type="evidence_report",
             related_entity_id=saved_report.id,
             priority="normal",
-            metadata={"tracking_id": saved_report.tracking_id, "violation_type": saved_report.violation_type},
+            metadata={
+                "tracking_id": saved_report.tracking_id,
+                "violation_type": saved_report.violation_type,
+                "district": saved_report.location_district,
+            },
         )
         db.commit()
     except Exception as _exc:

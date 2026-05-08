@@ -257,6 +257,7 @@ export const ViolationDetails: React.FC = () => {
     const mainEvidence = report.evidence[0];
     const aiSummary = report.aiSummary;
     const claimedViolation = report.claimedViolationType || report.violationType;
+    const isCustomViolation = claimedViolation?.toLowerCase().replace(/-/g, '_') === 'other';
     const aiSuggestion = getOfficerAISuggestion(aiSummary);
     const reviewPriority = getOfficerReviewPriority(aiSummary);
     const officerGuidance = getOfficerGuidance(aiSummary, claimedViolation);
@@ -465,6 +466,9 @@ export const ViolationDetails: React.FC = () => {
                             <span style={{ fontWeight: '700', color: 'var(--color-text)' }}>
                                 {report.location.address || report.location.city}
                             </span>
+                            <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.8rem' }}>
+                                {report.location.district || 'District not set'}
+                            </span>
                         </div>
                     </Panel>
                 </div>
@@ -513,6 +517,9 @@ export const ViolationDetails: React.FC = () => {
                                     <div style={{ fontSize: '1rem', fontWeight: '800', color: 'var(--color-text)' }}>
                                         {formatViolationLabel(claimedViolation)}
                                     </div>
+                                    {isCustomViolation && (
+                                        <Badge variant="warning">Manual review required</Badge>
+                                    )}
                                 </div>
 
                                 <div style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)', background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
@@ -533,6 +540,17 @@ export const ViolationDetails: React.FC = () => {
                                     </div>
                                 </div>
                             </div>
+
+                            {isCustomViolation && (
+                                <div style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)', background: 'rgba(37, 99, 235, 0.08)', border: '1px solid rgba(37, 99, 235, 0.18)' }}>
+                                    <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: '800', letterSpacing: '0.04em', color: 'var(--color-text-secondary)', marginBottom: '8px' }}>
+                                        Citizen Description
+                                    </div>
+                                    <div style={{ fontSize: '0.98rem', fontWeight: '700', color: 'var(--color-text)', lineHeight: 1.5 }}>
+                                        {report.customViolationDescription || report.vehicle?.notes || 'No custom description was provided.'}
+                                    </div>
+                                </div>
+                            )}
 
                             {canRerunAiAnalysis && (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
@@ -555,6 +573,11 @@ export const ViolationDetails: React.FC = () => {
                                 <div>
                                     <div style={{ fontWeight: '600' }}>Citizen Report Received</div>
                                     <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>{new Date(report.createdAt).toLocaleString()}</div>
+                                    {report.location.district && (
+                                        <div style={{ fontSize: '0.75rem', marginTop: '4px' }}>
+                                            <Badge variant="neutral">{report.location.district}</Badge>
+                                        </div>
+                                    )}
                                     {report.vehicle?.notes && (
                                         <div style={{ fontSize: '0.75rem', fontStyle: 'italic', marginTop: '4px', color: 'var(--color-text-secondary)' }}>
                                             "{report.vehicle.notes}"

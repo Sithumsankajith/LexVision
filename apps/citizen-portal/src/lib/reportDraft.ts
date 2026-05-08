@@ -15,9 +15,11 @@ export interface ReportFormData {
     time: string;
     location: string;
     city: string;
+    district: string;
     lat: number;
     lng: number;
     description: string;
+    customViolationDescription: string;
     vehiclePlate: string;
     vehicleType: string;
     evidenceFiles: File[];
@@ -32,9 +34,11 @@ export const getDefaultReportFormData = (): ReportFormData => {
         time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
         location: '',
         city: '',
+        district: '',
         lat: DEFAULT_COORDINATES.lat,
         lng: DEFAULT_COORDINATES.lng,
         description: '',
+        customViolationDescription: '',
         vehiclePlate: '',
         vehicleType: '',
         evidenceFiles: [],

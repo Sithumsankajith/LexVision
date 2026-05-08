@@ -29,6 +29,30 @@
     min-height: 300px;
 }
 
+.stepPanel {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-6);
+    box-shadow: var(--shadow-subtle);
+}
+
+.sectionHeader {
+    margin-bottom: var(--space-4);
+}
+
+.sectionHeader h2 {
+    margin: 0 0 var(--space-2);
+    font-size: var(--text-2xl);
+    color: var(--color-text);
+}
+
+.sectionHeader p {
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+}
+
 .actions {
     display: flex;
     justify-content: space-between;
@@ -81,6 +105,76 @@
     background-color: rgba(11, 58, 102, 0.1);
     padding: var(--space-3);
     border-radius: var(--radius-full);
+}
+
+.requiredMark {
+    color: var(--color-error);
+}
+
+.locationActionRow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-2);
+    flex-wrap: wrap;
+}
+
+.coordinateSummary {
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+    font-family: monospace;
+    padding: var(--space-2) var(--space-3);
+    background-color: var(--color-background);
+    border-radius: var(--radius-sm);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: fit-content;
+}
+
+.mapLabel {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    font-size: 0.875rem;
+    font-weight: 700;
+    margin-bottom: var(--space-2);
+    color: var(--color-text);
+}
+
+.mapLabel span:last-child {
+    font-weight: 400;
+    color: var(--color-text-secondary);
+    font-size: 0.8rem;
+}
+
+.mapShell {
+    position: relative;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-border);
+    overflow: hidden;
+    background: var(--color-background);
+}
+
+.mapCanvas {
+    height: 340px;
+    z-index: 1;
+}
+
+.mapBadge {
+    position: absolute;
+    top: var(--space-3);
+    right: var(--space-3);
+    z-index: 500;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.94);
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    color: var(--color-text);
+    font-size: 0.78rem;
+    font-weight: 800;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.16);
 }
 
 /* Step 3: Evidence */
@@ -189,6 +283,38 @@
 
 @media (min-width: 640px) {
     .violationGrid {
-        grid-template-columns: 1fr 1fr 1fr;
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (min-width: 900px) {
+    .violationGrid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+@media (max-width: 640px) {
+    .wizardContainer {
+        margin: var(--space-4) auto;
+    }
+
+    .stepPanel {
+        padding: var(--space-4);
+    }
+
+    .mapCanvas {
+        height: 300px;
+    }
+
+    .footerActions {
+        position: sticky;
+        bottom: 0;
+        z-index: 20;
+        margin-left: calc(var(--space-4) * -1);
+        margin-right: calc(var(--space-4) * -1);
+        padding: var(--space-3) var(--space-4);
+        background: rgba(255, 255, 255, 0.96);
+        border-top: 1px solid var(--color-border);
+        box-shadow: 0 -10px 24px rgba(15, 23, 42, 0.08);
     }
 }

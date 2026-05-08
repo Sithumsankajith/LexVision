@@ -113,6 +113,8 @@ def mock_evidence_report(db_session, citizen_user):
         location_lat=6.9271,
         location_lng=79.8612,
         location_address="Colombo, Sri Lanka",
+        location_city="Colombo",
+        location_district="Colombo",
         vehicle_plate="ABC-1234",
         status=models.ReportStatusEnum.SUBMITTED
     )

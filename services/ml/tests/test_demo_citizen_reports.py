@@ -16,6 +16,7 @@ def test_demo_citizen_report_is_visible_to_police_queue(client, police_token, mo
             "location_lng": 79.8612,
             "location_address": "Colombo Fort",
             "location_city": "Colombo",
+            "location_district": "Colombo",
             "description": "Demo citizen submission",
             "vehicle_plate": "ABC-1234",
             "vehicle_type": "motorbike",

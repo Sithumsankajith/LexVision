@@ -13,6 +13,7 @@ from sqlalchemy import func, or_
 from .. import models
 from ..database import get_db
 from ..dependencies import get_admin, log_audit_action
+from ..locations import district_counts_payload
 from ..services.evidence_storage import cleanup_orphaned_local_files
 from ..tasks import get_queue_health
 
@@ -149,6 +150,27 @@ def get_violation_types(db: Session = Depends(get_db), current_user: models.User
         totals[row.violation_type or "unclassified"] += row.count
 
     return _cache_set("violation_types", [{"type": violation_type, "count": totals[violation_type]} for violation_type in sorted(totals)])
+
+@router.get("/analytics/districts")
+def get_district_analytics(db: Session = Depends(get_db), current_user: models.User = Depends(get_admin)):
+    """Report counts by Sri Lankan district across legacy and citizen evidence reports."""
+    cached = _cache_get("districts")
+    if cached is not None:
+        return cached
+
+    legacy_rows = db.query(
+        models.Report.location_district.label("district"),
+        func.count(models.Report.id).label("count"),
+    ).filter(models.Report.location_district.isnot(None)) \
+     .group_by(models.Report.location_district).all()
+
+    evidence_rows = db.query(
+        models.EvidenceReport.location_district.label("district"),
+        func.count(models.EvidenceReport.id).label("count"),
+    ).filter(models.EvidenceReport.location_district.isnot(None)) \
+     .group_by(models.EvidenceReport.location_district).all()
+
+    return _cache_set("districts", district_counts_payload([*legacy_rows, *evidence_rows]))
 
 @router.get("/analytics/ai-metrics")
 def get_ai_metrics(db: Session = Depends(get_db), current_user: models.User = Depends(get_admin)):
@@ -343,6 +365,9 @@ def export_reports_csv(db: Session = Depends(get_db), current_user: models.User 
                 'Lat',
                 'Lng',
                 'City',
+                'District',
+                'CustomViolationDescription',
+                'ManualReviewRequired',
             ]
         )
 
@@ -360,6 +385,9 @@ def export_reports_csv(db: Session = Depends(get_db), current_user: models.User 
                     r.location_lat,
                     r.location_lng,
                     r.location_city,
+                    r.location_district,
+                    r.custom_violation_description,
+                    r.manual_review_required,
                 ]
             )
             yield output.getvalue()
@@ -381,6 +409,9 @@ def export_reports_csv(db: Session = Depends(get_db), current_user: models.User 
                     r.location_lat,
                     r.location_lng,
                     r.location_city,
+                    r.location_district,
+                    r.custom_violation_description,
+                    r.manual_review_required,
                 ]
             )
             yield output.getvalue()

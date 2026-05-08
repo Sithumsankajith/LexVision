@@ -1,10 +1,20 @@
 const SESSION_KEY = 'lexvision_user_session';
 const CITIZEN_SESSION_KEY = 'lexvision_citizen_session';
+
+const DEFAULT_LOCAL_API_BASE_URL = 'http://127.0.0.1:8000/api';
+
+const normalizeApiBaseUrl = (value: string): string => {
+    const trimmed = value.trim().replace(/\/+$/, '');
+    if (!trimmed) {
+        return DEFAULT_LOCAL_API_BASE_URL;
+    }
+    return /\/api$/i.test(trimmed) ? trimmed : `${trimmed}/api`;
+};
+
 const readApiBaseUrl = (): string => {
     const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
     const configuredUrl = env?.VITE_API_BASE_URL?.trim();
-    const baseUrl = configuredUrl || 'http://localhost:8000/api';
-    return baseUrl.replace(/\/+$/, '');
+    return normalizeApiBaseUrl(configuredUrl || DEFAULT_LOCAL_API_BASE_URL);
 };
 
 export const API_BASE_URL = readApiBaseUrl();
@@ -12,6 +22,67 @@ export const API_ORIGIN = API_BASE_URL.endsWith('/api')
     ? API_BASE_URL.slice(0, -4)
     : API_BASE_URL.replace(/\/api\/?$/, '');
 const DEMO_FIREBASE_UID_PREFIX = 'demo-otp:';
+
+const extractErrorDetail = (errorData: unknown): string | null => {
+    if (errorData && typeof errorData === 'object' && 'detail' in errorData) {
+        const detail = (errorData as { detail?: unknown }).detail;
+        if (typeof detail === 'string') {
+            return detail;
+        }
+        if (Array.isArray(detail)) {
+            return detail
+                .map((entry) => {
+                    if (entry && typeof entry === 'object' && 'msg' in entry) {
+                        return String((entry as { msg: unknown }).msg);
+                    }
+                    return JSON.stringify(entry);
+                })
+                .join(', ');
+        }
+    }
+    return null;
+};
+
+export const getApiErrorMessage = (error: unknown, fallback = 'Request failed.'): string => {
+    if (error instanceof TypeError && /fetch/i.test(error.message)) {
+        return `Backend server is not running or the request was blocked by CORS. Check that FastAPI is running at ${API_BASE_URL.replace(/\/api$/, '')} and that VITE_API_BASE_URL is correct.`;
+    }
+    if (error instanceof Error && error.message) {
+        return error.message;
+    }
+    return fallback;
+};
+
+export const getResponseErrorMessage = async (response: Response, fallback = 'Request failed.'): Promise<string> => {
+    const errorData = await response.json().catch(() => null);
+    const detail = extractErrorDetail(errorData);
+
+    if (response.status === 404) {
+        return detail || `API endpoint not found at ${response.url}. Check the backend route and VITE_API_BASE_URL.`;
+    }
+    if (response.status === 401) {
+        const lowerDetail = (detail || '').toLowerCase();
+        if (lowerDetail.includes('not authenticated') || lowerDetail.includes('credentials')) {
+            return detail || 'Session expired. Please sign in again.';
+        }
+        return detail || 'Invalid credentials.';
+    }
+    if (response.status === 403) {
+        return detail || 'This account is not authorized for that dashboard.';
+    }
+    if (response.status >= 500) {
+        return detail || 'Backend server returned an internal error. Check the FastAPI logs.';
+    }
+    return detail || fallback;
+};
+
+export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    try {
+        return await fetch(input, init);
+    } catch (error) {
+        throw new Error(getApiErrorMessage(error));
+    }
+};
 
 type CitizenAuthProvider = 'firebase' | 'demo';
 
@@ -113,35 +184,35 @@ export const auth = {
         formData.append('username', email);
         formData.append('password', password);
 
-        const response = await fetch(`${API_BASE_URL}/auth/login`, {
+        const response = await apiFetch(`${API_BASE_URL}/auth/login`, {
             method: 'POST',
             credentials: 'include',
             body: formData,
         });
 
         if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.detail || 'Invalid email or password.');
+            throw new Error(await getResponseErrorMessage(response, 'Invalid credentials.'));
         }
 
         const data = await response.json();
 
-        const profileRes = await fetch(`${API_BASE_URL}/users/me`, {
+        const profileRes = await apiFetch(`${API_BASE_URL}/users/me`, {
             headers: { 'Authorization': `Bearer ${data.access_token}` },
         });
 
         if (!profileRes.ok) {
-            throw new Error('Failed to retrieve user profile after login.');
+            throw new Error(await getResponseErrorMessage(profileRes, 'Failed to retrieve user profile after login.'));
         }
 
         const profileData = await profileRes.json();
         const user = profileData.user;
-        const requestedStaffPortal =
-            typeof window !== 'undefined' &&
-            (window.location.port === '5174' || window.location.port === '5175');
 
-        if (requestedStaffPortal && !['POLICE', 'ADMIN'].includes(user.role)) {
-            throw new Error('This account is not authorized for staff dashboard access.');
+        if (typeof window !== 'undefined' && window.location.port === '5175' && user.role !== 'ADMIN') {
+            throw new Error('This account is not authorized for the admin dashboard.');
+        }
+
+        if (typeof window !== 'undefined' && window.location.port === '5174' && !['POLICE', 'ADMIN'].includes(user.role)) {
+            throw new Error('This account is not authorized for police dashboard access.');
         }
 
         const session: UserSession = {
@@ -159,15 +230,14 @@ export const auth = {
      * Registers a new user with the backend API.
      */
     register: async (email: string, password: string): Promise<void> => {
-        const response = await fetch(`${API_BASE_URL}/auth/register`, {
+        const response = await apiFetch(`${API_BASE_URL}/auth/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password }),
         });
 
         if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.detail || 'Registration failed. Email might already be in use.');
+            throw new Error(await getResponseErrorMessage(response, 'Registration failed. Email might already be in use.'));
         }
     },
 
@@ -180,7 +250,7 @@ export const auth = {
         phoneNumber: string,
         options: CitizenLoginOptions = {},
     ): Promise<CitizenTokenExchange> => {
-        const response = await fetch(`${API_BASE_URL}/auth/firebase-phone-login`, {
+        const response = await apiFetch(`${API_BASE_URL}/auth/firebase-phone-login`, {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
@@ -191,17 +261,16 @@ export const auth = {
         });
 
         if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
             if (response.status === 401) {
-                throw new Error(errorData.detail || 'The backend could not verify this OTP session. Request a new OTP and try again.');
+                throw new Error(await getResponseErrorMessage(response, 'The backend could not verify this OTP session. Request a new OTP and try again.'));
             }
             if (response.status === 503) {
-                throw new Error(errorData.detail || 'Citizen phone verification is temporarily unavailable. Please try again shortly.');
+                throw new Error(await getResponseErrorMessage(response, 'Citizen phone verification is temporarily unavailable. Please try again shortly.'));
             }
             if (response.status === 409) {
-                throw new Error(errorData.detail || 'This verified phone number conflicts with an existing citizen account.');
+                throw new Error(await getResponseErrorMessage(response, 'This verified phone number conflicts with an existing citizen account.'));
             }
-            throw new Error(errorData.detail || 'Citizen backend verification failed.');
+            throw new Error(await getResponseErrorMessage(response, 'Citizen backend verification failed.'));
         }
 
         const exchange = await response.json();
@@ -212,10 +281,10 @@ export const auth = {
     },
 
     getCitizenOtpReadiness: async (): Promise<CitizenOtpReadiness> => {
-        const response = await fetch(`${API_BASE_URL}/auth/citizen/otp-readiness`);
+        const response = await apiFetch(`${API_BASE_URL}/auth/citizen/otp-readiness`);
 
         if (!response.ok) {
-            throw new Error('Unable to load citizen OTP readiness details.');
+            throw new Error(await getResponseErrorMessage(response, 'Unable to load citizen OTP readiness details.'));
         }
 
         return response.json();
@@ -238,7 +307,7 @@ export const auth = {
         phoneNumber: string,
         options: CitizenLoginOptions = {},
     ): Promise<CitizenTokenExchange> => {
-        const response = await fetch(`${API_BASE_URL}/auth/citizen/demo-login`, {
+        const response = await apiFetch(`${API_BASE_URL}/auth/citizen/demo-login`, {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
@@ -246,11 +315,10 @@ export const auth = {
         });
 
         if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
             if (response.status === 404) {
-                throw new Error(errorData.detail || 'Demo citizen OTP login is disabled for this backend environment.');
+                throw new Error(await getResponseErrorMessage(response, 'Demo citizen OTP login is disabled for this backend environment.'));
             }
-            throw new Error(errorData.detail || 'Demo citizen session creation failed.');
+            throw new Error(await getResponseErrorMessage(response, 'Demo citizen session creation failed.'));
         }
 
         const exchange = await response.json();

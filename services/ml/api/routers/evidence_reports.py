@@ -55,6 +55,7 @@ def list_evidence_reports_page(
     offset: int = Query(0, ge=0),
     status_filter: str | None = Query(None, alias="status"),
     violation_type: str | None = None,
+    district: str | None = None,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
     officer_id: str | None = None,
@@ -73,6 +74,8 @@ def list_evidence_reports_page(
         query = query.filter(models.EvidenceReport.status == normalized_status)
     if violation_type and violation_type != "all":
         query = query.filter(models.EvidenceReport.violation_type == violation_type)
+    if district and district != "all":
+        query = query.filter(models.EvidenceReport.location_district == district)
     if date_from:
         query = query.filter(models.EvidenceReport.created_at >= date_from)
     if date_to:
@@ -85,6 +88,7 @@ def list_evidence_reports_page(
             or_(
                 models.EvidenceReport.tracking_id.ilike(pattern),
                 models.EvidenceReport.vehicle_plate.ilike(pattern),
+                models.EvidenceReport.location_district.ilike(pattern),
                 models.InferenceLog.ocr_text.ilike(pattern),
                 models.Citizen.phone_number.ilike(pattern),
             )
@@ -192,7 +196,11 @@ def update_evidence_report_status(
         citizen_id = saved_report.citizen_id
         report_id = saved_report.id
         tracking_id = saved_report.tracking_id
-        meta = {"tracking_id": tracking_id, "violation_type": saved_report.violation_type}
+        meta = {
+            "tracking_id": tracking_id,
+            "violation_type": saved_report.violation_type,
+            "district": saved_report.location_district,
+        }
 
         if new_status_val == "UNDER_REVIEW":
             notify_citizen(
@@ -217,7 +225,7 @@ def update_evidence_report_status(
             notify_admins(
                 db,
                 title="Report validated",
-                message=f"Report {tracking_id} has been validated by an officer.",
+                message=f"Report {tracking_id} from {saved_report.location_district or 'an unspecified district'} has been validated by an officer.",
                 notification_type="report_validated",
                 related_entity_type="evidence_report",
                 related_entity_id=report_id,

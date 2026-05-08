@@ -29,6 +29,9 @@ def create_report(report_data: schemas.ReportCreate, background_tasks: Backgroun
         location_lng=report_data.location_lng,
         location_address=report_data.location_address,
         location_city=report_data.location_city,
+        location_district=report_data.location_district,
+        custom_violation_description=report_data.custom_violation_description,
+        manual_review_required=report_data.violation_type == "other",
         status=models.StatusEnum.SUBMITTED
     )
     db.add(new_report)

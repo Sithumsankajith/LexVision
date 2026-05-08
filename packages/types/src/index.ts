@@ -1,4 +1,33 @@
-export type ViolationType = 'helmet' | 'red_light' | 'white_line' | 'no-helmet' | 'red-light' | 'white-line' | string;
+export const SRI_LANKA_DISTRICTS = [
+  'Colombo',
+  'Gampaha',
+  'Kalutara',
+  'Kandy',
+  'Matale',
+  'Nuwara Eliya',
+  'Galle',
+  'Matara',
+  'Hambantota',
+  'Jaffna',
+  'Kilinochchi',
+  'Mannar',
+  'Mullaitivu',
+  'Vavuniya',
+  'Trincomalee',
+  'Batticaloa',
+  'Ampara',
+  'Kurunegala',
+  'Puttalam',
+  'Anuradhapura',
+  'Polonnaruwa',
+  'Badulla',
+  'Monaragala',
+  'Ratnapura',
+  'Kegalle',
+] as const;
+
+export type SriLankaDistrict = typeof SRI_LANKA_DISTRICTS[number];
+export type ViolationType = 'helmet' | 'red_light' | 'white_line' | 'other' | 'no-helmet' | 'red-light' | 'white-line' | string;
 export type ConfidenceBand = 'high' | 'medium' | 'low';
 
 export type ReportStatus = 'submitted' | 'under-review' | 'verified' | 'rejected' | 'closed' | 'forwarded';
@@ -10,6 +39,7 @@ export interface Location {
   lng: number;
   address: string;
   city: string;
+  district?: string;
 }
 
 export interface Evidence {
@@ -86,6 +116,8 @@ export interface Report {
   location: Location;
   evidence: Evidence[];
   vehicle: VehicleDetails;
+  customViolationDescription?: string | null;
+  manualReviewRequired?: boolean;
   status: ReportStatus;
   createdAt: string;
   updatedAt: string;

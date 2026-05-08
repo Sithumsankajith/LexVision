@@ -10,7 +10,7 @@ const extractErrorMessage = (errorData: any, fallback: string) => {
     return fallback;
 };
 
-import { API_BASE_URL, API_ORIGIN, auth } from './auth';
+import { API_BASE_URL, API_ORIGIN, apiFetch, auth, getResponseErrorMessage } from './auth';
 
 const DEMO_CITIZEN_REPORTS_KEY = 'lexvision_demo_citizen_reports';
 
@@ -18,6 +18,7 @@ interface CitizenReportPayload {
     violationType: Report['violationType'];
     datetime: string;
     location: Report['location'];
+    customViolationDescription?: string | null;
     evidence: Array<{
         id?: string;
         type: 'image' | 'video';
@@ -43,7 +44,7 @@ const normalizeViolationType = (value?: string | null): Report['violationType'] 
         return 'unclassified';
     }
     const normalized = value.toLowerCase().replace(/-/g, '_');
-    if (normalized === 'red_light' || normalized === 'white_line' || normalized === 'helmet') {
+    if (normalized === 'red_light' || normalized === 'white_line' || normalized === 'helmet' || normalized === 'other') {
         return normalized as Report['violationType'];
     }
     return value as Report['violationType'];
@@ -59,6 +60,24 @@ const getHeaders = (token?: string) => {
         headers['Authorization'] = `Bearer ${bearerToken}`;
     }
     return headers;
+};
+
+const redirectToLoginAfterAuthFailure = () => {
+    auth.logout();
+    if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+        window.location.href = '/login';
+    }
+};
+
+const ensureOk = async (response: Response, fallback: string) => {
+    if (response.status === 401) {
+        const message = await getResponseErrorMessage(response, 'Session expired. Please sign in again.');
+        redirectToLoginAfterAuthFailure();
+        throw new Error(message);
+    }
+    if (!response.ok) {
+        throw new Error(await getResponseErrorMessage(response, fallback));
+    }
 };
 
 const resolveMediaUrl = (url?: string | null): string => {
@@ -146,8 +165,9 @@ const buildDemoAiSummary = (reportData: CitizenReportPayload, processedAt: strin
     }
 
     if (violationType !== 'helmet') {
+        const isOther = violationType === 'other';
         return {
-            provider: 'roboflow',
+            provider: isOther ? 'manual_review' : 'roboflow',
             modelId: null,
             violationFamily: violationType,
             claimedViolationType: violationType,
@@ -158,11 +178,13 @@ const buildDemoAiSummary = (reportData: CitizenReportPayload, processedAt: strin
             confidence: 0,
             confidenceLevel: 'none',
             manualReviewRequired: true,
-            reviewReason: 'Manual review required for this report.',
+            reviewReason: isOther
+                ? 'Citizen selected Other. Specialized violation models were skipped; ANPR and OCR should be reviewed manually.'
+                : 'Manual review required for this report.',
             detectedClasses: [],
             detections: [],
             error: null,
-            status: 'no_detection',
+            status: isOther ? 'manual_review_required' : 'no_detection',
             processedAt,
         };
     }
@@ -245,6 +267,8 @@ const buildDemoCitizenReport = (reportData: CitizenReportPayload): DemoCitizenRe
             size: e.size,
         })),
         vehicle: reportData.vehicle,
+        customViolationDescription: reportData.customViolationDescription || null,
+        manualReviewRequired: !!aiSummary?.manualReviewRequired,
         status: 'submitted',
         createdAt: now,
         updatedAt: now,
@@ -443,11 +467,14 @@ const mapReportToFrontend = (b: any): Report => ({
         lat: b.location_lat,
         lng: b.location_lng,
         address: b.location_address,
-        city: b.location_city
+        city: b.location_city,
+        district: b.location_district || '',
     },
     evidence: b.evidence || [],
     vehicle: { plate: b.inference_log?.ocr_text || b.vehicle_plate },
     status: mapBackendStatus(b.status),
+    customViolationDescription: b.custom_violation_description || null,
+    manualReviewRequired: !!b.manual_review_required,
     createdAt: b.created_at,
     updatedAt: b.updated_at || b.created_at,
     aiSummary: buildAiSummary(b),
@@ -469,6 +496,7 @@ const mapCitizenReportToFrontend = (b: any): Report => ({
         lng: b.location_lng,
         address: b.location_address,
         city: b.location_city,
+        district: b.location_district || '',
     },
     evidence: (b.files || []).map((file: any, index: number) => ({
         id: file.id || `citizen-file-${index}`,
@@ -483,6 +511,8 @@ const mapCitizenReportToFrontend = (b: any): Report => ({
         notes: b.description,
     },
     status: mapBackendStatus(b.status),
+    customViolationDescription: b.custom_violation_description || null,
+    manualReviewRequired: !!b.manual_review_required,
     createdAt: b.created_at,
     updatedAt: b.updated_at || b.created_at,
     aiSummary: buildAiSummary(b),
@@ -626,6 +656,7 @@ export const mockDb = {
         offset?: number;
         status?: string;
         violationType?: string;
+        district?: string;
         search?: string;
         sort?: string;
         dateFrom?: string;
@@ -636,18 +667,16 @@ export const mockDb = {
         query.set('offset', String(params.offset ?? 0));
         if (params.status && params.status !== 'all') query.set('status', params.status);
         if (params.violationType && params.violationType !== 'all') query.set('violation_type', params.violationType);
+        if (params.district && params.district !== 'all') query.set('district', params.district);
         if (params.search) query.set('search', params.search);
         if (params.sort) query.set('sort', params.sort);
         if (params.dateFrom) query.set('date_from', params.dateFrom);
         if (params.dateTo) query.set('date_to', params.dateTo);
 
-        const response = await fetch(`${API_BASE_URL}/evidence-reports/page?${query.toString()}`, {
+        const response = await apiFetch(`${API_BASE_URL}/evidence-reports/page?${query.toString()}`, {
             headers: getHeaders(),
         });
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(extractErrorMessage(errorData, 'Failed to load paginated reports.'));
-        }
+        await ensureOk(response, 'Failed to load paginated reports.');
         const data = await response.json();
         return {
             items: data.items.map(mapCitizenReportToFrontend),
@@ -665,6 +694,8 @@ export const mockDb = {
             location_lng: reportData.location.lng,
             location_address: reportData.location.address,
             location_city: reportData.location.city,
+            location_district: reportData.location.district,
+            custom_violation_description: reportData.customViolationDescription,
             evidence: reportData.evidence.map((e: any) => ({
                 id: e.id,
                 type: e.type,
@@ -725,7 +756,9 @@ export const mockDb = {
             location_lng: reportData.location.lng,
             location_address: reportData.location.address,
             location_city: reportData.location.city,
+            location_district: reportData.location.district,
             description: reportData.vehicle.notes,
+            custom_violation_description: reportData.customViolationDescription,
             vehicle_plate: reportData.vehicle.plate,
             vehicle_type: reportData.vehicle.type,
             evidence: preparedEvidence.map((e) => ({
@@ -785,9 +818,11 @@ export const mockDb = {
             citizen: { phone: auth.getCitizenSession()?.phone_number },
             violationType: normalizeViolationType(report.violation_type),
             datetime: report.created_at,
-            location: { lat: 0, lng: 0, address: '', city: '' },
+            location: { lat: 0, lng: 0, address: '', city: '', district: report.location_district || '' },
             evidence: [],
             vehicle: {},
+            customViolationDescription: report.custom_violation_description || null,
+            manualReviewRequired: !!report.manual_review_required,
             status: mapBackendStatus(report.status),
             createdAt: report.created_at,
             updatedAt: report.updated_at,
@@ -896,19 +931,20 @@ export const mockDb = {
     getAllReports: async (): Promise<Report[]> => {
         try {
             const [legacyResponse, evidenceResponse] = await Promise.all([
-                fetch(`${API_BASE_URL}/reports`, { headers: getHeaders() }),
-                fetch(`${API_BASE_URL}/evidence-reports`, { headers: getHeaders() }),
+                apiFetch(`${API_BASE_URL}/reports`, { headers: getHeaders() }),
+                apiFetch(`${API_BASE_URL}/evidence-reports`, { headers: getHeaders() }),
             ]);
 
-            const legacyReports = legacyResponse.ok
-                ? (await legacyResponse.json()).map(mapReportToFrontend)
-                : [];
-            const evidenceReports = evidenceResponse.ok
-                ? (await evidenceResponse.json()).map(mapCitizenReportToFrontend)
-                : [];
+            await ensureOk(legacyResponse, 'Failed to load legacy reports.');
+            await ensureOk(evidenceResponse, 'Failed to load citizen evidence reports.');
+
+            const legacyReports = (await legacyResponse.json()).map(mapReportToFrontend);
+            const evidenceReports = (await evidenceResponse.json()).map(mapCitizenReportToFrontend);
 
             return [...legacyReports, ...evidenceReports];
-        } catch { return []; }
+        } catch (error) {
+            throw new Error(error instanceof Error ? error.message : 'Failed to load reports from the backend.');
+        }
     },
 
     updateReportStatus: async (report: Pick<Report, 'id' | 'source'>, status: Report['status'], notes?: string): Promise<Report | null> => {
@@ -951,15 +987,10 @@ export const mockDb = {
 
     // --- User & Reward Methods ---
     getProfile: async () => {
-        const response = await fetch(`${API_BASE_URL}/users/me`, {
+        const response = await apiFetch(`${API_BASE_URL}/users/me`, {
             headers: getHeaders()
         });
-        if (response.status === 401) {
-            auth.logout();
-            if (typeof window !== 'undefined') window.location.href = '/login';
-            throw new Error('Your session has expired. Please sign in again.');
-        }
-        if (!response.ok) throw new Error('Failed to fetch profile');
+        await ensureOk(response, 'Failed to load your profile.');
         return response.json();
     },
 
@@ -1003,36 +1034,42 @@ export const mockDb = {
 
     // --- Admin Endpoints ---
     adminGetUsers: async () => {
-        const response = await fetch(`${API_BASE_URL}/users`, { headers: getHeaders() });
-        if (!response.ok) return [];
+        const response = await apiFetch(`${API_BASE_URL}/users`, { headers: getHeaders() });
+        await ensureOk(response, 'Failed to load users.');
         return response.json();
     },
 
     adminCreateUser: async (user: any) => {
-        const response = await fetch(`${API_BASE_URL}/users`, {
+        const response = await apiFetch(`${API_BASE_URL}/users`, {
             method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify(user)
         });
-        if (!response.ok) throw new Error('Failed to create user');
+        await ensureOk(response, 'Failed to create user.');
         return response.json();
     },
 
     adminGetAuditLogs: async () => {
-        const response = await fetch(`${API_BASE_URL}/admin/audit-logs`, { headers: getHeaders() });
-        if (!response.ok) return [];
+        const response = await apiFetch(`${API_BASE_URL}/admin/audit-logs`, { headers: getHeaders() });
+        await ensureOk(response, 'Failed to load audit logs.');
         return response.json();
     },
 
     adminGetViolationTypes: async () => {
-        const response = await fetch(`${API_BASE_URL}/admin/analytics/violation-types`, { headers: getHeaders() });
-        if (!response.ok) return [];
+        const response = await apiFetch(`${API_BASE_URL}/admin/analytics/violation-types`, { headers: getHeaders() });
+        await ensureOk(response, 'Failed to load violation analytics.');
+        return response.json();
+    },
+
+    adminGetDistrictAnalytics: async (): Promise<{ district: string; count: number }[]> => {
+        const response = await apiFetch(`${API_BASE_URL}/admin/analytics/districts`, { headers: getHeaders() });
+        await ensureOk(response, 'Failed to load district analytics.');
         return response.json();
     },
 
     adminGetStatusRatio: async () => {
-        const response = await fetch(`${API_BASE_URL}/admin/analytics/status-ratio`, { headers: getHeaders() });
-        if (!response.ok) return { total: 0, validated: 0, rejected: 0, ratio_validated: 0, ratio_rejected: 0 };
+        const response = await apiFetch(`${API_BASE_URL}/admin/analytics/status-ratio`, { headers: getHeaders() });
+        await ensureOk(response, 'Failed to load status analytics.');
         return response.json();
     },
 
@@ -1062,46 +1099,46 @@ export const mockDb = {
     },
 
     adminGetReportsTrend: async (): Promise<{ date: string, count: number }[]> => {
-        const response = await fetch(`${API_BASE_URL}/admin/analytics/reports-trend`, { headers: getHeaders() });
-        if (!response.ok) return [];
+        const response = await apiFetch(`${API_BASE_URL}/admin/analytics/reports-trend`, { headers: getHeaders() });
+        await ensureOk(response, 'Failed to load reports trend.');
         return response.json();
     },
 
     adminGetAiMetrics: async (): Promise<{ avg_helmet_confidence: number, avg_ocr_confidence: number, avg_inference_latency_seconds: number }> => {
-        const response = await fetch(`${API_BASE_URL}/admin/analytics/ai-metrics`, { headers: getHeaders() });
-        if (!response.ok) return { avg_helmet_confidence: 0, avg_ocr_confidence: 0, avg_inference_latency_seconds: 0 };
+        const response = await apiFetch(`${API_BASE_URL}/admin/analytics/ai-metrics`, { headers: getHeaders() });
+        await ensureOk(response, 'Failed to load AI metrics.');
         return response.json();
     },
 
     adminGetOfficerMetrics: async (): Promise<{ officer_id: string, total_validations: number, tickets_issued: number, approval_rate_percent: number }[]> => {
-        const response = await fetch(`${API_BASE_URL}/admin/analytics/officers`, { headers: getHeaders() });
-        if (!response.ok) return [];
+        const response = await apiFetch(`${API_BASE_URL}/admin/analytics/officers`, { headers: getHeaders() });
+        await ensureOk(response, 'Failed to load officer analytics.');
         return response.json();
     },
 
     adminGetHeatmapData: async (): Promise<{ lat: number, lng: number, weight: number }[]> => {
-        const response = await fetch(`${API_BASE_URL}/admin/analytics/heatmap`, { headers: getHeaders() });
-        if (!response.ok) return [];
+        const response = await apiFetch(`${API_BASE_URL}/admin/analytics/heatmap`, { headers: getHeaders() });
+        await ensureOk(response, 'Failed to load heatmap data.');
         return response.json();
     },
 
     // --- Fine Rules Engine Methods ---
     getFineRules: async () => {
-        const response = await fetch(`${API_BASE_URL}/fine-rules`, {
+        const response = await apiFetch(`${API_BASE_URL}/fine-rules`, {
             headers: getHeaders(),
         });
-        if (!response.ok) throw new Error('Failed to fetch fine rules');
+        await ensureOk(response, 'Failed to load fine rules.');
         const data = await response.json();
         return data.map(mapFineRuleToFrontend);
     },
 
     getFineRuleByViolation: async (violationType: string) => {
-        const response = await fetch(`${API_BASE_URL}/fine-rules/${normalizeViolationType(violationType)}`, {
+        const response = await apiFetch(`${API_BASE_URL}/fine-rules/${normalizeViolationType(violationType)}`, {
             headers: getHeaders(),
         });
         if (!response.ok) {
             if (response.status === 404) return null;
-            throw new Error('Failed to fetch fine rule');
+            throw new Error(await getResponseErrorMessage(response, 'Failed to load the fine rule.'));
         }
         const data = await response.json();
         return mapFineRuleToFrontend(data);
@@ -1219,12 +1256,11 @@ export const mockDb = {
     },
 
     getTicketById: async (ticketId: string) => {
-        const response = await fetch(`${API_BASE_URL}/tickets/${ticketId}`, {
+        const response = await apiFetch(`${API_BASE_URL}/tickets/${ticketId}`, {
             headers: getHeaders(),
         });
         if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(extractErrorMessage(errorData, 'Failed to fetch ticket'));
+            throw new Error(await getResponseErrorMessage(response, 'Failed to load the ticket.'));
         }
         return mapTicketToFrontend(await response.json());
     },

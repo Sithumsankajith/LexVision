@@ -1,8 +1,9 @@
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 from typing import Optional, List, Any
 from datetime import datetime, timezone
 from .models import RoleEnum, StatusEnum
 from .constants import StatusChangeSourceEnum
+from .locations import is_within_sri_lanka_bounds, normalize_district
 from .violation_types import canonical_or_original_violation_type, is_supported_claimed_violation_type
 
 # --- User Schemas ---
@@ -154,7 +155,9 @@ class CitizenEvidenceReportCreate(BaseModel):
     location_lng: float = Field(ge=-180, le=180)
     location_address: str
     location_city: str
+    location_district: str
     description: Optional[str] = None
+    custom_violation_description: Optional[str] = None
     vehicle_plate: Optional[str] = None
     vehicle_type: Optional[str] = None
     evidence: List[CitizenEvidenceFileCreate] = Field(min_length=1, max_length=5)
@@ -163,7 +166,7 @@ class CitizenEvidenceReportCreate(BaseModel):
     def validate_violation_type(cls, value: str) -> str:
         normalized = canonical_or_original_violation_type(value)
         if not is_supported_claimed_violation_type(normalized):
-            raise ValueError("violation_type must be one of: helmet, red_light, white_line")
+            raise ValueError("violation_type must be one of: helmet, red_light, white_line, other")
         return normalized or value
 
     @field_validator("incident_at")
@@ -181,6 +184,28 @@ class CitizenEvidenceReportCreate(BaseModel):
             raise ValueError("Location address and city are required")
         return cleaned
 
+    @field_validator("location_district")
+    def validate_location_district(cls, value: str) -> str:
+        district = normalize_district(value)
+        if district is None:
+            raise ValueError("location_district must be one of the 25 Sri Lankan districts")
+        return district
+
+    @field_validator("custom_violation_description")
+    def clean_custom_violation_description(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
+
+    @model_validator(mode="after")
+    def validate_location_and_custom_violation(self):
+        if not is_within_sri_lanka_bounds(self.location_lat, self.location_lng):
+            raise ValueError("location_lat and location_lng must be within Sri Lanka")
+        if self.violation_type == "other" and not self.custom_violation_description:
+            raise ValueError("custom_violation_description is required when violation_type is other")
+        return self
+
 
 class CitizenEvidenceReportResponse(BaseModel):
     id: str
@@ -192,7 +217,10 @@ class CitizenEvidenceReportResponse(BaseModel):
     location_lng: float
     location_address: Optional[str]
     location_city: Optional[str]
+    location_district: Optional[str] = None
     description: Optional[str]
+    custom_violation_description: Optional[str] = None
+    manual_review_required: bool = False
     vehicle_plate: Optional[str]
     vehicle_type: Optional[str]
     status: StatusEnum
@@ -213,6 +241,7 @@ class CitizenReportSummaryResponse(BaseModel):
     id: str
     tracking_id: str
     violation_type: str
+    location_district: Optional[str] = None
     status: StatusEnum
     created_at: datetime
     updated_at: datetime
@@ -305,13 +334,15 @@ class ReportCreate(BaseModel):
     location_lng: float = Field(ge=-180, le=180)
     location_address: str
     location_city: str
+    location_district: str
+    custom_violation_description: Optional[str] = None
     evidence: List[EvidenceSchema] = Field(min_length=1, max_length=5)
 
     @field_validator("violation_type")
     def validate_violation_type(cls, value: str) -> str:
         normalized = canonical_or_original_violation_type(value)
         if not is_supported_claimed_violation_type(normalized):
-            raise ValueError("violation_type must be one of: helmet, red_light, white_line")
+            raise ValueError("violation_type must be one of: helmet, red_light, white_line, other")
         return normalized or value
 
     @field_validator("datetime")
@@ -321,6 +352,35 @@ class ReportCreate(BaseModel):
         if comparable_value > now:
             raise ValueError("datetime cannot be in the future")
         return value
+
+    @field_validator("location_address", "location_city")
+    def validate_required_report_location_text(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Location address and city are required")
+        return cleaned
+
+    @field_validator("location_district")
+    def validate_report_location_district(cls, value: str) -> str:
+        district = normalize_district(value)
+        if district is None:
+            raise ValueError("location_district must be one of the 25 Sri Lankan districts")
+        return district
+
+    @field_validator("custom_violation_description")
+    def clean_report_custom_violation_description(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
+
+    @model_validator(mode="after")
+    def validate_report_location_and_custom_violation(self):
+        if not is_within_sri_lanka_bounds(self.location_lat, self.location_lng):
+            raise ValueError("location_lat and location_lng must be within Sri Lanka")
+        if self.violation_type == "other" and not self.custom_violation_description:
+            raise ValueError("custom_violation_description is required when violation_type is other")
+        return self
 
 class ReportResponse(BaseModel):
     id: str
@@ -334,6 +394,9 @@ class ReportResponse(BaseModel):
     location_lng: float
     location_address: str
     location_city: str
+    location_district: Optional[str] = None
+    custom_violation_description: Optional[str] = None
+    manual_review_required: bool = False
     status: StatusEnum
     created_at: datetime
     updated_at: datetime

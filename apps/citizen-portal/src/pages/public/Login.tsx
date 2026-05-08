@@ -25,6 +25,9 @@ import { CitizenOtpLoginModal, type CitizenOtpVerificationResult } from '@/compo
 import { isDemoOtpEnabled } from '@/lib/demoOtp';
 import styles from './Login.module.css';
 
+const ADMIN_DASHBOARD_URL = import.meta.env.VITE_ADMIN_DASHBOARD_URL || 'http://localhost:5175';
+const POLICE_DASHBOARD_URL = import.meta.env.VITE_POLICE_DASHBOARD_URL || 'http://localhost:5174/dashboard';
+
 /* ── Types ──────────────────────────────────────────────────── */
 interface AuthRedirectState {
     from?: { pathname?: string; state?: unknown };
@@ -126,10 +129,10 @@ export const Login: React.FC = () => {
     const redirectByRole = (role: string) => {
         switch (role) {
             case 'ADMIN':
-                window.location.href = 'http://localhost:5175';
+                window.location.href = ADMIN_DASHBOARD_URL;
                 break;
             case 'POLICE':
-                window.location.href = 'http://localhost:5174/dashboard';
+                window.location.href = POLICE_DASHBOARD_URL;
                 break;
             default:
                 navigate('/portal', { replace: true });

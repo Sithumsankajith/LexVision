@@ -9,19 +9,28 @@ import { Panel, DataTable, Badge } from '@lexvision/ui';
 import { mockDb } from '@lexvision/api-client';
 import type { Report } from '@lexvision/types';
 
+const formatViolation = (value: string) => value === 'other' ? 'Custom Violation Report' : value.replace(/-/g, ' ');
+
 export const History: React.FC = () => {
     const [reports, setReports] = useState<Report[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [resolutionFilter, setResolutionFilter] = useState('all');
+    const [loadError, setLoadError] = useState<string | null>(null);
     const navigate = useNavigate();
 
     useEffect(() => {
         const fetchReports = async () => {
-            const data = await mockDb.getAllReports();
-            const closedCases = data.filter(r => r.status === 'verified' || r.status === 'rejected' || r.status === 'closed');
-            setReports(closedCases.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()));
-            setLoading(false);
+            try {
+                const data = await mockDb.getAllReports();
+                const closedCases = data.filter(r => r.status === 'verified' || r.status === 'rejected' || r.status === 'closed');
+                setReports(closedCases.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()));
+                setLoadError(null);
+            } catch (error: unknown) {
+                setLoadError(error instanceof Error ? error.message : 'Failed to load case history.');
+            } finally {
+                setLoading(false);
+            }
         };
         fetchReports();
     }, []);
@@ -39,6 +48,7 @@ export const History: React.FC = () => {
                 r.trackingId.toLowerCase().includes(q) ||
                 (r.location.address || '').toLowerCase().includes(q) ||
                 (r.location.city || '').toLowerCase().includes(q) ||
+                (r.location.district || '').toLowerCase().includes(q) ||
                 r.violationType.toLowerCase().includes(q)
             );
         }
@@ -65,7 +75,7 @@ export const History: React.FC = () => {
             <Panel className="filter-bar" noPadding style={{ padding: 'var(--space-4)', display: 'flex', gap: 'var(--space-4)', alignItems: 'center', flexWrap: 'wrap' }}>
                 <div style={{ flex: 1, minWidth: '200px' }}>
                     <Input
-                        placeholder="Search by Case ID or Location..."
+                        placeholder="Search by Case ID, district, or location..."
                         fullWidth
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
@@ -94,17 +104,26 @@ export const History: React.FC = () => {
                 )}
             </Panel>
 
+            {loadError && (
+                <Panel>
+                    <div style={{ color: 'var(--color-error)', fontWeight: 700 }}>
+                        {loadError}
+                    </div>
+                </Panel>
+            )}
+
             {/* Table */}
             <Panel
                 title={`Closed Cases (${filteredReports.length})`}
                 action={<div style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>{loading ? 'Loading...' : `Showing ${filteredReports.length} of ${reports.length} cases`}</div>}
                 noPadding
             >
-                <DataTable headers={['Tracking ID', 'Violation Type', 'Location', 'Closed On', 'Resolution', 'Action']}>
+                <DataTable headers={['Tracking ID', 'Violation Type', 'District', 'Location', 'Closed On', 'Resolution', 'Action']}>
                     {filteredReports.map((item) => (
                         <tr key={item.id}>
                             <td style={{ fontFamily: 'monospace', fontWeight: '600' }}>{item.trackingId}</td>
-                            <td>{item.violationType.replace(/-/g, ' ')}</td>
+                            <td>{formatViolation(item.violationType)}</td>
+                            <td><Badge variant="neutral">{item.location.district || 'Not set'}</Badge></td>
                             <td>{item.location.address || item.location.city}</td>
                             <td>{new Date(item.updatedAt).toLocaleString()}</td>
                             <td>
@@ -121,7 +140,7 @@ export const History: React.FC = () => {
                     ))}
                     {filteredReports.length === 0 && !loading && (
                         <tr>
-                            <td colSpan={6} style={{ textAlign: 'center', padding: '2rem' }}>
+                            <td colSpan={7} style={{ textAlign: 'center', padding: '2rem' }}>
                                 {search || resolutionFilter !== 'all' ? 'No cases match your filters.' : 'No case history found.'}
                             </td>
                         </tr>

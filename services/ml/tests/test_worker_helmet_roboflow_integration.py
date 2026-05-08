@@ -17,6 +17,7 @@ def _create_evidence_report(db_session, citizen_user, violation_type: str) -> mo
         location_lng=79.8612,
         location_address="Colombo Fort",
         location_city="Colombo",
+        location_district="Colombo",
         vehicle_plate=None,
         status=ReportStatusEnum.SUBMITTED,
     )
@@ -169,3 +170,44 @@ def test_attempt_inference_marks_manual_review_for_low_confidence_selected_model
     assert inference_log.bbox_coordinates["has_violation"] is False
     assert inference_log.bbox_coordinates["needs_manual_review"] is True
     assert inference_log.bbox_coordinates["violation_review_reason"] == "AI could not confirm a helmet violation confidently."
+
+
+def test_attempt_inference_skips_specialized_models_for_other_and_runs_anpr(db_session, citizen_user, monkeypatch):
+    report = _create_evidence_report(db_session, citizen_user, "other")
+    report.custom_violation_description = "A vehicle blocked the pedestrian crossing."
+    db_session.commit()
+
+    anpr_calls: list[str | None] = []
+
+    monkeypatch.setattr("api.worker._select_primary_evidence_image", lambda *_: "/tmp/mock-evidence.jpg")
+    monkeypatch.setattr("api.worker._cleanup_temporary_evidence", lambda *_: None)
+    monkeypatch.setattr("api.worker.run_helmet_detection", lambda *_: pytest.fail("helmet model should not run"))
+    monkeypatch.setattr("api.worker.run_red_light_detection", lambda *_: pytest.fail("red-light model should not run"))
+    monkeypatch.setattr("api.worker.run_white_line_detection", lambda *_: pytest.fail("white-line model should not run"))
+    monkeypatch.setattr(
+        "api.worker.run_anpr_pipeline",
+        lambda image_path: anpr_calls.append(image_path) or {
+            "plate_text": "WP-1234",
+            "plate_confidence": 0.82,
+            "status": "success",
+            "raw_text": "WP-1234",
+            "ocr_candidates": [{"text": "WP-1234", "confidence": 0.82}],
+            "validation_status": "valid",
+            "num_detections": 1,
+        },
+    )
+
+    attempt_inference(report, db_session, report_kind="evidence")
+    db_session.refresh(report)
+
+    inference_log = db_session.query(models.InferenceLog).filter_by(evidence_report_id=report.id).one()
+    assert anpr_calls == ["/tmp/mock-evidence.jpg"]
+    assert report.status == ReportStatusEnum.UNDER_REVIEW
+    assert report.manual_review_required is True
+    assert report.vehicle_plate == "WP-1234"
+    assert inference_log.bbox_coordinates["claimed_violation_type"] == "other"
+    assert inference_log.bbox_coordinates["violation_family"] == "other"
+    assert inference_log.bbox_coordinates["violation_detection_status"] == "manual_review_required"
+    assert inference_log.bbox_coordinates["needs_manual_review"] is True
+    assert inference_log.bbox_coordinates["custom_violation_description"] == "A vehicle blocked the pedestrian crossing."
+    assert inference_log.bbox_coordinates["anpr_status"] == "success"

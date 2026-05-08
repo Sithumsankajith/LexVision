@@ -129,11 +129,12 @@ export const MyReportDetail: React.FC = () => {
                     </div>
                     <div className={styles.metaCard}>
                         <h3><FileText size={18} /> Violation Type</h3>
-                        <p>{report.violationType.replace(/-/g, ' ')}</p>
+                        <p>{report.violationType === 'other' ? 'Custom Violation Report' : report.violationType.replace(/-/g, ' ')}</p>
                     </div>
                     <div className={styles.metaCard}>
                         <h3><MapPin size={18} /> Location</h3>
                         <p>{report.location.address || report.location.city || 'Location not available'}</p>
+                        {report.location.district && <p>{report.location.district} District</p>}
                     </div>
                 </div>
 
@@ -156,6 +157,12 @@ export const MyReportDetail: React.FC = () => {
                             <span>Description</span>
                             <p>{report.vehicle.notes || 'No additional description was provided for this report.'}</p>
                         </div>
+                        {report.customViolationDescription && (
+                            <div className={styles.detailNotes}>
+                                <span>Custom Violation Description</span>
+                                <p>{report.customViolationDescription}</p>
+                            </div>
+                        )}
                     </div>
 
                     <div className={styles.detailSection}>

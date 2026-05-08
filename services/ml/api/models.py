@@ -72,6 +72,9 @@ class Report(Base):
     location_lng = Column(Float)
     location_address = Column(String)
     location_city = Column(String)
+    location_district = Column(String, index=True)
+    custom_violation_description = Column(Text)
+    manual_review_required = Column(Boolean, nullable=False, default=False, server_default=text("false"))
     status = Column(Enum(StatusEnum, **ENUM_KWARGS), default=StatusEnum.SUBMITTED, index=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
@@ -111,7 +114,10 @@ class EvidenceReport(Base):
     location_lng = Column(Float, nullable=False)
     location_address = Column(String)
     location_city = Column(String, index=True)
+    location_district = Column(String, nullable=True, index=True)
     description = Column(Text)
+    custom_violation_description = Column(Text)
+    manual_review_required = Column(Boolean, nullable=False, default=False, server_default=text("false"))
     vehicle_plate = Column(String)
     vehicle_type = Column(String)
     status = Column(Enum(ReportStatusEnum, **ENUM_KWARGS), nullable=False, default=ReportStatusEnum.SUBMITTED, index=True)
@@ -536,18 +542,18 @@ class Notification(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
 
     # Recipient — exactly one of these will be set.
-    recipient_user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
-    recipient_citizen_id = Column(String, ForeignKey("citizens.id", ondelete="CASCADE"), nullable=True, index=True)
+    recipient_user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+    recipient_citizen_id = Column(String, ForeignKey("citizens.id", ondelete="CASCADE"), nullable=True)
     # Denormalised role tag for fast role-scoped queries.
-    recipient_role = Column(String, nullable=False, index=True)  # CITIZEN / POLICE / ADMIN
+    recipient_role = Column(String, nullable=False)  # CITIZEN / POLICE / ADMIN
 
     title = Column(String, nullable=False)
     message = Column(Text, nullable=False)
-    notification_type = Column(String, nullable=False, index=True)
+    notification_type = Column(String, nullable=False)
 
     # Entity that triggered this notification.
     related_entity_type = Column(String, nullable=True)  # report / evidence_report / ticket / system
-    related_entity_id = Column(String, nullable=True, index=True)
+    related_entity_id = Column(String, nullable=True)
 
     priority = Column(String, nullable=False, default="normal")  # low / normal / high
     is_read = Column(Boolean, nullable=False, default=False, index=True)
