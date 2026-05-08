@@ -46,9 +46,9 @@ export const MyReportDetail: React.FC = () => {
         setLoading(true);
         setError(null);
         try {
-            const data = await mockDb.getCitizenMyReportById(reportId);
+            const data = await mockDb.getPortalMyReportById(reportId);
             if (!data) {
-                setError('This report could not be found for your verified phone number.');
+                setError('This report could not be found for your signed-in account.');
                 return;
             }
             setReport(data);

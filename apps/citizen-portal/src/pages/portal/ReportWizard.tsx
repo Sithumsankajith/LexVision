@@ -263,8 +263,11 @@ export const ReportWizard: React.FC = () => {
 
     const [errors, setErrors] = useState<Record<string, string>>({});
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const citizenSession = auth.getCitizenSession();
-    const hasReusableCitizenSession = Boolean(citizenSession);
+    const userSession = auth.getSession();
+    const citizenPortalAuthMode = auth.getCitizenPortalAuthMode();
+    const hasReusableCitizenSession = citizenPortalAuthMode !== null;
+    const hasReusablePhoneCitizenSession = citizenPortalAuthMode === 'phone';
+    const hasReusableEmailCitizenSession = citizenPortalAuthMode === 'email';
 
     useEffect(() => {
         let active = true;
@@ -517,12 +520,31 @@ export const ReportWizard: React.FC = () => {
 
     const submitCitizenReport = async (verificationResult: CitizenOtpVerificationResult) => {
         await finalizeCitizenReportSubmission((payload) =>
-            mockDb.submitCitizenReportWithFirebase(verificationResult.idToken, payload)
+            mockDb.submitCitizenReportWithFirebase(verificationResult.idToken, verificationResult.phoneNumber, payload)
         );
     };
 
     const submitCitizenReportWithExistingSession = async () => {
-        await finalizeCitizenReportSubmission((payload) => mockDb.submitCitizenReport(payload));
+        if (hasReusablePhoneCitizenSession) {
+            await finalizeCitizenReportSubmission((payload) => mockDb.submitCitizenReport(payload));
+            return;
+        }
+
+        if (hasReusableEmailCitizenSession) {
+            await finalizeCitizenReportSubmission((payload) =>
+                mockDb.createReport({
+                    citizen: { email: userSession?.email || 'citizen@lexvision.gov' },
+                    violationType: payload.violationType,
+                    datetime: payload.datetime,
+                    location: payload.location,
+                    evidence: payload.evidence,
+                    vehicle: payload.vehicle,
+                })
+            );
+            return;
+        }
+
+        throw new Error('Please sign in with a citizen account or verify your phone number before submitting.');
     };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -544,7 +566,7 @@ export const ReportWizard: React.FC = () => {
             <div className={`container ${styles.successContainer}`}>
                 <CheckCircle size={80} className={styles.successIcon} />
                 <h1>Report Submitted Successfully!</h1>
-                <p>Your report has been received and linked to your citizen account.</p>
+                <p>Your report has been received and linked to your signed-in account.</p>
 
                 <div className={styles.trackingBox}>
                     <span>Report Reference Number:</span>
@@ -786,7 +808,7 @@ export const ReportWizard: React.FC = () => {
                             }}
                         >
                             {hasReusableCitizenSession
-                                ? 'You are already signed in with a verified citizen session. Final submit will use your current login and will not ask for another OTP.'
+                                ? 'You are already signed in. Final submit will use your current login and will not ask for another OTP.'
                                 : 'You can complete the entire report first. When you press the final submit button, phone verification will be required before the report is sent.'
                             }
                         </div>

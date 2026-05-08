@@ -40,6 +40,11 @@ class FirebaseCitizenAuthRequest(BaseModel):
     id_token: str
 
 
+class FirebasePhoneLoginRequest(BaseModel):
+    firebase_id_token: str
+    phone_number: str
+
+
 class DemoCitizenAuthRequest(BaseModel):
     phone_number: str
 
@@ -55,10 +60,17 @@ class CitizenResponse(BaseModel):
         from_attributes = True
 
 
+class CitizenSessionUserResponse(BaseModel):
+    id: str
+    role: RoleEnum = RoleEnum.CITIZEN
+    phone_number: str
+
+
 class CitizenAuthResponse(BaseModel):
     access_token: str
     token_type: str
-    citizen: CitizenResponse
+    user: CitizenSessionUserResponse
+    citizen: Optional[CitizenResponse] = None
 
 
 class CitizenTokenData(BaseModel):
@@ -68,6 +80,9 @@ class CitizenTokenData(BaseModel):
 
 class CitizenOtpReadinessResponse(BaseModel):
     backend_configured: bool
+    admin_configured: bool = False
+    dev_mode_enabled: bool = False
+    verification_mode: str = "unconfigured"
     firebase_project_id: Optional[str] = None
     missing_backend_env: List[str] = []
     requirements: List[str] = []

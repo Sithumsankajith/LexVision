@@ -476,6 +476,11 @@ const mapCitizenReportDetailToFrontend = (b: any): CitizenReportDetail => ({
     })),
 });
 
+const mapLegacyReportDetailToFrontend = (b: any): CitizenReportDetail => ({
+    ...mapReportToFrontend(b),
+    statusHistory: [],
+});
+
 // ---------------------------------------------------------------------------
 // Ticket mapping helpers
 // ---------------------------------------------------------------------------
@@ -574,12 +579,16 @@ export const mockDb = {
         return mapReportToFrontend(data);
     },
 
-    submitCitizenReportWithFirebase: async (firebaseIdToken: string, reportData: CitizenReportPayload): Promise<Report> => {
+    submitCitizenReportWithFirebase: async (
+        firebaseIdToken: string,
+        phoneNumber: string,
+        reportData: CitizenReportPayload,
+    ): Promise<Report> => {
         if (firebaseIdToken.startsWith('demo-otp:')) {
             throw new Error('Demo OTP login can open the citizen portal, but report submission still requires the real OTP backend.');
         }
 
-        const citizenAuth = await auth.loginCitizenWithFirebaseToken(firebaseIdToken, { persistSession: true });
+        const citizenAuth = await auth.loginCitizenWithFirebaseToken(firebaseIdToken, phoneNumber, { persistSession: true });
         return mockDb.submitCitizenReport(reportData, citizenAuth.access_token);
     },
 
@@ -670,6 +679,20 @@ export const mockDb = {
         }));
     },
 
+    getPortalMyReports: async (): Promise<Report[]> => {
+        const authMode = auth.getCitizenPortalAuthMode();
+
+        if (authMode === 'phone') {
+            return mockDb.getCitizenMyReports();
+        }
+
+        if (authMode === 'email') {
+            return mockDb.getMyReports();
+        }
+
+        throw new Error('Please sign in with your citizen account to access your reports.');
+    },
+
     getCitizenMyReportById: async (reportId: string): Promise<CitizenReportDetail | null> => {
         if (auth.isClientOnlyDemoCitizenSession()) {
             const phoneNumber = auth.getCitizenSession()?.phone_number;
@@ -697,6 +720,21 @@ export const mockDb = {
 
         const data = await response.json();
         return mapCitizenReportDetailToFrontend(data);
+    },
+
+    getPortalMyReportById: async (reportId: string): Promise<CitizenReportDetail | null> => {
+        const authMode = auth.getCitizenPortalAuthMode();
+
+        if (authMode === 'phone') {
+            return mockDb.getCitizenMyReportById(reportId);
+        }
+
+        if (authMode === 'email') {
+            const report = await mockDb.getReportById(reportId);
+            return report ? mapLegacyReportDetailToFrontend(report) : null;
+        }
+
+        throw new Error('Please sign in with your citizen account to access this report.');
     },
 
     getReportByTrackingId: async (trackingId: string): Promise<Report | null> => {

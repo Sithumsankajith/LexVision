@@ -20,7 +20,7 @@ ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", str(60 * 24)))
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
-citizen_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/citizen/firebase-login")
+citizen_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/firebase-phone-login")
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()

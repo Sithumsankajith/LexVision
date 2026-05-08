@@ -101,11 +101,19 @@ def get_firebase_admin_status() -> dict[str, Any]:
         "FIREBASE_CLIENT_EMAIL",
         "FIREBASE_PRIVATE_KEY",
     ]
-    missing_env = [name for name in required_env_names if not os.getenv(name, "").strip()]
     project_id = os.getenv("FIREBASE_PROJECT_ID", "").strip() or None
+    admin_missing_env = [name for name in required_env_names if not os.getenv(name, "").strip()]
+    admin_configured = len(admin_missing_env) == 0
+    dev_mode_enabled = os.getenv("FIREBASE_AUTH_DEV_MODE", "false").lower() == "true"
+    dev_fallback_configured = dev_mode_enabled and project_id is not None
+    verification_mode = "admin" if admin_configured else "dev" if dev_fallback_configured else "unconfigured"
+    missing_env = admin_missing_env if not dev_fallback_configured else []
 
     return {
-        "configured": len(missing_env) == 0,
+        "configured": admin_configured or dev_fallback_configured,
+        "admin_configured": admin_configured,
+        "dev_mode_enabled": dev_mode_enabled,
+        "verification_mode": verification_mode,
         "project_id": project_id,
         "missing_env": missing_env,
     }

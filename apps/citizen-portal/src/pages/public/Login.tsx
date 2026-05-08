@@ -158,7 +158,7 @@ export const Login: React.FC = () => {
                 return;
             }
 
-            await auth.loginCitizenWithFirebaseToken(result.idToken, { persistSession: true });
+            await auth.loginCitizenWithFirebaseToken(result.idToken, result.phoneNumber, { persistSession: true });
             navigate(fromPath, { replace: true, state: fromState });
         } catch (err: unknown) {
             const msg = getErrorMessage(err, 'Phone verified but session creation failed.');
@@ -180,6 +180,14 @@ export const Login: React.FC = () => {
         setError(null);
         setFieldErrors({});
     };
+
+    const otpBackendLabel = demoOtpEnabled
+        ? 'Demo mode'
+        : otpReadiness?.verification_mode === 'admin'
+            ? 'Configured (Firebase Admin)'
+            : otpReadiness?.verification_mode === 'dev'
+                ? 'Configured (Development fallback)'
+                : 'Not configured';
 
     /* ── Render ──────────────────────────────────────────────── */
     return (
@@ -346,7 +354,7 @@ export const Login: React.FC = () => {
                             </button>
 
                             <p className={styles.helperText}>
-                                Use the same mobile number you used during report submission. After OTP verification, LexVision will create your citizen session.
+                                Use the same Sri Lankan mobile number you used during report submission. You can enter it as 0712345678 or +94712345678.
                             </p>
 
                             {/* Collapsible OTP readiness */}
@@ -385,7 +393,7 @@ export const Login: React.FC = () => {
                                         ) : otpReadiness ? (
                                             <>
                                                 <p className={styles.readinessSummary}>
-                                                    Firebase Admin: <strong>{otpReadiness.backend_configured ? 'Configured' : 'Not configured'}</strong>
+                                                    Backend OTP verification: <strong>{otpBackendLabel}</strong>
                                                     {otpReadiness.firebase_project_id ? ` (${otpReadiness.firebase_project_id})` : ''}
                                                 </p>
                                                 {!otpReadiness.backend_configured && otpReadiness.missing_backend_env.length > 0 && (

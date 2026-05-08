@@ -72,22 +72,22 @@ export const getFirebaseAuth = (): Auth => {
 };
 
 export const ensureFirebaseAuthReady = async (): Promise<Auth> => {
-    const auth = getFirebaseAuth();
+    const firebaseAuth = getFirebaseAuth();
 
     if (!persistencePromise) {
-        persistencePromise = setPersistence(auth, browserLocalPersistence).catch((error: unknown) => {
+        persistencePromise = setPersistence(firebaseAuth, browserLocalPersistence).catch((error: unknown) => {
             persistencePromise = null;
             throw error;
         });
     }
 
     await persistencePromise;
-    return auth;
+    return firebaseAuth;
 };
 
 export const getFirebaseAnalyticsInstance = async (): Promise<Analytics | null> => {
     const config = getFirebaseConfig();
-    if (!config.measurementId || typeof window === 'undefined') {
+    if (!config.measurementId || typeof window === 'undefined' || import.meta.env.MODE === 'test') {
         return null;
     }
 

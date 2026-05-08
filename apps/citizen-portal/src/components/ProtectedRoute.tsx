@@ -8,7 +8,7 @@ interface ProtectedRouteProps {
 
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
     const location = useLocation();
-    const isAuthenticated = auth.isCitizenAuthenticated();
+    const isAuthenticated = auth.hasCitizenPortalAccess();
 
     if (!isAuthenticated) {
         // Redirect to login but save the current location to redirect back after login

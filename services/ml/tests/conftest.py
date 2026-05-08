@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from api.database import Base, get_db
 from api.server import app
 from api import models
-from api.dependencies import create_access_token
+from api.dependencies import create_access_token, create_citizen_access_token
 
 # Test database setup (In-memory SQLite)
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -85,7 +85,7 @@ def citizen_user(db_session):
 
 @pytest.fixture
 def citizen_token(citizen_user):
-    return create_access_token(data={"sub": citizen_user.phone_number, "role": "CITIZEN", "id": citizen_user.id})
+    return create_citizen_access_token(citizen_user)
 
 @pytest.fixture
 def fine_rule(db_session):

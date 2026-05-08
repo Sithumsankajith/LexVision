@@ -25,6 +25,8 @@ const getStatusClassName = (status: Report['status']) => {
 export const MyReports: React.FC = () => {
     const navigate = useNavigate();
     const citizenSession = auth.getCitizenSession();
+    const userSession = auth.getSession();
+    const citizenPortalAuthMode = auth.getCitizenPortalAuthMode();
     const [reports, setReports] = useState<Report[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -34,7 +36,7 @@ export const MyReports: React.FC = () => {
         setError(null);
 
         try {
-            const data = await mockDb.getCitizenMyReports();
+            const data = await mockDb.getPortalMyReports();
             setReports(data);
         } catch (loadError: unknown) {
             const message = loadError instanceof Error ? loadError.message : 'Failed to load your reports.';
@@ -74,10 +76,11 @@ export const MyReports: React.FC = () => {
                             variant="secondary"
                             onClick={() => {
                                 auth.logoutCitizen();
+                                auth.logout();
                                 navigate('/login', { replace: true });
                             }}
                         >
-                            Verify Again
+                            Sign In Again
                         </Button>
                     </div>
                 </Card>
@@ -94,7 +97,7 @@ export const MyReports: React.FC = () => {
                     </div>
                     <div>
                         <h1>My Reports</h1>
-                        <p>{citizenSession?.phone_number || 'Verified citizen account'}</p>
+                        <p>{citizenPortalAuthMode === 'phone' ? citizenSession?.phone_number : userSession?.email || 'Citizen account'}</p>
                     </div>
                 </div>
                 <div className={styles.headerActions}>
@@ -106,6 +109,7 @@ export const MyReports: React.FC = () => {
                         size="sm"
                         onClick={() => {
                             auth.logoutCitizen();
+                            auth.logout();
                             navigate('/portal');
                         }}
                     >
@@ -133,7 +137,7 @@ export const MyReports: React.FC = () => {
                 <Card className={styles.stateCard} padding="lg">
                     <FileText size={42} className={styles.stateIconInfo} />
                     <h2>No Reports Yet</h2>
-                    <p>Your verified phone number does not have any submitted evidence reports yet.</p>
+                    <p>You do not have any submitted reports on this signed-in account yet.</p>
                     <div className={styles.stateActions}>
                         <Button variant="primary" onClick={() => navigate('/portal/report')}>
                             Report a Violation

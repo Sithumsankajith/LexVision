@@ -16,6 +16,7 @@ import {
     isDemoOtpEnabled,
     validateDemoOtp,
 } from '@/lib/demoOtp';
+import { normalizeSriLankanPhone } from '@/lib/phone';
 import styles from './CitizenOtpLoginModal.module.css';
 
 export interface CitizenOtpVerificationResult {
@@ -36,9 +37,7 @@ interface CitizenOtpLoginModalProps {
 }
 
 const DEFAULT_PHONE_PREFIX = '+94';
-const E164_PHONE_REGEX = /^\+[1-9]\d{7,14}$/;
-
-const normalizePhoneNumber = (value: string) => value.replace(/[^\d+]/g, '');
+const RESEND_TIMEOUT_SECONDS = 30;
 
 const getErrorMessage = (error: unknown, fallback: string) => {
     if (error instanceof Error && error.message) {
@@ -52,21 +51,21 @@ const getOtpErrorMessage = (error: unknown) => {
     if (error instanceof FirebaseError) {
         switch (error.code) {
             case 'auth/invalid-verification-code':
-                return 'The OTP you entered is invalid. Check the 6-digit code and try again.';
+                return 'Verification failed. Please check the code.';
             case 'auth/code-expired':
-                return 'This OTP has expired. Request a new code and try again.';
+                return 'OTP expired. Request a new code and try again.';
             case 'auth/too-many-requests':
-                return 'Too many verification attempts were made. Please wait a moment and try again.';
+                return 'Too many attempts. Try again later.';
             default:
-                return getErrorMessage(error, 'OTP verification failed. Check the code and try again.');
+                return getErrorMessage(error, 'Verification failed. Please check the code.');
         }
     }
 
-    return getErrorMessage(error, 'OTP verification failed. Check the code and try again.');
+    return getErrorMessage(error, 'Verification failed. Please check the code.');
 };
 
 const getSubmitErrorMessage = (error: unknown) => {
-    const fallback = 'Your phone number was verified, but we could not complete the backend verification or report submission. Your filled report is still saved. Please try again.';
+    const fallback = 'Your phone number was verified, but the final secure step failed. Please try again.';
     return getErrorMessage(error, fallback);
 };
 
@@ -81,9 +80,9 @@ const getSendOtpErrorMessage = (error: unknown) => {
             case 'auth/unauthorized-domain':
                 return 'This domain is not authorized for Firebase phone sign-in. Add your current domain, such as localhost, in Firebase Authentication Authorized domains.';
             case 'auth/captcha-check-failed':
-                return 'The reCAPTCHA check failed or this domain is not allowed. Complete the challenge again and confirm the current domain is authorized in Firebase.';
+                return 'Please complete reCAPTCHA verification.';
             case 'auth/invalid-phone-number':
-                return 'Enter a valid Sri Lankan mobile number in international format, for example +94771234567.';
+                return 'Enter a valid Sri Lankan mobile number, for example 0712345678 or +94712345678.';
             case 'auth/invalid-api-key':
                 return 'The Firebase web configuration is invalid. Check the VITE_FIREBASE_* values in apps/citizen-portal/.env.local.';
             case 'auth/operation-not-allowed':
@@ -93,7 +92,7 @@ const getSendOtpErrorMessage = (error: unknown) => {
             case 'auth/network-request-failed':
                 return 'The OTP request could not reach Firebase. Check your internet connection and browser network access.';
             case 'auth/too-many-requests':
-                return 'Too many OTP requests were made from this device. Please wait a moment and try again.';
+                return 'Too many attempts. Try again later.';
             default:
                 return getErrorMessage(error, 'Unable to send the OTP right now. Please try again.');
         }
@@ -107,7 +106,7 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
     onClose,
     onVerified,
     title = 'Verify Your Phone Number',
-    description = 'Enter a mobile number in international format to receive a one-time password from Firebase Authentication.',
+    description = 'Enter your Sri Lankan mobile number to receive a one-time password from Firebase Authentication.',
     initialPhoneNumber = DEFAULT_PHONE_PREFIX,
     enableDemoOtp = false,
 }) => {
@@ -120,6 +119,7 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
     const [isSendingOtp, setIsSendingOtp] = useState(false);
     const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
     const [isCompletingSubmit, setIsCompletingSubmit] = useState(false);
+    const [resendCountdown, setResendCountdown] = useState(0);
     const [verifiedResult, setVerifiedResult] = useState<CitizenOtpVerificationResult | null>(null);
     const [statusMessage, setStatusMessage] = useState<string | null>(null);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -141,6 +141,7 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
         setConfirmationResult(null);
         setIsDemoOtpStepReady(false);
         setVerifiedResult(null);
+        setResendCountdown(0);
         setStatusMessage(null);
         setErrorMessage(null);
     }, []);
@@ -156,7 +157,6 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
             throw new Error('reCAPTCHA is not ready yet. Please reopen the verification dialog.');
         }
 
-        // Firebase phone auth on web requires a live reCAPTCHA challenge before OTP can be sent.
         const verifier = new RecaptchaVerifier(getFirebaseAuth(), recaptchaContainerRef.current, {
             size: 'normal',
             callback: () => {
@@ -192,49 +192,72 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
         };
     }, [initialPhoneNumber, isBusy, isOpen, onClose, resetFlow, teardownRecaptcha]);
 
+    useEffect(() => {
+        if (!isOpen || resendCountdown <= 0) {
+            return;
+        }
+
+        const timerId = window.setTimeout(() => {
+            setResendCountdown((current) => Math.max(0, current - 1));
+        }, 1000);
+
+        return () => window.clearTimeout(timerId);
+    }, [isOpen, resendCountdown]);
+
     if (!isOpen) {
         return null;
     }
 
-    const handleSendOtp = async (event: React.FormEvent) => {
-        event.preventDefault();
+    const requestOtp = async (rawPhoneNumber: string, options: { resend?: boolean } = {}): Promise<boolean> => {
         setErrorMessage(null);
         setStatusMessage(null);
 
-        const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
-        if (!E164_PHONE_REGEX.test(normalizedPhoneNumber)) {
-            setErrorMessage('Enter a valid phone number in international format, for example +94771234567.');
-            return;
+        let normalizedPhoneNumber = '';
+        try {
+            normalizedPhoneNumber = normalizeSriLankanPhone(rawPhoneNumber);
+        } catch (error: unknown) {
+            setErrorMessage(getErrorMessage(error, 'Enter a valid Sri Lankan mobile number.'));
+            return false;
         }
 
-        setStatusMessage(`Sending OTP to ${normalizedPhoneNumber}...`);
+        setStatusMessage(options.resend ? `Sending a new OTP to ${normalizedPhoneNumber}...` : `Sending OTP to ${normalizedPhoneNumber}...`);
         setIsSendingOtp(true);
 
         try {
             if (demoOtpEnabled) {
-                // Temporary local/demo-only OTP bypass. Keep the real Firebase integration in place for production.
                 setPhoneNumber(normalizedPhoneNumber);
                 setOtpCode('');
                 setConfirmationResult(null);
                 setIsDemoOtpStepReady(true);
-                setStatusMessage(`Demo OTP sent. Use ${getDemoOtpCode()}.`);
-                return;
+                setResendCountdown(RESEND_TIMEOUT_SECONDS);
+                setStatusMessage(`OTP sent to ${normalizedPhoneNumber}. Demo mode is active, so use ${getDemoOtpCode()}.`);
+                return true;
             }
 
             const verifier = await ensureRecaptchaVerifier();
-            const auth = await ensureFirebaseAuthReady();
-            const result = await signInWithPhoneNumber(auth, normalizedPhoneNumber, verifier);
+            const firebaseAuth = await ensureFirebaseAuthReady();
+            const result = await signInWithPhoneNumber(firebaseAuth, normalizedPhoneNumber, verifier);
 
             setPhoneNumber(normalizedPhoneNumber);
+            setOtpCode('');
             setConfirmationResult(result);
-            setStatusMessage(`An OTP has been sent to ${normalizedPhoneNumber}. Enter it below to continue.`);
+            setIsDemoOtpStepReady(false);
+            setResendCountdown(RESEND_TIMEOUT_SECONDS);
+            setStatusMessage(`OTP sent to ${normalizedPhoneNumber}.`);
+            return true;
         } catch (error: unknown) {
             setStatusMessage(null);
             setErrorMessage(getSendOtpErrorMessage(error));
             teardownRecaptcha();
+            return false;
         } finally {
             setIsSendingOtp(false);
         }
+    };
+
+    const handleSendOtp = async (event: React.FormEvent) => {
+        event.preventDefault();
+        await requestOtp(phoneNumber);
     };
 
     const handleVerifyOtp = async (event: React.FormEvent) => {
@@ -258,14 +281,13 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
             return;
         }
 
-        setStatusMessage('Verifying the OTP you entered...');
+        setStatusMessage('Verifying OTP...');
         setIsVerifyingOtp(true);
 
         try {
             let result: CitizenOtpVerificationResult;
 
             if (demoOtpEnabled && isDemoOtpStepReady) {
-
                 result = {
                     idToken: buildDemoIdToken(phoneNumber),
                     phoneNumber,
@@ -289,22 +311,16 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
             }
 
             setVerifiedResult(result);
-            setStatusMessage(result.provider === 'demo' ? 'Demo OTP verified. Creating your citizen session...' : 'Phone number verified. Finalizing your report submission...');
+            setStatusMessage('Success. Finalizing...');
             setIsCompletingSubmit(true);
 
-            // Return the verification payload so the caller can either create a demo session or exchange the real Firebase token.
             await onVerified(result);
-
             onClose();
         } catch (error: unknown) {
             const isFirebaseVerificationError = error instanceof FirebaseError;
-            setErrorMessage(
-                isFirebaseVerificationError
-                    ? getOtpErrorMessage(error)
-                    : getSubmitErrorMessage(error)
-            );
+            setErrorMessage(isFirebaseVerificationError ? getOtpErrorMessage(error) : getSubmitErrorMessage(error));
             if (!isFirebaseVerificationError) {
-                setStatusMessage('Your phone number is still verified. You can retry the final submit below without filling the form again.');
+                setStatusMessage('Your phone number is still verified. You can retry the final step below.');
             }
         } finally {
             setIsVerifyingOtp(false);
@@ -317,19 +333,32 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
         setConfirmationResult(null);
         setIsDemoOtpStepReady(false);
         setVerifiedResult(null);
+        setResendCountdown(0);
         setStatusMessage(null);
         setErrorMessage(null);
         teardownRecaptcha();
     };
 
+    const handleResendOtp = async () => {
+        if (resendCountdown > 0 || isBusy) {
+            return;
+        }
+
+        setOtpCode('');
+        setConfirmationResult(null);
+        setIsDemoOtpStepReady(false);
+        setVerifiedResult(null);
+        await requestOtp(phoneNumber, { resend: true });
+    };
+
     const handleRetrySubmit = async () => {
         if (!verifiedResult) {
-            setErrorMessage('Verify the OTP first before retrying the final submit.');
+            setErrorMessage('Verify the OTP first before retrying the final step.');
             return;
         }
 
         setErrorMessage(null);
-        setStatusMessage('Retrying backend verification and report submission...');
+        setStatusMessage('Retrying the final secure step...');
         setIsCompletingSubmit(true);
 
         try {
@@ -337,7 +366,7 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
             onClose();
         } catch (error: unknown) {
             setErrorMessage(getSubmitErrorMessage(error));
-            setStatusMessage('Your phone number is still verified. You can retry the final submit below without losing the report draft.');
+            setStatusMessage('Your phone number is still verified. You can retry the final step below.');
         } finally {
             setIsCompletingSubmit(false);
         }
@@ -405,8 +434,8 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
 
                         <div className={styles.infoBox}>
                             {demoOtpEnabled
-                                ? <>Use your Sri Lankan mobile number in international format, such as <strong>+94771234567</strong>. No SMS will be sent in demo mode.</>
-                                : <>Use your Sri Lankan mobile number in international format, such as <strong>+94771234567</strong>.</>
+                                ? <>Enter a Sri Lankan mobile number such as <strong>0712345678</strong> or <strong>+94712345678</strong>. No SMS will be sent in demo mode.</>
+                                : <>Enter a Sri Lankan mobile number such as <strong>0712345678</strong> or <strong>+94712345678</strong>.</>
                             }
                         </div>
 
@@ -415,9 +444,9 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
                                 <Input
                                     id="citizen-otp-phone"
                                     label="Phone Number"
-                                    placeholder="+94771234567"
+                                    placeholder="0712345678"
                                     value={phoneNumber}
-                                    onChange={(event) => setPhoneNumber(normalizePhoneNumber(event.target.value))}
+                                    onChange={(event) => setPhoneNumber(event.target.value)}
                                     autoComplete="tel"
                                     fullWidth
                                     required
@@ -433,7 +462,7 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
                                 {!demoOtpEnabled && (
                                     <div className={styles.recaptchaShell}>
                                         <label className={styles.recaptchaLabel}>Security Check</label>
-                                        <div ref={recaptchaContainerRef} className={styles.recaptchaMount} />
+                                        <div id="recaptcha-container" ref={recaptchaContainerRef} className={styles.recaptchaMount} />
                                     </div>
                                 )}
 
@@ -450,7 +479,7 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
                             <div className={styles.form}>
                                 <div className={styles.successBox}>
                                     <CheckCircle2 size={18} />
-                                    <span>Phone number verified for {verifiedResult.phoneNumber}. Your report draft is still safe.</span>
+                                    <span>Phone number verified for {verifiedResult.phoneNumber}. You can retry the final step if needed.</span>
                                 </div>
 
                                 <div className={styles.actions}>
@@ -458,7 +487,7 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
                                         Use Another OTP
                                     </Button>
                                     <Button type="button" variant="primary" onClick={handleRetrySubmit} isLoading={isCompletingSubmit} fullWidth>
-                                        {isCompletingSubmit ? 'Submitting Report...' : 'Retry Final Submit'}
+                                        {isCompletingSubmit ? 'Finalizing...' : 'Retry Final Step'}
                                     </Button>
                                 </div>
                             </div>
@@ -478,8 +507,23 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
                                 />
 
                                 <div className={styles.secondaryActions}>
-                                    <Button type="button" variant="ghost" size="sm" leftIcon={<RefreshCcw size={14} />} onClick={handleRequestNewCode}>
-                                        Request a new code
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={handleRequestNewCode}
+                                    >
+                                        Edit phone number
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        leftIcon={<RefreshCcw size={14} />}
+                                        onClick={handleResendOtp}
+                                        disabled={resendCountdown > 0 || isBusy}
+                                    >
+                                        {resendCountdown > 0 ? `Resend OTP in ${resendCountdown}s` : 'Resend OTP'}
                                     </Button>
                                 </div>
 
@@ -488,7 +532,7 @@ export const CitizenOtpLoginModal: React.FC<CitizenOtpLoginModalProps> = ({
                                         Cancel
                                     </Button>
                                     <Button type="submit" variant="primary" isLoading={isVerifyingOtp || isCompletingSubmit} fullWidth>
-                                        {isCompletingSubmit ? 'Submitting Report...' : isVerifyingOtp ? 'Verifying OTP...' : 'Verify OTP'}
+                                        {isCompletingSubmit ? 'Finalizing...' : isVerifyingOtp ? 'Verifying OTP...' : 'Verify OTP'}
                                     </Button>
                                 </div>
                             </form>
