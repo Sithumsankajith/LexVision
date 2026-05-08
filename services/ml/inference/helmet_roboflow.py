@@ -26,6 +26,15 @@ except ModuleNotFoundError as exc:
         infer_predictions,
     )
 
+import logging
+from pathlib import Path
+from ultralytics import YOLO
+
+logger = logging.getLogger(__name__)
+
+LOCAL_MODEL_PATH = Path(__file__).resolve().parents[1] / "models" / "helmet_best.pt"
+_local_model = None
+
 
 ROBOFLOW_HELMET_MODEL_ID = ROBOFLOW_HELMET_DEFAULT_MODEL_ID
 HELMET_VIOLATION_THRESHOLD = float(env_setting("HELMET_VIOLATION_THRESHOLD", "0.65") or "0.65")
@@ -52,23 +61,92 @@ def _default_summary(*, model_id: str, status: str, review_reason: str, error: s
     return summary
 
 
+def get_local_model() -> Any | None:
+    global _local_model
+    if _local_model is not None:
+        return _local_model
+    
+    if LOCAL_MODEL_PATH.exists():
+        try:
+            _local_model = YOLO(str(LOCAL_MODEL_PATH))
+            logger.info("Loaded local fallback model from %s", LOCAL_MODEL_PATH)
+            return _local_model
+        except Exception as e:
+            logger.error("Failed to load local fallback model: %s", e)
+    return None
+
+
+def run_local_fallback(image_path: str, model_id: str) -> list[dict[str, Any]] | None:
+    model = get_local_model()
+    if model is None:
+        return None
+
+    try:
+        results = model(image_path, verbose=False)
+        if not results:
+            return []
+
+        result = results[0]
+        predictions = []
+        for box in result.boxes:
+            class_id = int(box.cls[0].item())
+            confidence = float(box.conf[0].item())
+            class_name = result.names[class_id]
+            x, y, w, h = box.xywh[0].tolist()
+
+            predictions.append({
+                "class": class_name,
+                "confidence": confidence,
+                "x": x,
+                "y": y,
+                "width": w,
+                "height": h,
+                "provider": "local",
+            })
+        return predictions
+    except Exception as e:
+        logger.error("Local fallback inference failed: %s", e)
+        return None
+
+
 def run_helmet_detection(image_path: str) -> dict[str, Any]:
     model_id = env_setting("ROBOFLOW_HELMET_MODEL_ID", ROBOFLOW_HELMET_MODEL_ID) or ROBOFLOW_HELMET_MODEL_ID
     prediction_result = infer_predictions(image_path, model_id=model_id)
 
+    predictions = None
+    provider = "roboflow"
+    
     if isinstance(prediction_result, dict):
-        prediction_result["violation_family"] = "helmet"
-        prediction_result["model_id"] = model_id
-        prediction_result["has_helmet_violation"] = False
-        return prediction_result
+        if prediction_result.get("status") in ("failed", "timeout", "api_error", "configuration_error"):
+            # Try local fallback
+            fallback_preds = run_local_fallback(image_path, model_id)
+            if fallback_preds is not None:
+                predictions = fallback_preds
+                provider = "local"
+            else:
+                prediction_result["violation_family"] = "helmet"
+                prediction_result["model_id"] = model_id
+                prediction_result["has_helmet_violation"] = False
+                return prediction_result
+        else:
+            prediction_result["violation_family"] = "helmet"
+            prediction_result["model_id"] = model_id
+            prediction_result["has_helmet_violation"] = False
+            return prediction_result
+    else:
+        predictions = prediction_result
 
-    predictions = prediction_result
     if not predictions:
-        return _default_summary(
-            model_id=model_id,
-            status="no_detection",
-            review_reason="AI could not confirm a helmet-related result.",
-        )
+        fallback_preds = run_local_fallback(image_path, model_id)
+        if fallback_preds is not None and fallback_preds:
+            predictions = fallback_preds
+            provider = "local"
+        else:
+            return _default_summary(
+                model_id=model_id,
+                status="no_detection",
+                review_reason="AI could not confirm a helmet-related result.",
+            )
 
     detections: list[dict[str, Any]] = []
     detected_classes: list[str] = []
@@ -127,7 +205,7 @@ def run_helmet_detection(image_path: str) -> dict[str, Any]:
         "review_reason": review_reason,
         "detected_classes": sorted(set(detected_classes)),
         "detections": detections,
-        "provider": "roboflow",
-        "model_id": model_id,
+        "provider": provider,
+        "model_id": "local_best" if provider == "local" else model_id,
         "error": None,
     }
