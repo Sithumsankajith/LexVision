@@ -1,10 +1,11 @@
+from contextlib import asynccontextmanager
 import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import inspect, text
 
-from .env import load_service_env, log_roboflow_config
+from .env import get_env_value, load_service_env, log_roboflow_config
 
 
 load_service_env()
@@ -122,12 +123,14 @@ def seed_fine_rules():
 
 seed_fine_rules()
 
-app = FastAPI(title="LexVision Core API", version="1.0.0")
 
-
-@app.on_event("startup")
-def log_backend_startup_configuration():
+@asynccontextmanager
+async def lifespan(_: FastAPI):
     log_roboflow_config(context="backend startup", target_logger=logger)
+    yield
+
+
+app = FastAPI(title="LexVision Core API", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -173,7 +176,12 @@ def read_root():
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "db": "connected", "redis": "connected"}
+    return {
+        "status": "ok",
+        "db": "connected",
+        "queue_mode": "fastapi_background_tasks",
+        "redis_configured": bool(get_env_value("REDIS_URL")),
+    }
 
 if __name__ == "__main__":
     import uvicorn

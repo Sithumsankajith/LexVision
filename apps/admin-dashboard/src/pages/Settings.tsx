@@ -4,8 +4,10 @@ import { Button, Input, Select } from '@lexvision/ui';
 import { Panel } from '@lexvision/ui';
 import { mockDb } from '@lexvision/api-client';
 
+type ThresholdLevel = 'low' | 'med' | 'high';
+
 export const Settings: React.FC = () => {
-    const [threshold, setThreshold] = useState('low');
+    const [threshold, setThreshold] = useState<ThresholdLevel>('low');
     const [isSaving, setIsSaving] = useState(false);
 
     const handleSave = async () => {
@@ -15,7 +17,7 @@ export const Settings: React.FC = () => {
             const val = threshold === 'high' ? 0.8 : threshold === 'med' ? 0.5 : 0.25;
             await mockDb.adminUpdateAiThreshold(val);
             alert('Settings saved successfully!');
-        } catch (e) {
+        } catch {
             alert('Failed to save settings');
         } finally {
             setIsSaving(false);
@@ -43,7 +45,12 @@ export const Settings: React.FC = () => {
                 <Panel title="Machine Learning API">
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
                         <Input label="Python Inference URL" defaultValue="http://localhost:8000" />
-                        <Select label="Confidence Threshold" value={threshold} options={[{ value: 'low', label: 'Low (> 25%)' }, { value: 'med', label: 'Medium (> 50%)' }, { value: 'high', label: 'Strict (> 80%)' }]} onChange={(v) => setThreshold(v as string)} />
+                        <Select
+                            label="Confidence Threshold"
+                            value={threshold}
+                            options={[{ value: 'low', label: 'Low (> 25%)' }, { value: 'med', label: 'Medium (> 50%)' }, { value: 'high', label: 'Strict (> 80%)' }]}
+                            onChange={(event) => setThreshold(event.target.value as ThresholdLevel)}
+                        />
                         <p style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>
                             Adjusting the confidence threshold impacts the number of false positives routed to the Police Dashboard.
                         </p>

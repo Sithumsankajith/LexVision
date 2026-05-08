@@ -1,5 +1,7 @@
+import logging
 import os
 from pathlib import Path
+import secrets
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
@@ -15,7 +17,15 @@ from .sms import SmsService, get_sms_service as build_sms_service
 _env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(dotenv_path=_env_path)
 
-SECRET_KEY = os.getenv("SECRET_KEY", "supersecret_lexvision_key_for_demo_only")
+logger = logging.getLogger(__name__)
+
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    SECRET_KEY = secrets.token_urlsafe(32)
+    logger.warning(
+        "SECRET_KEY is not set; generated an ephemeral key for this process. "
+        "Set SECRET_KEY in services/ml/.env for stable auth tokens."
+    )
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", str(60 * 24)))
 

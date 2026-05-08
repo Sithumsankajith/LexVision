@@ -16,7 +16,19 @@ __pycache__/
 
 # Environment variables (never commit secrets!)
 .env
+.env.*
+!.env.example
 
 # SQLite fallback DB
 *.sqlite3
+*.sqlite3-*
 db.sqlite3
+
+# Python runtime and local tooling
+.venv/
+venv/
+.pytest_cache/
+
+# Local temp/debug outputs
+temp/
+logs/

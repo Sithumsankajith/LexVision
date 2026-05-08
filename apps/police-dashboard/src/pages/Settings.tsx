@@ -15,7 +15,9 @@ const getPrefs = (): Preferences => {
     try {
         const stored = localStorage.getItem(PREFS_KEY);
         if (stored) return JSON.parse(stored);
-    } catch { }
+    } catch {
+        // Fall back to defaults if local preferences are unavailable or malformed.
+    }
     return { displayName: 'Officer Perera', defaultView: 'ai', queueSorting: 'newest' };
 };
 

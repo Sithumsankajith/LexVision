@@ -84,13 +84,24 @@ export const Login: React.FC = () => {
             navigate(auth.isDemoCitizenSession() ? '/portal' : fromPath, { replace: true, state: fromState });
             return;
         }
+
         if (auth.isAuthenticated()) {
             const session = auth.getSession();
             if (session) {
-                redirectByRole(session.role);
+                switch (session.role) {
+                    case 'ADMIN':
+                        window.location.href = 'http://localhost:5175';
+                        break;
+                    case 'POLICE':
+                        window.location.href = 'http://localhost:5174/dashboard';
+                        break;
+                    default:
+                        navigate('/portal', { replace: true });
+                }
                 return;
             }
         }
+
         if (isFinalSubmitLogin) {
             setActiveTab('phone');
             setIsOtpModalOpen(true);

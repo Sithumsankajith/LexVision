@@ -34,13 +34,19 @@ const DonutChart: React.FC<{ data: { label: string; value: number; color: string
         );
     }
 
-    let cumulativePercent = 0;
-    const gradientParts = data.map(d => {
-        const pct = (d.value / total) * 100;
-        const start = cumulativePercent;
-        cumulativePercent += pct;
-        return `${d.color} ${start}% ${cumulativePercent}%`;
-    });
+    const gradientParts = data.reduce<{ cumulativePercent: number; parts: string[] }>(
+        (acc, item) => {
+            const pct = (item.value / total) * 100;
+            const start = acc.cumulativePercent;
+            const end = start + pct;
+
+            return {
+                cumulativePercent: end,
+                parts: [...acc.parts, `${item.color} ${start}% ${end}%`],
+            };
+        },
+        { cumulativePercent: 0, parts: [] },
+    ).parts;
 
     return (
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-8)', height: '100%', padding: 'var(--space-4) 0' }}>
@@ -353,7 +359,7 @@ export const Dashboard: React.FC = () => {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
                         {auditLogs.slice(0, 5).map((log, i) => {
                             const date = new Date(log.timestamp);
-                            let timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                            const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                             return (
                                 <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                     <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>

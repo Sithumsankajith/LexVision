@@ -571,6 +571,11 @@ export const mockDb = {
             headers: getHeaders(),
             body: JSON.stringify(payload),
         });
+        if (response.status === 401) {
+            auth.logout();
+            if (typeof window !== 'undefined') window.location.href = '/login';
+            throw new Error('Your session has expired. Please sign in again.');
+        }
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
             throw new Error(errorData.detail || 'Failed to create report');
@@ -839,6 +844,11 @@ export const mockDb = {
         const response = await fetch(`${API_BASE_URL}/users/me`, {
             headers: getHeaders()
         });
+        if (response.status === 401) {
+            auth.logout();
+            if (typeof window !== 'undefined') window.location.href = '/login';
+            throw new Error('Your session has expired. Please sign in again.');
+        }
         if (!response.ok) throw new Error('Failed to fetch profile');
         return response.json();
     },
@@ -847,6 +857,11 @@ export const mockDb = {
         const response = await fetch(`${API_BASE_URL}/users/me/reports`, {
             headers: getHeaders()
         });
+        if (response.status === 401) {
+            auth.logout();
+            if (typeof window !== 'undefined') window.location.href = '/login';
+            throw new Error('Your session has expired. Please sign in again.');
+        }
         if (!response.ok) return [];
         const data = await response.json();
         return data.map(mapReportToFrontend);

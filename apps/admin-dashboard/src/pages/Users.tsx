@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import {
-    Users as UsersIcon,
     MoreHorizontal,
     Plus,
     X
@@ -9,11 +8,24 @@ import { Button, Input, Select } from '@lexvision/ui';
 import { Panel, DataTable, Badge } from '@lexvision/ui';
 import { mockDb } from '@lexvision/api-client';
 
+interface AdminUser {
+    id: string;
+    email: string;
+    role: string;
+    created_at: string;
+}
+
+interface NewUserForm {
+    email: string;
+    password: string;
+    role: 'POLICE' | 'ADMIN';
+}
+
 export const Users: React.FC = () => {
-    const [users, setUsers] = useState<any[]>([]);
+    const [users, setUsers] = useState<AdminUser[]>([]);
     const [loading, setLoading] = useState(true);
     const [isAdding, setIsAdding] = useState(false);
-    const [newUser, setNewUser] = useState({ email: '', password: '', role: 'POLICE' });
+    const [newUser, setNewUser] = useState<NewUserForm>({ email: '', password: '', role: 'POLICE' });
 
     const fetchUsers = async () => {
         try {
@@ -59,7 +71,12 @@ export const Users: React.FC = () => {
                             <Input label="Temporary Password" type="password" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} fullWidth />
                         </div>
                         <div style={{ width: '200px' }}>
-                            <Select label="Role" value={newUser.role} onChange={(val) => setNewUser({ ...newUser, role: val as string })} options={[{ value: 'POLICE', label: 'Police Officer' }, { value: 'ADMIN', label: 'System Admin' }]} />
+                            <Select
+                                label="Role"
+                                value={newUser.role}
+                                onChange={(event) => setNewUser({ ...newUser, role: event.target.value as NewUserForm['role'] })}
+                                options={[{ value: 'POLICE', label: 'Police Officer' }, { value: 'ADMIN', label: 'System Admin' }]}
+                            />
                         </div>
                         <Button onClick={handleCreateUser}>Create User</Button>
                     </div>

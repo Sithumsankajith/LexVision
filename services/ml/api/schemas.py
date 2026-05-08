@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field, validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from typing import Optional, List, Any
 from datetime import datetime
 from .models import RoleEnum, StatusEnum
@@ -17,16 +17,14 @@ class UserResponseAdmin(BaseModel):
     role: RoleEnum
     reward_points: float
     created_at: datetime
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class UserResponse(BaseModel):
     id: str
     email: str
     role: RoleEnum
     reward_points: float
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class Token(BaseModel):
     access_token: str
@@ -56,8 +54,7 @@ class CitizenResponse(BaseModel):
     verified_at: datetime
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CitizenSessionUserResponse(BaseModel):
@@ -105,16 +102,14 @@ class CitizenEvidenceFileResponse(BaseModel):
     size_bytes: float
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CitizenSummaryResponse(BaseModel):
     id: str
     phone_number: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CitizenEvidenceReportCreate(BaseModel):
@@ -129,7 +124,7 @@ class CitizenEvidenceReportCreate(BaseModel):
     vehicle_type: Optional[str] = None
     evidence: List[CitizenEvidenceFileCreate]
 
-    @validator("violation_type")
+    @field_validator("violation_type")
     def validate_violation_type(cls, value: str) -> str:
         normalized = canonical_or_original_violation_type(value)
         if not is_supported_claimed_violation_type(normalized):
@@ -157,8 +152,7 @@ class CitizenEvidenceReportResponse(BaseModel):
     inference_log: Optional["InferenceLogResponse"] = None
     ai_summary: Optional["AISummaryResponse"] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class StaffEvidenceReportResponse(CitizenEvidenceReportResponse):
@@ -173,8 +167,7 @@ class CitizenReportSummaryResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CitizenStatusHistoryResponse(BaseModel):
@@ -185,8 +178,7 @@ class CitizenStatusHistoryResponse(BaseModel):
     notes: Optional[str] = None
     changed_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CitizenReportDetailResponse(CitizenEvidenceReportResponse):
@@ -199,8 +191,7 @@ class EvidenceSchema(BaseModel):
     url: str
     name: str
     size: float
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # --- Inference Log Schema (must be before ReportResponse) ---
 class InferenceLogResponse(BaseModel):
@@ -214,8 +205,7 @@ class InferenceLogResponse(BaseModel):
     ocr_confidence: Optional[float]
     inference_latency: float
     timestamp: datetime
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AIDetectionBBoxResponse(BaseModel):
@@ -267,7 +257,7 @@ class ReportCreate(BaseModel):
     location_city: str
     evidence: List[EvidenceSchema]
 
-    @validator("violation_type")
+    @field_validator("violation_type")
     def validate_violation_type(cls, value: str) -> str:
         normalized = canonical_or_original_violation_type(value)
         if not is_supported_claimed_violation_type(normalized):
@@ -292,8 +282,7 @@ class ReportResponse(BaseModel):
     evidence: List[EvidenceSchema] = []
     inference_log: Optional[InferenceLogResponse] = None
     ai_summary: Optional[AISummaryResponse] = None
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ReportStatusUpdate(BaseModel):
     status: StatusEnum
@@ -309,7 +298,7 @@ class FineRuleBase(BaseModel):
     severity: Optional[str] = None
     active: Optional[bool] = True
 
-    @validator("violation_type")
+    @field_validator("violation_type")
     def normalize_violation_type(cls, value: str) -> str:
         return canonical_or_original_violation_type(value) or value
 
@@ -330,8 +319,7 @@ class FineRuleResponse(FineRuleBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # --- Ticket Schemas ---
 
@@ -355,7 +343,7 @@ class TicketCreate(BaseModel):
     offender_contact: Optional[str] = None
     notes: Optional[str] = None
 
-    @validator("violation_type")
+    @field_validator("violation_type")
     def normalize_violation_type(cls, value: Optional[str]) -> Optional[str]:
         if value is None:
             return value
@@ -393,8 +381,7 @@ class TicketStatusHistoryResponse(BaseModel):
     details: Optional[dict] = None
     changed_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TicketResponse(BaseModel):
@@ -428,8 +415,7 @@ class TicketResponse(BaseModel):
     updated_at: datetime
     status_history: List[TicketStatusHistoryResponse] = []
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TicketSummaryResponse(BaseModel):
@@ -447,8 +433,7 @@ class TicketSummaryResponse(BaseModel):
     issued_at: Optional[datetime] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # --- Reward Schemas ---
@@ -458,15 +443,13 @@ class RewardResponse(BaseModel):
     description: str
     points_cost: float
     image_url: Optional[str]
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class UserRewardResponse(BaseModel):
     id: str
     reward: RewardResponse
     claimed_at: datetime
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ProfileResponse(BaseModel):
     user: UserResponse
