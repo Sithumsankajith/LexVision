@@ -375,9 +375,6 @@ export const ReportWizard: React.FC = () => {
     const location = useLocation();
     const [currentStep, setCurrentStep] = useState(1);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [isLoginPromptOpen, setIsLoginPromptOpen] = useState(false);
-    const [draftSaveStatus, setDraftSaveStatus] = useState<string | null>(null);
-    const [draftFileWarning, setDraftFileWarning] = useState<string | null>(null);
     const [submittedId, setSubmittedId] = useState<string | null>(null);
     const [gpsLoading, setGpsLoading] = useState(false);
     const [gpsError, setGpsError] = useState('');
@@ -612,16 +609,12 @@ export const ReportWizard: React.FC = () => {
                 return;
             }
 
-            let draftSaved = true;
             await savePendingReportDraft(formData).catch((error) => {
-                draftSaved = false;
                 console.error('Failed to persist the report draft before final submission', error);
             });
 
             if (!auth.isCitizenAuthenticated()) {
-                setDraftSaveStatus(draftSaved ? 'Draft saved. Evidence files should be restored automatically after login.' : 'Draft save was incomplete.');
-                setDraftFileWarning(draftSaved ? null : 'Please re-upload evidence files after login.');
-                setIsLoginPromptOpen(true);
+                handleLoginRedirect();
                 return;
             }
 
@@ -1040,7 +1033,9 @@ export const ReportWizard: React.FC = () => {
                                 color: 'var(--color-text-secondary)',
                             }}
                         >
-                            You are signed in. Final submit will use your current email login.
+                            {auth.isCitizenAuthenticated() 
+                                ? "You are signed in. Final submit will use your current email login."
+                                : "You are not signed in. Clicking submit will save your report and redirect you to login."}
                         </div>
 
                         <div className="form-grid form-grid--2-col">
@@ -1106,24 +1101,6 @@ export const ReportWizard: React.FC = () => {
                 </div>
             )}
 
-            {isLoginPromptOpen && (
-                <div className={styles.modalBackdrop} role="presentation" onClick={() => setIsLoginPromptOpen(false)}>
-                    <div className={styles.loginModal} role="dialog" aria-modal="true" aria-labelledby="login-required-title" onClick={(event) => event.stopPropagation()}>
-                        <h2 id="login-required-title">Login Required</h2>
-                        <p>You must log in before submitting a report. Your report draft will be saved/restored after login.</p>
-                        {draftSaveStatus && <div className={styles.draftStatus}>{draftSaveStatus}</div>}
-                        {draftFileWarning && <div className={styles.draftWarning}>{draftFileWarning}</div>}
-                        <div className={styles.modalActions}>
-                            <Button variant="secondary" onClick={() => setIsLoginPromptOpen(false)}>
-                                Cancel
-                            </Button>
-                            <Button variant="primary" onClick={handleLoginRedirect}>
-                                Login Now
-                            </Button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };
