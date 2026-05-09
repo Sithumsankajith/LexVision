@@ -27,10 +27,6 @@ OpenAPI exposed these required routes:
 
 - `POST /api/auth/login`
 - `POST /api/auth/register`
-- `POST /api/auth/firebase-phone-login`
-- `POST /api/auth/citizen/firebase-login`
-- `POST /api/auth/citizen/demo-login`
-- `GET /api/auth/citizen/otp-readiness`
 - `GET /api/reports`
 - `GET /api/evidence-reports`
 - `GET /api/evidence-reports/page`
@@ -84,7 +80,7 @@ The backend default development CORS configuration also allows:
 
 ## End-to-End Submission Check
 
-- Citizen demo login succeeded through `POST /api/auth/citizen/demo-login`.
+- Citizen login uses email and password authentication through `POST /api/auth/login`.
 - Test report created through `POST /api/citizen-reports`.
 - Tracking ID: `LEX-2026-21B8E7A8`
 - Violation type: `other`

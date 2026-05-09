@@ -30,7 +30,7 @@ ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", str(60 * 24)))
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
-citizen_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/firebase-phone-login")
+citizen_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
@@ -77,25 +77,47 @@ def create_citizen_access_token(citizen: models.Citizen, expires_delta: Optional
     )
 
 
-def get_current_citizen_account(token: str = Depends(citizen_oauth2_scheme), db: Session = Depends(get_db)):
+def get_current_citizen_account(token: Optional[str] = Depends(citizen_oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate citizen credentials",
+        detail={"message": "Authentication required to submit reports."},
         headers={"WWW-Authenticate": "Bearer"},
     )
+    if not token:
+        raise credentials_exception
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         citizen_id: str = payload.get("sub")
         token_scope: str = payload.get("token_scope")
-        if citizen_id is None or token_scope != "citizen":
+        if token_scope == "citizen":
+            if citizen_id is None:
+                raise credentials_exception
+            token_data = schemas.CitizenTokenData(citizen_id=citizen_id, token_scope=token_scope)
+            citizen = db.query(models.Citizen).filter(models.Citizen.id == token_data.citizen_id).first()
+            if citizen is None:
+                raise credentials_exception
+            return citizen
+
+        email: str = payload.get("sub")
+        if not email:
             raise credentials_exception
-        token_data = schemas.CitizenTokenData(citizen_id=citizen_id, token_scope=token_scope)
     except JWTError:
         raise credentials_exception
 
-    citizen = db.query(models.Citizen).filter(models.Citizen.id == token_data.citizen_id).first()
-    if citizen is None:
+    user = db.query(models.User).filter(models.User.email == email).first()
+    if user is None or user.role != models.RoleEnum.CITIZEN:
         raise credentials_exception
+
+    firebase_uid = f"email:{user.id}"
+    citizen = db.query(models.Citizen).filter(models.Citizen.firebase_uid == firebase_uid).first()
+    if citizen is None:
+        citizen = models.Citizen(
+            firebase_uid=firebase_uid,
+            phone_number=user.email,
+        )
+        db.add(citizen)
+        db.commit()
+        db.refresh(citizen)
     return citizen
 
 # --- RBAC Role Dependency Factories ---

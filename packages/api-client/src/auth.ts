@@ -1,5 +1,4 @@
 const SESSION_KEY = 'lexvision_user_session';
-const CITIZEN_SESSION_KEY = 'lexvision_citizen_session';
 
 const DEFAULT_LOCAL_API_BASE_URL = 'http://127.0.0.1:8000/api';
 
@@ -21,8 +20,6 @@ export const API_BASE_URL = readApiBaseUrl();
 export const API_ORIGIN = API_BASE_URL.endsWith('/api')
     ? API_BASE_URL.slice(0, -4)
     : API_BASE_URL.replace(/\/api\/?$/, '');
-const DEMO_FIREBASE_UID_PREFIX = 'demo-otp:';
-
 const extractErrorDetail = (errorData: unknown): string | null => {
     if (errorData && typeof errorData === 'object' && 'detail' in errorData) {
         const detail = (errorData as { detail?: unknown }).detail;
@@ -84,8 +81,6 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
     }
 };
 
-type CitizenAuthProvider = 'firebase' | 'demo';
-
 export interface UserSession {
     id: string;
     role: 'ADMIN' | 'POLICE' | 'CITIZEN';
@@ -93,86 +88,24 @@ export interface UserSession {
     token: string;
 }
 
-export interface CitizenSession {
-    id: string;
-    role: 'CITIZEN';
-    phone_number: string;
-    token: string;
-    auth_provider: CitizenAuthProvider;
-    firebase_uid?: string;
-    verified_at?: string;
-    created_at?: string;
-}
+export type CitizenPortalAuthMode = 'email' | null;
 
-export type CitizenPortalAuthMode = 'phone' | 'email' | null;
-
-export interface CitizenIdentity {
-    id: string;
-    role: 'CITIZEN';
-    phone_number: string;
-}
-
-export interface CitizenBackendIdentity {
-    id: string;
-    firebase_uid: string;
-    phone_number: string;
-    verified_at: string;
-    created_at: string;
-}
-
-export interface CitizenTokenExchange {
-    access_token: string;
-    token_type: string;
-    user?: CitizenIdentity;
-    citizen?: CitizenBackendIdentity;
-}
-
-export interface CitizenOtpReadiness {
-    backend_configured: boolean;
-    admin_configured: boolean;
-    dev_mode_enabled: boolean;
-    verification_mode: string;
-    firebase_project_id: string | null;
-    missing_backend_env: string[];
-    requirements: string[];
-}
-
-interface CitizenLoginOptions {
-    persistSession?: boolean;
-}
-
-const getCitizenIdentity = (exchange: CitizenTokenExchange): CitizenIdentity => {
-    if (exchange.user) {
-        return exchange.user;
+const parseJwtPayload = (token: string): { exp?: number } | null => {
+    try {
+        const payload = token.split('.')[1];
+        if (!payload) return null;
+        const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+        return JSON.parse(atob(padded));
+    } catch {
+        return null;
     }
-
-    if (exchange.citizen) {
-        return {
-            id: exchange.citizen.id,
-            role: 'CITIZEN',
-            phone_number: exchange.citizen.phone_number,
-        };
-    }
-
-    throw new Error('Citizen login response is missing user details.');
 };
 
-const buildCitizenSession = (
-    exchange: CitizenTokenExchange,
-    provider: CitizenAuthProvider,
-): CitizenSession => {
-    const user = getCitizenIdentity(exchange);
-
-    return {
-        id: user.id,
-        role: 'CITIZEN',
-        phone_number: user.phone_number,
-        token: exchange.access_token,
-        auth_provider: provider,
-        firebase_uid: exchange.citizen?.firebase_uid,
-        verified_at: exchange.citizen?.verified_at,
-        created_at: exchange.citizen?.created_at,
-    };
+const isTokenValid = (token: string): boolean => {
+    const payload = parseJwtPayload(token);
+    if (!payload?.exp) return false;
+    return payload.exp * 1000 > Date.now();
 };
 
 export const auth = {
@@ -242,113 +175,17 @@ export const auth = {
     },
 
     /**
-     * Exchanges a Firebase citizen ID token for a LexVision backend citizen token.
-     * This does not persist a global portal session unless requested.
-     */
-    loginCitizenWithFirebaseToken: async (
-        idToken: string,
-        phoneNumber: string,
-        options: CitizenLoginOptions = {},
-    ): Promise<CitizenTokenExchange> => {
-        const response = await apiFetch(`${API_BASE_URL}/auth/firebase-phone-login`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                firebase_id_token: idToken,
-                phone_number: phoneNumber.trim(),
-            }),
-        });
-
-        if (!response.ok) {
-            if (response.status === 401) {
-                throw new Error(await getResponseErrorMessage(response, 'The backend could not verify this OTP session. Request a new OTP and try again.'));
-            }
-            if (response.status === 503) {
-                throw new Error(await getResponseErrorMessage(response, 'Citizen phone verification is temporarily unavailable. Please try again shortly.'));
-            }
-            if (response.status === 409) {
-                throw new Error(await getResponseErrorMessage(response, 'This verified phone number conflicts with an existing citizen account.'));
-            }
-            throw new Error(await getResponseErrorMessage(response, 'Citizen backend verification failed.'));
-        }
-
-        const exchange = await response.json();
-        if (options.persistSession) {
-            auth.setCitizenSession(exchange, 'firebase');
-        }
-        return exchange;
-    },
-
-    getCitizenOtpReadiness: async (): Promise<CitizenOtpReadiness> => {
-        const response = await apiFetch(`${API_BASE_URL}/auth/citizen/otp-readiness`);
-
-        if (!response.ok) {
-            throw new Error(await getResponseErrorMessage(response, 'Unable to load citizen OTP readiness details.'));
-        }
-
-        return response.json();
-    },
-
-    setCitizenSession: (
-        exchange: CitizenTokenExchange,
-        provider: CitizenAuthProvider = 'firebase',
-    ): CitizenSession => {
-        const session = buildCitizenSession(exchange, provider);
-        localStorage.setItem(CITIZEN_SESSION_KEY, JSON.stringify(session));
-        return session;
-    },
-
-    /**
-     * Temporary development/demo-only citizen login path.
-     * The backend must explicitly enable this route, and it must never be used in production.
-     */
-    loginCitizenWithDemoOtp: async (
-        phoneNumber: string,
-        options: CitizenLoginOptions = {},
-    ): Promise<CitizenTokenExchange> => {
-        const response = await apiFetch(`${API_BASE_URL}/auth/citizen/demo-login`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ phone_number: phoneNumber.trim() }),
-        });
-
-        if (!response.ok) {
-            if (response.status === 404) {
-                throw new Error(await getResponseErrorMessage(response, 'Demo citizen OTP login is disabled for this backend environment.'));
-            }
-            throw new Error(await getResponseErrorMessage(response, 'Demo citizen session creation failed.'));
-        }
-
-        const exchange = await response.json();
-        if (options.persistSession) {
-            auth.setCitizenSession(exchange, 'demo');
-        }
-        return exchange;
-    },
-
-    getCitizenSession: (): CitizenSession | null => {
-        try {
-            const data = localStorage.getItem(CITIZEN_SESSION_KEY);
-            return data ? JSON.parse(data) : null;
-        } catch {
-            return null;
-        }
-    },
-
-    logoutCitizen: () => {
-        localStorage.removeItem(CITIZEN_SESSION_KEY);
-        void fetch(`${API_BASE_URL}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(() => undefined);
-    },
-
-    /**
      * Retrieves the current active session.
      */
     getSession: (): UserSession | null => {
         try {
             const data = localStorage.getItem(SESSION_KEY);
-            return data ? JSON.parse(data) : null;
+            const session = data ? JSON.parse(data) as UserSession : null;
+            if (!session?.token || !isTokenValid(session.token)) {
+                localStorage.removeItem(SESSION_KEY);
+                return null;
+            }
+            return session;
         } catch {
             return null;
         }
@@ -359,6 +196,7 @@ export const auth = {
      */
     logout: () => {
         localStorage.removeItem(SESSION_KEY);
+        localStorage.removeItem('lexvision_citizen_session');
         void fetch(`${API_BASE_URL}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(() => undefined);
     },
 
@@ -369,15 +207,7 @@ export const auth = {
         return auth.getSession() !== null;
     },
 
-    isCitizenAuthenticated: (): boolean => {
-        return auth.getCitizenSession() !== null;
-    },
-
     getCitizenPortalAuthMode: (): CitizenPortalAuthMode => {
-        if (auth.getCitizenSession()) {
-            return 'phone';
-        }
-
         const session = auth.getSession();
         if (session?.role === 'CITIZEN') {
             return 'email';
@@ -390,15 +220,7 @@ export const auth = {
         return auth.getCitizenPortalAuthMode() !== null;
     },
 
-    isDemoCitizenSession: (session: CitizenSession | null = auth.getCitizenSession()): boolean => {
-        return Boolean(session && (session.auth_provider === 'demo' || session.firebase_uid?.startsWith(DEMO_FIREBASE_UID_PREFIX)));
-    },
-
-    isClientOnlyDemoCitizenSession: (session: CitizenSession | null = auth.getCitizenSession()): boolean => {
-        return Boolean(
-            session &&
-            (session.auth_provider === 'demo' || session.firebase_uid?.startsWith(DEMO_FIREBASE_UID_PREFIX)) &&
-            session.token.endsWith('.demo'),
-        );
+    isCitizenAuthenticated: (): boolean => {
+        return auth.hasCitizenPortalAccess();
     },
 };

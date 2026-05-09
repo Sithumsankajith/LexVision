@@ -1,11 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Camera, MapPin, Radio, Upload, X, CheckCircle, FileText, ArrowRight, ArrowLeft, Locate, Loader2 } from 'lucide-react';
 import { Stepper, Button, Card, Input, Select } from '@lexvision/ui';
 import { auth, mockDb } from '@lexvision/api-client';
 import { SRI_LANKA_DISTRICTS } from '@lexvision/types';
 import type { ViolationType } from '@lexvision/types';
-import { CitizenOtpLoginModal, type CitizenOtpVerificationResult } from '@/components/CitizenOtpLoginModal';
 import {
     clearPendingReportDraft,
     getDefaultReportFormData,
@@ -372,9 +371,13 @@ const LocationMap: React.FC<{
 
 
 export const ReportWizard: React.FC = () => {
+    const navigate = useNavigate();
+    const location = useLocation();
     const [currentStep, setCurrentStep] = useState(1);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [isOtpModalOpen, setIsOtpModalOpen] = useState(false);
+    const [isLoginPromptOpen, setIsLoginPromptOpen] = useState(false);
+    const [draftSaveStatus, setDraftSaveStatus] = useState<string | null>(null);
+    const [draftFileWarning, setDraftFileWarning] = useState<string | null>(null);
     const [submittedId, setSubmittedId] = useState<string | null>(null);
     const [gpsLoading, setGpsLoading] = useState(false);
     const [gpsError, setGpsError] = useState('');
@@ -387,11 +390,6 @@ export const ReportWizard: React.FC = () => {
 
     const [errors, setErrors] = useState<Record<string, string>>({});
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const userSession = auth.getSession();
-    const citizenPortalAuthMode = auth.getCitizenPortalAuthMode();
-    const hasReusableCitizenSession = citizenPortalAuthMode !== null;
-    const hasReusablePhoneCitizenSession = citizenPortalAuthMode === 'phone';
-    const hasReusableEmailCitizenSession = citizenPortalAuthMode === 'email';
 
     useEffect(() => {
         let active = true;
@@ -404,7 +402,8 @@ export const ReportWizard: React.FC = () => {
                 if (draft) {
                     setFormData(draft);
                     setCurrentStep(4);
-                    setResumeNotice('Your saved report draft has been restored. Review it and submit.');
+                    const loginRestored = (location.state as { draftRestored?: boolean } | null)?.draftRestored;
+                    setResumeNotice(loginRestored ? 'Login successful. Your draft report was restored.' : 'Your saved report draft has been restored. Review it and submit.');
                 }
             } catch (error) {
                 console.error('Failed to restore report draft', error);
@@ -420,7 +419,37 @@ export const ReportWizard: React.FC = () => {
         return () => {
             active = false;
         };
-    }, []);
+    }, [location.state]);
+
+    const hasUnsavedReportData = useCallback(() => {
+        const defaults = getDefaultReportFormData();
+        return Boolean(
+            formData.violationType ||
+            formData.location ||
+            formData.city ||
+            formData.district ||
+            formData.description ||
+            formData.customViolationDescription ||
+            formData.vehiclePlate ||
+            formData.vehicleType ||
+            formData.evidenceFiles.length > 0 ||
+            formData.date !== defaults.date ||
+            formData.time !== defaults.time ||
+            !isDefaultReportCoordinates(formData.lat, formData.lng)
+        );
+    }, [formData]);
+
+    useEffect(() => {
+        const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+            if (!submittedId && hasUnsavedReportData()) {
+                event.preventDefault();
+                event.returnValue = 'You have unsaved report data.';
+            }
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [hasUnsavedReportData, submittedId]);
 
     const reverseGeocodeLocation = useCallback((lat: number, lng: number, overwriteText = false) => {
         fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&accept-language=en`)
@@ -583,16 +612,20 @@ export const ReportWizard: React.FC = () => {
                 return;
             }
 
+            let draftSaved = true;
             await savePendingReportDraft(formData).catch((error) => {
-                console.error('Failed to persist the report draft before OTP verification', error);
+                draftSaved = false;
+                console.error('Failed to persist the report draft before final submission', error);
             });
 
-            if (hasReusableCitizenSession) {
-                await submitCitizenReportWithExistingSession();
+            if (!auth.isCitizenAuthenticated()) {
+                setDraftSaveStatus(draftSaved ? 'Draft saved. Evidence files should be restored automatically after login.' : 'Draft save was incomplete.');
+                setDraftFileWarning(draftSaved ? null : 'Please re-upload evidence files after login.');
+                setIsLoginPromptOpen(true);
                 return;
             }
 
-            setIsOtpModalOpen(true);
+            await submitCitizenReportWithExistingSession();
             return;
         }
 
@@ -650,7 +683,7 @@ export const ReportWizard: React.FC = () => {
             await savePendingReportDraft(formData).catch((draftError) => {
                 console.error('Failed to preserve the report draft after submission error', draftError);
             });
-            setResumeNotice('Your report draft is still saved. You can retry the OTP verification or final submit without re-entering the form.');
+            setResumeNotice('Your report draft is still saved. You can retry final submit without re-entering the form.');
             const message = `Failed to submit report: ${getErrorMessage(error, 'Unknown error')} Your form data is still saved.`;
             setErrors({ submit: message });
             throw new Error(message);
@@ -660,19 +693,9 @@ export const ReportWizard: React.FC = () => {
         }
     };
 
-    const submitCitizenReport = async (verificationResult: CitizenOtpVerificationResult) => {
-        await finalizeCitizenReportSubmission((payload) =>
-            mockDb.submitCitizenReportWithFirebase(verificationResult.idToken, verificationResult.phoneNumber, payload)
-        );
-    };
-
     const submitCitizenReportWithExistingSession = async () => {
-        if (hasReusablePhoneCitizenSession) {
-            await finalizeCitizenReportSubmission((payload) => mockDb.submitCitizenReport(payload));
-            return;
-        }
-
-        if (hasReusableEmailCitizenSession) {
+        const userSession = auth.getSession();
+        if (auth.isCitizenAuthenticated()) {
             await finalizeCitizenReportSubmission((payload) =>
                 mockDb.createReport({
                     citizen: { email: userSession?.email || 'citizen@lexvision.gov' },
@@ -687,7 +710,17 @@ export const ReportWizard: React.FC = () => {
             return;
         }
 
-        throw new Error('Please sign in with a citizen account or verify your phone number before submitting.');
+        throw new Error('Please sign in with a citizen email account before submitting.');
+    };
+
+    const handleLoginRedirect = () => {
+        const redirectPath = '/portal/report';
+        navigate(`/login?redirect=${encodeURIComponent(redirectPath)}`, {
+            state: {
+                from: { pathname: redirectPath },
+                draftPending: true,
+            },
+        });
     };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1007,10 +1040,7 @@ export const ReportWizard: React.FC = () => {
                                 color: 'var(--color-text-secondary)',
                             }}
                         >
-                            {hasReusableCitizenSession
-                                ? 'You are already signed in. Final submit will use your current login and will not ask for another OTP.'
-                                : 'You can complete the entire report first. When you press the final submit button, phone verification will be required before the report is sent.'
-                            }
+                            You are signed in. Final submit will use your current email login.
                         </div>
 
                         <div className="form-grid form-grid--2-col">
@@ -1066,7 +1096,7 @@ export const ReportWizard: React.FC = () => {
                     isLoading={isSubmitting}
                     rightIcon={currentStep === 4 ? undefined : <ArrowRight size={16} />}
                 >
-                    {currentStep === 4 ? (hasReusableCitizenSession ? 'Submit Report' : 'Verify Phone & Submit') : 'Next Step'}
+                    {currentStep === 4 ? 'Submit Report' : 'Next Step'}
                 </Button>
             </div>
 
@@ -1076,12 +1106,24 @@ export const ReportWizard: React.FC = () => {
                 </div>
             )}
 
-            <CitizenOtpLoginModal
-                isOpen={isOtpModalOpen}
-                onClose={() => setIsOtpModalOpen(false)}
-                onVerified={submitCitizenReport}
-                description="Verify your Sri Lankan mobile number to complete the final report submission. After verification, LexVision will submit the evidence and generate a report reference number."
-            />
+            {isLoginPromptOpen && (
+                <div className={styles.modalBackdrop} role="presentation" onClick={() => setIsLoginPromptOpen(false)}>
+                    <div className={styles.loginModal} role="dialog" aria-modal="true" aria-labelledby="login-required-title" onClick={(event) => event.stopPropagation()}>
+                        <h2 id="login-required-title">Login Required</h2>
+                        <p>You must log in before submitting a report. Your report draft will be saved/restored after login.</p>
+                        {draftSaveStatus && <div className={styles.draftStatus}>{draftSaveStatus}</div>}
+                        {draftFileWarning && <div className={styles.draftWarning}>{draftFileWarning}</div>}
+                        <div className={styles.modalActions}>
+                            <Button variant="secondary" onClick={() => setIsLoginPromptOpen(false)}>
+                                Cancel
+                            </Button>
+                            <Button variant="primary" onClick={handleLoginRedirect}>
+                                Login Now
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

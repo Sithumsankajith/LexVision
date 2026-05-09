@@ -72,17 +72,6 @@ export default defineConfig([
 ])
 ```
 
-## Citizen OTP Checklist
+## Citizen Authentication
 
-For temporary local/demo login without SMS delivery, set `VITE_DEMO_OTP_ENABLED=true` in `apps/citizen-portal/.env.local`. To let those demo logins create real backend citizen sessions and make submitted reports visible in the police dashboard, also set `DEMO_OTP_ENABLED=true` in `services/ml/.env`. This simulated OTP path only works in non-production builds, always uses the fixed code `123456`, and must not be enabled for production deployments.
-
-For Firebase phone OTP to work in the citizen portal without configuration errors, all of the following must be true:
-
-- `apps/citizen-portal/.env.local` must contain all `VITE_FIREBASE_*` values for the correct Firebase web app.
-- `services/ml/.env` must contain `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, and `FIREBASE_PRIVATE_KEY`.
-- Firebase Authentication must have the `Phone` provider enabled.
-- The Firebase project must be on the `Blaze` plan because verification SMS is not available on `Spark`.
-- Google Cloud branding / consent configuration must be verified and published for phone verification.
-- Firebase Authentication SMS region policy must allow `Sri Lanka (LK)`.
-- The current web domain, such as `localhost`, must be listed in Firebase `Authorized domains`.
-- Real-number testing can be throttled. For demo/development, add Firebase `Phone numbers for testing` and use the configured test code instead of waiting for a real SMS.
+Citizen login uses email and password authentication.

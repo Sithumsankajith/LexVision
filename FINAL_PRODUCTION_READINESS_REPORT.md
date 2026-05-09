@@ -10,11 +10,11 @@ LexVision is now near-production quality for a final-year research system. All s
 
 | Workflow | Status |
 | --- | --- |
-| Citizen report submission | Ready: OTP session, secure upload, metadata persistence, audit log, SMS queue, inference queue, success/error/loading states. |
+| Citizen report submission | Ready: email-authenticated session, evidence metadata persistence, audit log, SMS queue, inference queue, success/error/loading states. |
 | AI inference pipeline | Ready: selected model routing, ANPR/OCR path, confidence handling, provider metadata, fallback behavior, durable job tracking. |
 | Police review | Ready: paginated queue, filters/search/sort, detail view, evidence fallback UI, status transitions, SMS notification, ticket actions. |
 | Ticket/fine issuing | Ready: validation requirement, fine rules, no duplicate active ticket constraints, lifecycle enforcement, PDF generation. |
-| Firebase OTP auth | Ready: Firebase verification, dev fallback guard, JWT issuance, session persistence, logout, production credential validation. |
+| Citizen email/password auth | Ready: JWT issuance, session persistence, logout, and production credential validation. |
 | Admin analytics | Ready: charts/API aggregation, heatmap, CSV export, officer metrics, AI metrics, caching, worker/storage operations. |
 
 ## Verification Summary
@@ -33,7 +33,7 @@ Before a real public deployment:
 
 - Run Redis and RQ workers continuously.
 - Replace local disk storage with S3/Firebase Storage for multi-node deployments.
-- Configure real Firebase Admin, SMS provider credentials, `SECRET_KEY`, `MEDIA_SIGNING_SECRET`, CORS origins, and API URLs.
+- Configure real SMS provider credentials, `SECRET_KEY`, `MEDIA_SIGNING_SECRET`, CORS origins, and API URLs.
 - Add external monitoring for API latency, worker failures, Redis health, SMS failures, and object storage errors.
 
 ## Final Score

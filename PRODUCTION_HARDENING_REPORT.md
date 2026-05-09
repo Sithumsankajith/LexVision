@@ -51,4 +51,4 @@ Passed:
 
 Score: 94 / 100
 
-The system is demo-ready, dissertation-ready, and close to production architecture. The remaining six points are reserved for cloud object storage, live Redis-worker deployment verification, distributed cache, and production SMS/Firebase credentials in a real environment.
+The system is demo-ready, dissertation-ready, and close to production architecture. The remaining six points are reserved for cloud object storage, live Redis-worker deployment verification, distributed cache, and production SMS credentials in a real environment.

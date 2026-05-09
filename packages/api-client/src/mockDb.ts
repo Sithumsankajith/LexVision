@@ -1,4 +1,4 @@
-import type { AppNotification, CitizenReportDetail, ConfidenceBand, NotificationListResult, PlateReview, Report, ReportStatusHistoryEntry, ReportStatusSource, TicketStatus, TicketStatusHistoryEntry, TrafficTicket } from '@lexvision/types';
+import type { AppNotification, CitizenReportDetail, ConfidenceBand, NotificationListResult, PlateReview, Report, ReportStatusSource, TicketStatus, TicketStatusHistoryEntry, TrafficTicket } from '@lexvision/types';
 
 const extractErrorMessage = (errorData: any, fallback: string) => {
     if (typeof errorData?.detail === 'string') {
@@ -11,33 +11,6 @@ const extractErrorMessage = (errorData: any, fallback: string) => {
 };
 
 import { API_BASE_URL, API_ORIGIN, apiFetch, auth, getResponseErrorMessage } from './auth';
-
-const DEMO_CITIZEN_REPORTS_KEY = 'lexvision_demo_citizen_reports';
-
-interface CitizenReportPayload {
-    violationType: Report['violationType'];
-    datetime: string;
-    location: Report['location'];
-    customViolationDescription?: string | null;
-    evidence: Array<{
-        id?: string;
-        type: 'image' | 'video';
-        url?: string;
-        name: string;
-        size: number;
-        mimeType?: string;
-        file?: File;
-        storageBackend?: string;
-        storagePath?: string;
-        checksumSha256?: string;
-        accessMetadata?: Record<string, unknown>;
-    }>;
-    vehicle: Report['vehicle'];
-}
-
-interface DemoCitizenReportRecord extends CitizenReportDetail {
-    phoneNumber: string;
-}
 
 const normalizeViolationType = (value?: string | null): Report['violationType'] => {
     if (!value) {
@@ -108,211 +81,6 @@ const resolvePlateCropUrl = (url?: string | null): string | null => {
     return url;
 };
 
-const readDemoCitizenReports = (): DemoCitizenReportRecord[] => {
-    try {
-        const stored = localStorage.getItem(DEMO_CITIZEN_REPORTS_KEY);
-        return stored ? JSON.parse(stored) : [];
-    } catch {
-        return [];
-    }
-};
-
-const writeDemoCitizenReports = (reports: DemoCitizenReportRecord[]) => {
-    localStorage.setItem(DEMO_CITIZEN_REPORTS_KEY, JSON.stringify(reports));
-};
-
-const buildDemoAiSummary = (reportData: CitizenReportPayload, processedAt: string): Report['aiSummary'] | null => {
-    const violationType = normalizeViolationType(reportData.violationType);
-
-    if (violationType === 'red_light') {
-        return {
-            provider: 'roboflow',
-            modelId: 'red-light-violation-detect-dataset-a9rsa/1',
-            violationFamily: 'red_light',
-            claimedViolationType: violationType,
-            inferredViolationType: 'RED_LIGHT',
-            finalViolationType: null,
-            hasViolation: true,
-            hasHelmetViolation: false,
-            confidence: 0.79,
-            confidenceLevel: 'medium',
-            manualReviewRequired: false,
-            reviewReason: null,
-            detectedClasses: ['red_light'],
-            detections: [{
-                class: 'red_light',
-                normalizedClass: 'red_light',
-                confidence: 0.79,
-                confidenceLevel: 'medium',
-                bbox: { x: 160, y: 120, width: 60, height: 110 },
-            }],
-            error: null,
-            status: 'success',
-            processedAt,
-        };
-    }
-
-    if (violationType === 'white_line') {
-        return {
-            provider: 'roboflow',
-            modelId: 'lane-detection-yolov8/2',
-            violationFamily: 'white_line',
-            claimedViolationType: violationType,
-            inferredViolationType: null,
-            finalViolationType: null,
-            hasViolation: false,
-            hasHelmetViolation: false,
-            confidence: 0.44,
-            confidenceLevel: 'low',
-            manualReviewRequired: true,
-            reviewReason: 'White line detected but crossing must be verified',
-            detectedClasses: ['white_line', 'lane'],
-            detections: [
-                {
-                    class: 'white_line',
-                    normalizedClass: 'white_line',
-                    confidence: 0.44,
-                    confidenceLevel: 'low',
-                    bbox: { x: 190, y: 260, width: 240, height: 24 },
-                },
-            ],
-            error: null,
-            status: 'no_detection',
-            processedAt,
-        };
-    }
-
-    if (violationType !== 'helmet') {
-        const isOther = violationType === 'other';
-        return {
-            provider: isOther ? 'manual_review' : 'roboflow',
-            modelId: null,
-            violationFamily: violationType,
-            claimedViolationType: violationType,
-            inferredViolationType: null,
-            finalViolationType: null,
-            hasViolation: false,
-            hasHelmetViolation: false,
-            confidence: 0,
-            confidenceLevel: 'none',
-            manualReviewRequired: true,
-            reviewReason: isOther
-                ? 'Citizen selected Other. Specialized violation models were skipped; ANPR and OCR should be reviewed manually.'
-                : 'Manual review required for this report.',
-            detectedClasses: [],
-            detections: [],
-            error: null,
-            status: isOther ? 'manual_review_required' : 'no_detection',
-            processedAt,
-        };
-    }
-
-    return {
-        provider: 'roboflow',
-        modelId: 'helmet-no-helmet-detection/1',
-        violationFamily: 'helmet',
-        claimedViolationType: 'helmet',
-        inferredViolationType: 'NO_HELMET',
-        finalViolationType: null,
-        hasViolation: true,
-        hasHelmetViolation: true,
-        confidence: 0.91,
-        confidenceLevel: 'high',
-        manualReviewRequired: false,
-        reviewReason: null,
-        detectedClasses: ['no-helmet', 'helmet'],
-        detections: [
-            {
-                class: 'no_helmet_front',
-                normalizedClass: 'no-helmet',
-                confidence: 0.91,
-                confidenceLevel: 'high',
-                bbox: {
-                    x: 144,
-                    y: 168,
-                    width: 86,
-                    height: 102,
-                },
-            },
-            {
-                class: 'with_helmet',
-                normalizedClass: 'helmet',
-                confidence: 0.85,
-                confidenceLevel: 'high',
-                bbox: {
-                    x: 200,
-                    y: 180,
-                    width: 90,
-                    height: 110,
-                },
-            }
-        ],
-        error: null,
-        status: 'success',
-        processedAt,
-    };
-};
-
-const buildDemoCitizenReport = (reportData: CitizenReportPayload): DemoCitizenReportRecord => {
-    const session = auth.getCitizenSession();
-    const phoneNumber = session?.phone_number;
-    if (!phoneNumber) {
-        throw new Error('Please verify your phone number before submitting a demo report.');
-    }
-
-    const now = new Date().toISOString();
-    const reportId = globalThis.crypto?.randomUUID?.() || `demo-report-${Date.now()}`;
-    const trackingId = `DEMO-${Date.now()}`;
-    const aiSummary = buildDemoAiSummary(reportData, now);
-
-    return {
-        id: reportId,
-        trackingId,
-        source: 'evidence-report',
-        citizen: { phone: phoneNumber },
-        phoneNumber,
-        violationType: normalizeViolationType(reportData.violationType),
-        claimedViolationType: normalizeViolationType(reportData.violationType),
-        inferredViolationType: aiSummary?.inferredViolationType || null,
-        finalViolationType: null,
-        datetime: reportData.datetime,
-        location: reportData.location,
-        evidence: reportData.evidence.map((e, index) => ({
-            id: e.id || `demo-file-${index}`,
-            type: e.type,
-            url: e.url || '',
-            name: e.name,
-            size: e.size,
-        })),
-        vehicle: reportData.vehicle,
-        customViolationDescription: reportData.customViolationDescription || null,
-        manualReviewRequired: !!aiSummary?.manualReviewRequired,
-        status: 'submitted',
-        createdAt: now,
-        updatedAt: now,
-        notes: 'Saved locally in demo mode.',
-        aiSummary,
-        aiAnalysis: aiSummary ? {
-            detectedViolationType: aiSummary.inferredViolationType,
-            claimedViolationType: aiSummary.claimedViolationType,
-            inferredViolationType: aiSummary.inferredViolationType,
-            finalViolationType: aiSummary.finalViolationType,
-            confidence: aiSummary.confidence,
-            confidenceBand: aiSummary.confidenceLevel,
-            modelVersion: aiSummary.modelId,
-            processedAt: aiSummary.processedAt,
-        } : undefined,
-        statusHistory: [{
-            id: `${reportId}-submitted`,
-            previousStatus: null,
-            newStatus: 'submitted',
-            notes: 'Report submitted in local demo mode.',
-            changedAt: now,
-            source: 'citizen',
-        }],
-    };
-};
-
 const mapBackendStatus = (status: string): Report['status'] =>
     status === 'SUBMITTED' ? 'submitted' :
         status === 'CLOSED' ? 'closed' :
@@ -324,14 +92,6 @@ const mapBackendStatusSource = (source: string): ReportStatusSource =>
         source === 'POLICE' ? 'police' :
             source === 'ADMIN' ? 'admin' :
                 source === 'CITIZEN' ? 'citizen' : 'system';
-
-const requireCitizenSessionToken = () => {
-    const session = auth.getCitizenSession();
-    if (!session?.token) {
-        throw new Error('Please verify your phone number to access your reports.');
-    }
-    return session.token;
-};
 
 const getEffectiveViolationType = (backendReport: any): Report['violationType'] =>
     normalizeViolationType(backendReport.violation_type ||
@@ -577,18 +337,6 @@ const mapCitizenReportToFrontend = (b: any): Report => ({
     aiAnalysis: buildAiAnalysis(b),
 });
 
-const mapCitizenReportDetailToFrontend = (b: any): CitizenReportDetail => ({
-    ...mapCitizenReportToFrontend(b),
-    statusHistory: (b.status_history || []).map((entry: any): ReportStatusHistoryEntry => ({
-        id: entry.id,
-        previousStatus: entry.previous_status ? mapBackendStatus(entry.previous_status) : null,
-        newStatus: mapBackendStatus(entry.new_status),
-        notes: entry.notes || undefined,
-        changedAt: entry.changed_at,
-        source: mapBackendStatusSource(entry.change_source),
-    })),
-});
-
 const mapLegacyReportDetailToFrontend = (b: any): CitizenReportDetail => ({
     ...mapReportToFrontend(b),
     statusHistory: [],
@@ -660,52 +408,6 @@ const mapFineRuleToFrontend = (rule: any) => {
         createdAt: rule.created_at,
         updatedAt: rule.updated_at,
     };
-};
-
-const uploadCitizenEvidenceFile = async (file: File, citizenToken: string) => {
-    const formData = new FormData();
-    formData.append('upload', file);
-
-    const response = await fetch(`${API_BASE_URL}/media/evidence-uploads`, {
-        method: 'POST',
-        headers: {
-            Authorization: `Bearer ${citizenToken}`,
-        },
-        body: formData,
-    });
-
-    if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-            throw new Error(extractErrorMessage(errorData, `Failed to upload ${file.name}`));
-    }
-
-    const uploaded = await response.json();
-    return {
-        type: uploaded.type as 'image' | 'video',
-        url: uploaded.url as string,
-        name: uploaded.name as string,
-        size: uploaded.size as number,
-        mimeType: uploaded.mime_type as string | undefined,
-        storageBackend: uploaded.storage_backend as string | undefined,
-        storagePath: uploaded.storage_path as string | undefined,
-        checksumSha256: uploaded.checksum_sha256 as string | undefined,
-        accessMetadata: uploaded.access_metadata as Record<string, unknown> | undefined,
-    };
-};
-
-const prepareCitizenEvidenceForSubmit = async (
-    evidence: CitizenReportPayload['evidence'],
-    citizenToken: string,
-): Promise<CitizenReportPayload['evidence']> => {
-    const prepared: CitizenReportPayload['evidence'] = [];
-    for (const item of evidence) {
-        if (item.file) {
-            prepared.push(await uploadCitizenEvidenceFile(item.file, citizenToken));
-        } else {
-            prepared.push(item);
-        }
-    }
-    return prepared;
 };
 
 const fileToDataUrl = (file: File): Promise<string> => new Promise((resolve, reject) => {
@@ -805,119 +507,8 @@ export const mockDb = {
         return mapReportToFrontend(data);
     },
 
-    submitCitizenReportWithFirebase: async (
-        firebaseIdToken: string,
-        phoneNumber: string,
-        reportData: CitizenReportPayload,
-    ): Promise<Report> => {
-        if (firebaseIdToken.startsWith('demo-otp:')) {
-            throw new Error('Demo OTP login can open the citizen portal, but report submission still requires the real OTP backend.');
-        }
-
-        const citizenAuth = await auth.loginCitizenWithFirebaseToken(firebaseIdToken, phoneNumber, { persistSession: true });
-        return mockDb.submitCitizenReport(reportData, citizenAuth.access_token);
-    },
-
-    /**
-     * Submits a citizen evidence report with an already verified LexVision citizen session.
-     * This is used to avoid forcing an extra OTP/login step when the citizen is already signed in.
-     */
-    submitCitizenReport: async (reportData: CitizenReportPayload, citizenToken?: string): Promise<Report> => {
-        if (!citizenToken && auth.isClientOnlyDemoCitizenSession()) {
-            const report = buildDemoCitizenReport(reportData);
-            const reports = readDemoCitizenReports();
-            writeDemoCitizenReports([report, ...reports]);
-            return report;
-        }
-
-        const token = citizenToken || requireCitizenSessionToken();
-        const preparedEvidence = await prepareCitizenEvidenceForSubmit(reportData.evidence, token);
-        const payload = {
-            violation_type: normalizeViolationType(reportData.violationType),
-            incident_at: reportData.datetime,
-            location_lat: reportData.location.lat,
-            location_lng: reportData.location.lng,
-            location_address: reportData.location.address,
-            location_city: reportData.location.city,
-            location_district: reportData.location.district,
-            description: reportData.vehicle.notes,
-            custom_violation_description: reportData.customViolationDescription,
-            vehicle_plate: reportData.vehicle.plate,
-            vehicle_type: reportData.vehicle.type,
-            evidence: preparedEvidence.map((e) => ({
-                type: e.type,
-                url: e.url,
-                name: e.name,
-                size: e.size,
-                mime_type: e.mimeType,
-                storage_backend: e.storageBackend,
-                storage_path: e.storagePath,
-                checksum_sha256: e.checksumSha256,
-                access_metadata: e.accessMetadata,
-            })),
-        };
-
-        const response = await fetch(`${API_BASE_URL}/citizen-reports`, {
-            method: 'POST',
-            headers: getHeaders(token),
-            body: JSON.stringify(payload),
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(extractErrorMessage(errorData, 'Your phone number was verified, but the evidence report could not be submitted. Your draft is still saved, so you can try again.'));
-        }
-
-        const data = await response.json();
-        return mapCitizenReportToFrontend(data);
-    },
-
-    getCitizenMyReports: async (): Promise<Report[]> => {
-        if (auth.isClientOnlyDemoCitizenSession()) {
-            const phoneNumber = auth.getCitizenSession()?.phone_number;
-            return readDemoCitizenReports().filter((report) => report.phoneNumber === phoneNumber);
-        }
-
-        const token = requireCitizenSessionToken();
-        const response = await fetch(`${API_BASE_URL}/citizen-reports/me`, {
-            headers: getHeaders(token),
-        });
-
-        if (response.status === 401) {
-            auth.logoutCitizen();
-            throw new Error('Your citizen session has expired. Please verify your phone number again.');
-        }
-
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(extractErrorMessage(errorData, 'Failed to load your reports.'));
-        }
-
-        const data = await response.json();
-        return data.map((report: any) => ({
-            id: report.id,
-            trackingId: report.tracking_id,
-            source: 'evidence-report',
-            citizen: { phone: auth.getCitizenSession()?.phone_number },
-            violationType: normalizeViolationType(report.violation_type),
-            datetime: report.created_at,
-            location: { lat: 0, lng: 0, address: '', city: '', district: report.location_district || '' },
-            evidence: [],
-            vehicle: {},
-            customViolationDescription: report.custom_violation_description || null,
-            manualReviewRequired: !!report.manual_review_required,
-            status: mapBackendStatus(report.status),
-            createdAt: report.created_at,
-            updatedAt: report.updated_at,
-        }));
-    },
-
     getPortalMyReports: async (): Promise<Report[]> => {
         const authMode = auth.getCitizenPortalAuthMode();
-
-        if (authMode === 'phone') {
-            return mockDb.getCitizenMyReports();
-        }
 
         if (authMode === 'email') {
             return mockDb.getMyReports();
@@ -926,41 +517,8 @@ export const mockDb = {
         throw new Error('Please sign in with your citizen account to access your reports.');
     },
 
-    getCitizenMyReportById: async (reportId: string): Promise<CitizenReportDetail | null> => {
-        if (auth.isClientOnlyDemoCitizenSession()) {
-            const phoneNumber = auth.getCitizenSession()?.phone_number;
-            return readDemoCitizenReports().find((report) => report.id === reportId && report.phoneNumber === phoneNumber) || null;
-        }
-
-        const token = requireCitizenSessionToken();
-        const response = await fetch(`${API_BASE_URL}/citizen-reports/me/${reportId}`, {
-            headers: getHeaders(token),
-        });
-
-        if (response.status === 401) {
-            auth.logoutCitizen();
-            throw new Error('Your citizen session has expired. Please verify your phone number again.');
-        }
-
-        if (response.status === 404) {
-            return null;
-        }
-
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(extractErrorMessage(errorData, 'Failed to load this report.'));
-        }
-
-        const data = await response.json();
-        return mapCitizenReportDetailToFrontend(data);
-    },
-
     getPortalMyReportById: async (reportId: string): Promise<CitizenReportDetail | null> => {
         const authMode = auth.getCitizenPortalAuthMode();
-
-        if (authMode === 'phone') {
-            return mockDb.getCitizenMyReportById(reportId);
-        }
 
         if (authMode === 'email') {
             const report = await mockDb.getReportById(reportId);
@@ -980,12 +538,12 @@ export const mockDb = {
 
             const citizenResponse = await fetch(`${API_BASE_URL}/citizen-reports/tracking/${trackingId}`);
             if (!citizenResponse.ok) {
-                return readDemoCitizenReports().find((report) => report.trackingId === trackingId) || null;
+                return null;
             }
             const citizenData = await citizenResponse.json();
             return mapCitizenReportToFrontend(citizenData);
         } catch {
-            return readDemoCitizenReports().find((report) => report.trackingId === trackingId) || null;
+            return null;
         }
     },
 
@@ -1491,64 +1049,5 @@ export const mockDb = {
 
     deleteStaffNotification: async (notificationId: string): Promise<void> => {
         await fetch(`${API_BASE_URL}/notifications/${notificationId}`, { method: 'DELETE', headers: getHeaders() });
-    },
-
-    // ---------------------------------------------------------------------------
-    // Citizen notifications — /api/citizen-notifications
-    // ---------------------------------------------------------------------------
-
-    getCitizenNotifications: async (params: {
-        unreadOnly?: boolean;
-        limit?: number;
-        offset?: number;
-    } = {}): Promise<NotificationListResult> => {
-        const token = requireCitizenSessionToken();
-        const query = new URLSearchParams();
-        if (params.unreadOnly) query.set('unread_only', 'true');
-        if (params.limit !== undefined) query.set('limit', String(params.limit));
-        if (params.offset !== undefined) query.set('offset', String(params.offset));
-        const response = await fetch(`${API_BASE_URL}/citizen-notifications?${query}`, { headers: getHeaders(token) });
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(extractErrorMessage(errorData, 'Failed to load notifications'));
-        }
-        const data = await response.json();
-        return {
-            items: data.items as AppNotification[],
-            total: data.total,
-            unread_count: data.unread_count,
-        };
-    },
-
-    getCitizenUnreadCount: async (): Promise<number> => {
-        try {
-            const token = requireCitizenSessionToken();
-            const response = await fetch(`${API_BASE_URL}/citizen-notifications/unread-count`, { headers: getHeaders(token) });
-            if (!response.ok) return 0;
-            const data = await response.json();
-            return data.count ?? 0;
-        } catch {
-            return 0;
-        }
-    },
-
-    markCitizenNotificationRead: async (notificationId: string): Promise<AppNotification | null> => {
-        const token = requireCitizenSessionToken();
-        const response = await fetch(`${API_BASE_URL}/citizen-notifications/${notificationId}/read`, {
-            method: 'PATCH',
-            headers: getHeaders(token),
-        });
-        if (!response.ok) return null;
-        return response.json();
-    },
-
-    markAllCitizenNotificationsRead: async (): Promise<void> => {
-        const token = requireCitizenSessionToken();
-        await fetch(`${API_BASE_URL}/citizen-notifications/read-all`, { method: 'PATCH', headers: getHeaders(token) });
-    },
-
-    deleteCitizenNotification: async (notificationId: string): Promise<void> => {
-        const token = requireCitizenSessionToken();
-        await fetch(`${API_BASE_URL}/citizen-notifications/${notificationId}`, { method: 'DELETE', headers: getHeaders(token) });
     },
 };

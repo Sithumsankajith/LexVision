@@ -12,11 +12,6 @@ const getNavbarSession = () => {
         return { email: staffSession.email };
     }
 
-    const citizenSession = auth.getCitizenSession();
-    if (citizenSession) {
-        return { email: citizenSession.phone_number };
-    }
-
     return null;
 };
 
@@ -61,7 +56,7 @@ const NotificationBellWrapper: React.FC = () => {
 export const PublicLayout: React.FC = () => {
     const navigate = useNavigate();
     const [session, setSession] = useState(getNavbarSession());
-    const [isCitizenLoggedIn, setIsCitizenLoggedIn] = useState(auth.isCitizenAuthenticated());
+    const [isCitizenLoggedIn, setIsCitizenLoggedIn] = useState(auth.hasCitizenPortalAccess());
 
     useEffect(() => {
         // Simple listener for session changes if needed
@@ -70,7 +65,7 @@ export const PublicLayout: React.FC = () => {
             if (JSON.stringify(currentSession) !== JSON.stringify(session)) {
                 setSession(currentSession);
             }
-            const citizenLoggedIn = auth.isCitizenAuthenticated();
+            const citizenLoggedIn = auth.hasCitizenPortalAccess();
             if (citizenLoggedIn !== isCitizenLoggedIn) {
                 setIsCitizenLoggedIn(citizenLoggedIn);
             }
@@ -80,7 +75,6 @@ export const PublicLayout: React.FC = () => {
 
     const handleLogout = () => {
         auth.logout();
-        auth.logoutCitizen();
         setSession(null);
         setIsCitizenLoggedIn(false);
         navigate('/portal');

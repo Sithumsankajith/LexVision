@@ -60,7 +60,7 @@ If empty (new install), trigger any flow below to populate it.
 
 ### Test A — Citizen submits a report
 
-1. Login to citizen portal (Firebase OTP or demo OTP).
+1. Login to citizen portal with email and password.
 2. Submit a report.
 3. **Citizen portal**: bell badge increments within 15s, dropdown shows "Your report was submitted".
 4. **Police dashboard** (logged in as police@lexvision.com): bell badge increments within 15s, dropdown shows "New report waiting for review".

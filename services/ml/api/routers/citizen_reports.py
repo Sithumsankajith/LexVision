@@ -19,6 +19,11 @@ from ..services.notifications import notify_citizen, notify_police, notify_admin
 router = APIRouter(prefix="/api/citizen-reports", tags=["citizen-reports"])
 
 
+def _can_send_sms(phone_number: str) -> bool:
+    cleaned = phone_number.strip()
+    return cleaned.startswith("+") or cleaned.isdigit()
+
+
 def _citizen_report_query(db: Session):
     return db.query(models.EvidenceReport).options(
         joinedload(models.EvidenceReport.inference_log),
@@ -79,7 +84,7 @@ def create_citizen_report(
         models.ReportStatusEnum.SUBMITTED,
         source=StatusChangeSourceEnum.CITIZEN,
         changed_by_citizen_id=current_citizen.id,
-        notes="Citizen submitted a verified OTP-backed evidence report.",
+        notes="Citizen submitted an authenticated evidence report.",
     )
     db.add(new_report)
     db.flush()
@@ -135,22 +140,23 @@ def create_citizen_report(
 
     # SMS delivery is best-effort. Failed provider/config issues are recorded in sms_notifications
     # by dispatch_sms(), but they must not roll back or fail the already-saved report submission.
-    rendered_sms = render_sms_template(
-        SmsTemplateKeyEnum.CITIZEN_REPORT_SUBMITTED_CONFIRMATION,
-        report=saved_report,
-        citizen=current_citizen,
-    )
-    submit_sms_task(
-        background_tasks,
-        asdict(SmsSendRequest(
-            phone_number=current_citizen.phone_number,
-            message_body=rendered_sms.message_body,
-            template_key=rendered_sms.template_key.value,
-            citizen_id=current_citizen.id,
-            report_id=saved_report.id,
-            metadata=rendered_sms.metadata,
-        )),
-    )
+    if _can_send_sms(current_citizen.phone_number):
+        rendered_sms = render_sms_template(
+            SmsTemplateKeyEnum.CITIZEN_REPORT_SUBMITTED_CONFIRMATION,
+            report=saved_report,
+            citizen=current_citizen,
+        )
+        submit_sms_task(
+            background_tasks,
+            asdict(SmsSendRequest(
+                phone_number=current_citizen.phone_number,
+                message_body=rendered_sms.message_body,
+                template_key=rendered_sms.template_key.value,
+                citizen_id=current_citizen.id,
+                report_id=saved_report.id,
+                metadata=rendered_sms.metadata,
+            )),
+        )
 
     # Run the same AI enrichment path used by legacy reports so police can
     # review citizen submissions with helmet + ANPR context in the queue.

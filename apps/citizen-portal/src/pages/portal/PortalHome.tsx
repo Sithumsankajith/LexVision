@@ -14,14 +14,14 @@ export const PortalHome: React.FC = () => {
                 </div>
             </header>
 
-            <main className="container" style={{ marginTop: 'var(--space-8)' }}>
-                <div className={`card-grid card-grid--2-col ${styles.actions}`}>
+            <main className={`container ${styles.main}`}>
+                <div className={styles.actions}>
                     <Link to="/portal/report" className={styles.actionLink}>
                         <Card className={styles.actionCard} hoverable padding="lg">
                             <PlusCircle size={48} className={styles.icon} />
                             <h2>Report a Violation</h2>
                             <p>Submit evidence of traffic violations. Help make our roads safer.</p>
-                            <Button variant="primary" fullWidth>Start Report</Button>
+                            <Button variant="primary" fullWidth className={styles.actionButton}>Start Report</Button>
                         </Card>
                     </Link>
 
@@ -30,7 +30,7 @@ export const PortalHome: React.FC = () => {
                             <Search size={48} className={styles.icon} />
                             <h2>Track My Report</h2>
                             <p>Check the status of your submitted reports using your Tracking ID.</p>
-                            <Button variant="secondary" fullWidth>Check Status</Button>
+                            <Button variant="secondary" fullWidth className={styles.actionButton}>Check Status</Button>
                         </Card>
                     </Link>
 
@@ -38,8 +38,8 @@ export const PortalHome: React.FC = () => {
                         <Card className={styles.actionCard} hoverable padding="lg">
                             <FolderSearch size={48} className={styles.icon} />
                             <h2>My Reports</h2>
-                            <p>Sign in with your verified phone number to see only the reports linked to your citizen account.</p>
-                            <Button variant="secondary" fullWidth>Open My Reports</Button>
+                            <p>Sign in with your email and password to see only the reports linked to your citizen account.</p>
+                            <Button variant="secondary" fullWidth className={styles.actionButton}>Open My Reports</Button>
                         </Card>
                     </Link>
                 </div>

@@ -4,7 +4,7 @@ Generated: 2026-05-08
 
 ## Controls Added
 
-- Production startup validation for `SECRET_KEY`, Firebase Admin credentials, Redis, SMS provider credentials, CORS origins, media signing secret, and public API URL.
+- Production startup validation for `SECRET_KEY`, Redis, SMS provider credentials, CORS origins, media signing secret, and public API URL.
 - Production rejects `SMS_PROVIDER=noop`.
 - Masked secret logging for startup diagnostics.
 - Strict CORS origins outside local development.

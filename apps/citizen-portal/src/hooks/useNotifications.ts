@@ -24,13 +24,13 @@ export function useNotifications(): UseNotificationsResult {
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const inflightRef = useRef<boolean>(false);
 
-    const isAuthenticated = auth.isCitizenAuthenticated();
+    const isAuthenticated = auth.hasCitizenPortalAccess();
 
     const refreshUnreadCount = useCallback(async () => {
-        if (!auth.isCitizenAuthenticated()) return;
+        if (!auth.hasCitizenPortalAccess()) return;
         if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
         try {
-            const count = await mockDb.getCitizenUnreadCount();
+            const count = await mockDb.getStaffUnreadCount();
             setUnreadCount(count);
         } catch {
             // Silent — never surface poll errors as UI errors
@@ -38,13 +38,13 @@ export function useNotifications(): UseNotificationsResult {
     }, []);
 
     const fetchNotifications = useCallback(async (opts: { offset?: number; limit?: number } = {}) => {
-        if (!auth.isCitizenAuthenticated()) return;
+        if (!auth.hasCitizenPortalAccess()) return;
         if (inflightRef.current) return;
         inflightRef.current = true;
         setLoading(true);
         setError(null);
         try {
-            const result = await mockDb.getCitizenNotifications({
+            const result = await mockDb.getStaffNotifications({
                 limit: opts.limit ?? 20,
                 offset: opts.offset ?? 0,
             });
@@ -62,14 +62,14 @@ export function useNotifications(): UseNotificationsResult {
     const refresh = useCallback(() => fetchNotifications(), [fetchNotifications]);
 
     const markRead = useCallback(async (id: string) => {
-        if (!auth.isCitizenAuthenticated()) return;
+        if (!auth.hasCitizenPortalAccess()) return;
         const previous = notifications;
         setNotifications(prev =>
             prev.map(n => (n.id === id ? { ...n, is_read: true, read_at: new Date().toISOString() } : n)),
         );
         setUnreadCount(prev => Math.max(0, prev - 1));
         try {
-            await mockDb.markCitizenNotificationRead(id);
+            await mockDb.markStaffNotificationRead(id);
         } catch {
             setNotifications(previous);
             void refreshUnreadCount();
@@ -77,13 +77,13 @@ export function useNotifications(): UseNotificationsResult {
     }, [notifications, refreshUnreadCount]);
 
     const markAllRead = useCallback(async () => {
-        if (!auth.isCitizenAuthenticated()) return;
+        if (!auth.hasCitizenPortalAccess()) return;
         const previous = notifications;
         const previousUnread = unreadCount;
         setNotifications(prev => prev.map(n => ({ ...n, is_read: true, read_at: new Date().toISOString() })));
         setUnreadCount(0);
         try {
-            await mockDb.markAllCitizenNotificationsRead();
+            await mockDb.markAllStaffNotificationsRead();
         } catch {
             setNotifications(previous);
             setUnreadCount(previousUnread);
@@ -91,13 +91,13 @@ export function useNotifications(): UseNotificationsResult {
     }, [notifications, unreadCount]);
 
     const deleteNotification = useCallback(async (id: string) => {
-        if (!auth.isCitizenAuthenticated()) return;
+        if (!auth.hasCitizenPortalAccess()) return;
         const previous = notifications;
         const wasUnread = previous.find(n => n.id === id)?.is_read === false;
         setNotifications(prev => prev.filter(n => n.id !== id));
         if (wasUnread) setUnreadCount(prev => Math.max(0, prev - 1));
         try {
-            await mockDb.deleteCitizenNotification(id);
+            await mockDb.deleteStaffNotification(id);
         } catch {
             setNotifications(previous);
             if (wasUnread) setUnreadCount(prev => prev + 1);

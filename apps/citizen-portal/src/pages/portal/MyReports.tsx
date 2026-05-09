@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { AlertCircle, CheckCircle2, ChevronRight, Clock3, FileText, RefreshCcw, Smartphone, Gift, Trophy, Star, MapPin } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ChevronRight, Clock3, FileText, RefreshCcw, Mail, Gift, Trophy, Star, MapPin } from 'lucide-react';
 import { Button, Card } from '@lexvision/ui';
 import { auth, mockDb } from '@lexvision/api-client';
 import type { Report, Reward, UserProfile } from '@lexvision/types';
@@ -24,9 +24,7 @@ const getStatusClassName = (status: Report['status']) => {
 
 export const MyReports: React.FC = () => {
     const navigate = useNavigate();
-    const citizenSession = auth.getCitizenSession();
     const userSession = auth.getSession();
-    const citizenPortalAuthMode = auth.getCitizenPortalAuthMode();
 
     const [reports, setReports] = useState<Report[]>([]);
     const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -105,7 +103,6 @@ export const MyReports: React.FC = () => {
                         <Button
                             variant="secondary"
                             onClick={() => {
-                                auth.logoutCitizen();
                                 auth.logout();
                                 navigate('/login', { replace: true });
                             }}
@@ -123,7 +120,7 @@ export const MyReports: React.FC = () => {
             <div className={styles.header}>
                 <div className={styles.headerInfo}>
                     <div className={styles.avatar}>
-                        <Smartphone size={34} />
+                        <Mail size={34} />
                     </div>
                     <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
@@ -135,7 +132,7 @@ export const MyReports: React.FC = () => {
                                 </div>
                             )}
                         </div>
-                        <p>{citizenPortalAuthMode === 'phone' ? citizenSession?.phone_number : userSession?.email || 'Citizen account'}</p>
+                        <p>{userSession?.email || 'Citizen account'}</p>
                     </div>
                 </div>
                 <div className={styles.headerActions}>
@@ -146,7 +143,6 @@ export const MyReports: React.FC = () => {
                         variant="whiteOutline"
                         size="sm"
                         onClick={() => {
-                            auth.logoutCitizen();
                             auth.logout();
                             navigate('/portal');
                         }}

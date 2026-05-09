@@ -1,4 +1,3 @@
-import os
 from datetime import timedelta
 
 import bcrypt
@@ -7,45 +6,16 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
-from ..citizen_auth import (
-    CitizenAccountConflictError,
-    CitizenAuthError,
-    get_or_create_citizen_account,
-    normalize_sri_lankan_phone_number,
-    verify_citizen_firebase_identity,
-)
 from ..database import get_db
 from ..dependencies import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     create_access_token,
-    create_citizen_access_token,
     get_current_citizen_account,
-    get_current_user,
     log_audit_action,
 )
-from ..firebase_admin import FirebaseAdminConfigError, get_firebase_admin_status
 from ..production_config import is_production_environment
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
-DEMO_FIREBASE_UID_PREFIX = "demo-otp:"
-
-
-def _is_demo_citizen_login_enabled() -> bool:
-    """
-    Temporary development/demo-only guard for simulated citizen OTP login.
-    This must remain disabled for production deployments.
-    """
-    return os.getenv("DEMO_OTP_ENABLED", "false").lower() == "true"
-
-
-def _normalize_demo_phone_number(phone_number: str) -> str:
-    try:
-        return normalize_sri_lankan_phone_number(phone_number)
-    except CitizenAuthError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
-        ) from exc
 
 
 def verify_password(plain_password, hashed_password):
@@ -54,19 +24,6 @@ def verify_password(plain_password, hashed_password):
 
 def get_password_hash(password):
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-
-
-def _build_citizen_auth_response(citizen: models.Citizen, access_token: str) -> dict:
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user": {
-            "id": citizen.id,
-            "role": models.RoleEnum.CITIZEN.value,
-            "phone_number": citizen.phone_number,
-        },
-        "citizen": citizen,
-    }
 
 
 def _set_session_cookie(response: Response, name: str, token: str) -> None:
@@ -79,68 +36,6 @@ def _set_session_cookie(response: Response, name: str, token: str) -> None:
         samesite="lax",
         path="/",
     )
-
-
-def _create_citizen_login_response(citizen: models.Citizen, response: Response) -> dict:
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_citizen_access_token(citizen, expires_delta=access_token_expires)
-    _set_session_cookie(response, "lexvision_citizen_session", access_token)
-    return _build_citizen_auth_response(citizen, access_token)
-
-
-def _login_citizen_with_firebase_identity(
-    *,
-    firebase_id_token: str,
-    expected_phone_number: str | None,
-    db: Session,
-    response: Response,
-) -> dict:
-    try:
-        identity = verify_citizen_firebase_identity(
-            firebase_id_token,
-            expected_phone_number=expected_phone_number,
-        )
-    except FirebaseAdminConfigError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(exc),
-        ) from exc
-    except CitizenAuthError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(exc),
-        ) from exc
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Firebase ID token.",
-        ) from exc
-
-    try:
-        citizen = get_or_create_citizen_account(
-            db,
-            firebase_uid=identity["firebase_uid"],
-            phone_number=identity["phone_number"],
-        )
-    except CitizenAccountConflictError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=str(exc),
-        ) from exc
-
-    log_audit_action(
-        db,
-        None,
-        "CITIZEN_FIREBASE_LOGIN_SUCCESS",
-        "Citizen",
-        citizen.id,
-        details={
-            "firebase_uid": citizen.firebase_uid,
-            "phone_number": citizen.phone_number,
-        },
-    )
-
-    return _create_citizen_login_response(citizen, response)
 
 
 @router.post("/register", response_model=schemas.UserResponse)
@@ -189,92 +84,6 @@ def logout(response: Response):
     return {"message": "Logged out"}
 
 
-@router.post("/firebase-phone-login", response_model=schemas.CitizenAuthResponse)
-def login_citizen_with_firebase_phone(
-    payload: schemas.FirebasePhoneLoginRequest,
-    response: Response,
-    db: Session = Depends(get_db),
-):
-    return _login_citizen_with_firebase_identity(
-        firebase_id_token=payload.firebase_id_token,
-        expected_phone_number=payload.phone_number,
-        db=db,
-        response=response,
-    )
-
-
-@router.post("/citizen/firebase-login", response_model=schemas.CitizenAuthResponse)
-def login_citizen_with_firebase(
-    payload: schemas.FirebaseCitizenAuthRequest,
-    response: Response,
-    db: Session = Depends(get_db),
-):
-    return _login_citizen_with_firebase_identity(
-        firebase_id_token=payload.id_token,
-        expected_phone_number=None,
-        db=db,
-        response=response,
-    )
-
-
-@router.post("/citizen/demo-login", response_model=schemas.CitizenAuthResponse)
-def login_citizen_with_demo_otp(
-    payload: schemas.DemoCitizenAuthRequest,
-    response: Response,
-    db: Session = Depends(get_db),
-):
-    if not _is_demo_citizen_login_enabled():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Demo citizen OTP login is disabled for this backend environment.",
-        )
-
-    normalized_phone_number = _normalize_demo_phone_number(payload.phone_number)
-    citizen = get_or_create_citizen_account(
-        db,
-        firebase_uid=f"{DEMO_FIREBASE_UID_PREFIX}{normalized_phone_number}",
-        phone_number=normalized_phone_number,
-    )
-
-    log_audit_action(
-        db,
-        None,
-        "CITIZEN_DEMO_LOGIN_SUCCESS",
-        "Citizen",
-        citizen.id,
-        details={
-            "firebase_uid": citizen.firebase_uid,
-            "phone_number": citizen.phone_number,
-            "mode": "demo",
-        },
-    )
-
-    return _create_citizen_login_response(citizen, response)
-
-
 @router.get("/citizen/me", response_model=schemas.CitizenResponse)
 def get_current_citizen_profile(current_citizen: models.Citizen = Depends(get_current_citizen_account)):
     return current_citizen
-
-
-@router.get("/citizen/otp-readiness", response_model=schemas.CitizenOtpReadinessResponse)
-def get_citizen_otp_readiness():
-    backend_status = get_firebase_admin_status()
-    return {
-        "backend_configured": backend_status["configured"],
-        "admin_configured": backend_status["admin_configured"],
-        "dev_mode_enabled": backend_status["dev_mode_enabled"],
-        "verification_mode": backend_status["verification_mode"],
-        "firebase_project_id": backend_status["project_id"],
-        "missing_backend_env": backend_status["missing_env"],
-        "requirements": [
-            "Citizen portal frontend must include all VITE_FIREBASE_* values in apps/citizen-portal/.env.local.",
-            "Backend should include FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY in services/ml/.env for Firebase Admin verification.",
-            "For local-only development without Firebase Admin, set FIREBASE_AUTH_DEV_MODE=true and keep FIREBASE_PROJECT_ID configured.",
-            "Firebase Authentication Phone provider must be enabled for this project.",
-            "The Firebase project must be on the Blaze plan because verification SMS is not available on Spark.",
-            "Phone Number Verification / OAuth branding must be verified and published in Google Cloud.",
-            "SMS region policy must allow Sri Lanka (LK) for OTP delivery.",
-            "The testing domain such as localhost or your deployed domain must be listed in Firebase Authorized domains.",
-        ],
-    }

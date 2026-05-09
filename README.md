@@ -50,29 +50,18 @@ Update the copied files with real values or placeholders appropriate for your de
 
 - `DATABASE_URL`: PostgreSQL DSN or SQLite fallback
 - `SECRET_KEY`: required for stable JWT auth tokens
-- `DEMO_OTP_ENABLED`: set `true` only for local demo OTP mode
 - `ROBOFLOW_API_KEY`: required for live Roboflow inference
 - `ROBOFLOW_HELMET_MODEL_ID`
 - `ROBOFLOW_RED_LIGHT_MODEL_ID`
 - `ROBOFLOW_WHITE_LINE_MODEL_ID`
 - `HELMET_MODEL_PATH` / `ANPR_MODEL_PATH`: optional local model overrides
-- `FIREBASE_PROJECT_ID`
-- `FIREBASE_CLIENT_EMAIL`
-- `FIREBASE_PRIVATE_KEY`
-- `FIREBASE_AUTH_DEV_MODE`: optional local fallback for Firebase Admin verification
 - `SMS_PROVIDER` and provider-specific `SMS_*` variables when SMS delivery is enabled
 
 ### Citizen portal: `apps/citizen-portal/.env.local`
 
-- `VITE_FIREBASE_API_KEY`
-- `VITE_FIREBASE_AUTH_DOMAIN`
-- `VITE_FIREBASE_PROJECT_ID`
-- `VITE_FIREBASE_STORAGE_BUCKET`
-- `VITE_FIREBASE_MESSAGING_SENDER_ID`
-- `VITE_FIREBASE_APP_ID`
-- `VITE_FIREBASE_MEASUREMENT_ID` (optional)
-- `VITE_FIREBASE_PHONE_TEST_TOKEN` (optional)
-- `VITE_DEMO_OTP_ENABLED=true` for local demo OTP mode
+- `VITE_API_BASE_URL`
+- `VITE_ADMIN_DASHBOARD_URL`
+- `VITE_POLICE_DASHBOARD_URL`
 
 ## Database and Seeding
 
@@ -95,10 +84,7 @@ Seeded demo accounts:
 - Admin: `admin@lexvision.com` / `admin123`
 - Police: `police@lexvision.com` / `police123`
 
-Demo citizen OTP:
-
-- Enable `VITE_DEMO_OTP_ENABLED=true` in the citizen portal and `DEMO_OTP_ENABLED=true` in the backend
-- The fixed demo OTP code is `123456`
+Citizen login uses email and password authentication.
 
 ## Running the Project
 
@@ -166,7 +152,7 @@ Useful runtime endpoints:
 ## Demo Flow
 
 1. Start the backend and all three frontend apps.
-2. Log in to the citizen portal with Firebase phone OTP or demo OTP.
+2. Log in to the citizen portal with email and password.
 3. Submit a citizen report with image evidence.
 4. Open the police dashboard and review the queued report plus AI summary.
 5. Validate or reject the report manually.

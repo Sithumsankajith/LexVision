@@ -8,6 +8,7 @@ const DEFAULT_COORDINATES = {
 const DB_NAME = 'lexvision-citizen-portal';
 const STORE_NAME = 'report_drafts';
 const DRAFT_KEY = 'citizen-report-submit';
+export const PENDING_REPORT_STORAGE_KEY = 'lexvision_pending_report';
 
 export interface ReportFormData {
     violationType: ViolationType | '';
@@ -23,6 +24,16 @@ export interface ReportFormData {
     vehiclePlate: string;
     vehicleType: string;
     evidenceFiles: File[];
+}
+
+interface PendingReportMarker {
+    violationType: ViolationType | '';
+    description: string;
+    location: string;
+    files: Array<{ name: string; size: number; type: string }>;
+    timestamp: string;
+    draftSavedAt: string;
+    filesPersisted: boolean;
 }
 
 export const getDefaultReportFormData = (): ReportFormData => {
@@ -92,6 +103,21 @@ export const savePendingReportDraft = async (draft: ReportFormData): Promise<voi
         request.onsuccess = () => resolve();
         request.onerror = () => reject(request.error ?? new Error('Failed to save the report draft.'));
     });
+
+    const marker: PendingReportMarker = {
+        violationType: draft.violationType,
+        description: draft.description,
+        location: draft.location,
+        files: draft.evidenceFiles.map((file) => ({
+            name: file.name,
+            size: file.size,
+            type: file.type,
+        })),
+        timestamp: new Date().toISOString(),
+        draftSavedAt: new Date().toISOString(),
+        filesPersisted: true,
+    };
+    localStorage.setItem(PENDING_REPORT_STORAGE_KEY, JSON.stringify(marker));
 };
 
 export const loadPendingReportDraft = async (): Promise<ReportFormData | null> => {
@@ -108,4 +134,9 @@ export const clearPendingReportDraft = async (): Promise<void> => {
         request.onsuccess = () => resolve();
         request.onerror = () => reject(request.error ?? new Error('Failed to clear the report draft.'));
     });
+    localStorage.removeItem(PENDING_REPORT_STORAGE_KEY);
+};
+
+export const hasPendingReportDraftMarker = (): boolean => {
+    return Boolean(localStorage.getItem(PENDING_REPORT_STORAGE_KEY));
 };

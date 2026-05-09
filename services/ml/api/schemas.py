@@ -35,19 +35,6 @@ class TokenData(BaseModel):
     email: Optional[str] = None
 
 
-class FirebaseCitizenAuthRequest(BaseModel):
-    id_token: str
-
-
-class FirebasePhoneLoginRequest(BaseModel):
-    firebase_id_token: str
-    phone_number: str
-
-
-class DemoCitizenAuthRequest(BaseModel):
-    phone_number: str
-
-
 class CitizenResponse(BaseModel):
     id: str
     firebase_uid: str
@@ -58,32 +45,9 @@ class CitizenResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class CitizenSessionUserResponse(BaseModel):
-    id: str
-    role: RoleEnum = RoleEnum.CITIZEN
-    phone_number: str
-
-
-class CitizenAuthResponse(BaseModel):
-    access_token: str
-    token_type: str
-    user: CitizenSessionUserResponse
-    citizen: Optional[CitizenResponse] = None
-
-
 class CitizenTokenData(BaseModel):
     citizen_id: Optional[str] = None
     token_scope: Optional[str] = None
-
-
-class CitizenOtpReadinessResponse(BaseModel):
-    backend_configured: bool
-    admin_configured: bool = False
-    dev_mode_enabled: bool = False
-    verification_mode: str = "unconfigured"
-    firebase_project_id: Optional[str] = None
-    missing_backend_env: List[str] = []
-    requirements: List[str] = []
 
 
 class CitizenEvidenceFileCreate(BaseModel):

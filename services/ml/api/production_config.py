@@ -50,9 +50,6 @@ def validate_production_environment() -> None:
         "SECRET_KEY",
         "DATABASE_URL",
         "REDIS_URL",
-        "FIREBASE_PROJECT_ID",
-        "FIREBASE_CLIENT_EMAIL",
-        "FIREBASE_PRIVATE_KEY",
         "CORS_ALLOWED_ORIGINS",
         "MEDIA_SIGNING_SECRET",
         "PUBLIC_API_BASE_URL",
@@ -75,9 +72,8 @@ def validate_production_environment() -> None:
         raise RuntimeError(f"Missing production configuration: {', '.join(sorted(missing))}")
 
     logger.info(
-        "Production config validated | database=%s | redis=%s | firebase_project=%s | sms_provider=%s",
+        "Production config validated | database=%s | redis=%s | sms_provider=%s",
         mask_secret(get_env_value("DATABASE_URL")),
         mask_secret(get_env_value("REDIS_URL")),
-        get_env_value("FIREBASE_PROJECT_ID"),
         sms_provider,
     )
