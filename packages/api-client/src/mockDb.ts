@@ -707,6 +707,36 @@ const prepareCitizenEvidenceForSubmit = async (
     return prepared;
 };
 
+const fileToDataUrl = (file: File): Promise<string> => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+        if (typeof reader.result === 'string') {
+            resolve(reader.result);
+            return;
+        }
+        reject(new Error(`Failed to read ${file.name}`));
+    };
+    reader.onerror = () => reject(reader.error || new Error(`Failed to read ${file.name}`));
+    reader.readAsDataURL(file);
+});
+
+const prepareLegacyReportEvidenceForSubmit = async (
+    evidence: Omit<Report, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'trackingId'>['evidence'],
+) => {
+    const prepared = [];
+    for (const item of evidence as any[]) {
+        const file = item.file as File | undefined;
+        prepared.push({
+            id: item.id,
+            type: item.type,
+            url: file ? await fileToDataUrl(file) : item.url || '',
+            name: item.name,
+            size: item.size,
+        });
+    }
+    return prepared;
+};
+
 export const mockDb = {
     getEvidenceReportsPage: async (params: {
         limit?: number;
@@ -744,6 +774,7 @@ export const mockDb = {
     },
 
     createReport: async (reportData: Omit<Report, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'trackingId'>): Promise<Report> => {
+        const preparedEvidence = await prepareLegacyReportEvidenceForSubmit(reportData.evidence);
         const payload = {
             violation_type: normalizeViolationType(reportData.violationType),
             datetime: reportData.datetime,
@@ -753,13 +784,7 @@ export const mockDb = {
             location_city: reportData.location.city,
             location_district: reportData.location.district,
             custom_violation_description: reportData.customViolationDescription,
-            evidence: reportData.evidence.map((e: any) => ({
-                id: e.id,
-                type: e.type,
-                url: e.url || '',
-                name: e.name,
-                size: e.size
-            }))
+            evidence: preparedEvidence,
         };
         const response = await fetch(`${API_BASE_URL}/reports`, {
             method: 'POST',

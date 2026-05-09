@@ -31,4 +31,5 @@ venv/
 
 # Local temp/debug outputs
 temp/
+storage/
 logs/
