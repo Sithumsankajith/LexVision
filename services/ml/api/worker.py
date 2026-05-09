@@ -71,7 +71,20 @@ def _env_path_or_default(env_var_name: str, default_path: Path) -> Path:
     if not cleaned_value:
         return default_path
 
-    return Path(cleaned_value).expanduser()
+    configured_path = Path(cleaned_value).expanduser()
+    if configured_path.is_absolute():
+        return configured_path
+    candidates = [
+        (Path.cwd() / configured_path).resolve(),
+        (BASE_DIR / configured_path).resolve(),
+        (BASE_DIR.parents[1] / configured_path).resolve(),
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    if configured_path.parts[:2] == ("services", "ml"):
+        return (BASE_DIR.parents[1] / configured_path).resolve()
+    return (BASE_DIR / configured_path).resolve()
 
 
 HELMET_MODEL_PATH = _env_path_or_default("HELMET_MODEL_PATH", MODELS_DIR / "helmet_best.pt")
@@ -789,19 +802,27 @@ def _run_plate_ocr(crop) -> dict:
 
 def _build_anpr_result(report_id: str, image_path: str | None) -> dict:
     pipeline_result = run_anpr_pipeline(image_path)
+    normalized_plate_text = pipeline_result.get("normalized_plate_text") or pipeline_result.get("plate_text")
+    plate_bbox = pipeline_result.get("plate_bbox") or pipeline_result.get("bbox")
+    status = pipeline_result.get("status", "pending")
     return {
+        "plate_detected": bool(pipeline_result.get("plate_detected") or plate_bbox),
         "plate_text": pipeline_result.get("plate_text"),
+        "normalized_plate_text": normalized_plate_text,
         "plate_confidence": round(float(pipeline_result.get("plate_confidence") or 0.0), 4),
-        "bbox": pipeline_result.get("bbox"),
+        "ocr_confidence": round(float(pipeline_result.get("ocr_confidence") or pipeline_result.get("plate_confidence") or 0.0), 4),
+        "plate_bbox": plate_bbox,
+        "bbox": plate_bbox,
         "crop_path": pipeline_result.get("crop_path"),
-        "validation_status": pipeline_result.get("status", "pending"),
+        "validation_status": pipeline_result.get("validation_status") or status,
         "detections": pipeline_result.get("detections", []),
         "detected_classes": pipeline_result.get("detected_classes", []),
         "num_detections": int(pipeline_result.get("num_detections") or 0),
         "detection_confidence": round(float(pipeline_result.get("detection_confidence") or 0.0), 4),
         "raw_text": pipeline_result.get("raw_text"),
         "ocr_candidates": pipeline_result.get("ocr_candidates", []),
-        "status": pipeline_result.get("status", "pending"),
+        "status": status,
+        "error": pipeline_result.get("error"),
     }
 
 
@@ -967,15 +988,21 @@ def attempt_inference(
     inferred_violation_type = violation_result["inferred_violation_type"]
     if report_kind == "legacy":
         report.inferred_violation_type = inferred_violation_type
-    elif not report.vehicle_plate and anpr_result["plate_text"]:
-        report.vehicle_plate = anpr_result["plate_text"]
+    elif not report.vehicle_plate and (anpr_result["normalized_plate_text"] or anpr_result["plate_text"]):
+        report.vehicle_plate = anpr_result["normalized_plate_text"] or anpr_result["plate_text"]
 
-    manual_review_required = bool(
+    anpr_requires_manual_review = anpr_result.get("status") in {"model_missing", "no_plate", "ocr_failed", "failed"}
+    violation_requires_manual_review = bool(
         violation_result.get(
             "manual_review_required",
             violation_result.get("needs_manual_review", True),
         )
     )
+    manual_review_required = violation_requires_manual_review or anpr_requires_manual_review
+    violation_review_reason = violation_result.get("review_reason")
+    if anpr_requires_manual_review:
+        anpr_reason = "Plate recognition needs officer verification or manual entry."
+        violation_review_reason = f"{violation_review_reason} {anpr_reason}".strip() if violation_review_reason else anpr_reason
     if hasattr(report, "manual_review_required"):
         report.manual_review_required = manual_review_required
 
@@ -999,21 +1026,30 @@ def attempt_inference(
         "has_helmet_violation": bool(violation_result.get("has_helmet_violation")),
         "manual_review_required": manual_review_required,
         "needs_manual_review": manual_review_required,
-        "violation_review_reason": violation_result.get("review_reason"),
+        "violation_review_reason": violation_review_reason,
         "quality_score": overall_confidence,
         "confidence_band": confidence_band,
         "claimed_violation_type": claimed_violation_type,
         "inferred_violation_type": inferred_violation_type,
         "custom_violation_description": getattr(report, "custom_violation_description", None),
+        "plate_detected": bool(anpr_result.get("plate_detected")),
         "plate_text": anpr_result["plate_text"],
+        "normalized_plate_text": anpr_result["normalized_plate_text"],
+        "plate_detection_confidence": round(anpr_result["plate_confidence"], 4),
         "plate_confidence": round(anpr_result["plate_confidence"], 4),
+        "ocr_confidence": round(anpr_result["ocr_confidence"], 4),
+        "plate_bbox": anpr_result["plate_bbox"],
+        "crop_path": anpr_result["crop_path"],
         "validation_status": anpr_result["validation_status"],
         "anpr_status": anpr_result.get("status", anpr_result["validation_status"]),
+        "anpr_error": anpr_result.get("error"),
         "anpr_output": anpr_result,
         "ocr_output": {
             "raw_text": anpr_result["raw_text"],
             "plate_text": anpr_result["plate_text"],
+            "normalized_plate_text": anpr_result["normalized_plate_text"],
             "plate_confidence": round(anpr_result["plate_confidence"], 4),
+            "ocr_confidence": round(anpr_result["ocr_confidence"], 4),
             "candidates": anpr_result["ocr_candidates"],
         },
     }
@@ -1035,8 +1071,8 @@ def attempt_inference(
     inference_log.model_version = f"{violation_result.get('model_id') or 'unknown'}|anpr:{anpr_result.get('status', 'pending')}"
     inference_log.bbox_coordinates = bbox_payload
     inference_log.confidence = overall_confidence
-    inference_log.ocr_text = anpr_result["plate_text"]
-    inference_log.ocr_confidence = round(anpr_result["plate_confidence"], 4)
+    inference_log.ocr_text = anpr_result["normalized_plate_text"] or anpr_result["plate_text"]
+    inference_log.ocr_confidence = round(anpr_result["ocr_confidence"], 4)
     inference_log.inference_latency = round(latency, 4)
     inference_log.timestamp = processed_at
 
@@ -1068,7 +1104,7 @@ def attempt_inference(
         if violation_result["error"]:
             inference_log.bbox_coordinates["filtering"] = "Selected AI model failed; forwarded to manual review."
         elif manual_review_required:
-            inference_log.bbox_coordinates["filtering"] = violation_result.get("review_reason") or "Manual review required."
+            inference_log.bbox_coordinates["filtering"] = violation_review_reason or "Manual review required."
         elif inferred_violation_type is None:
             inference_log.bbox_coordinates["filtering"] = "AI could not confirm the reported violation."
         else:
@@ -1085,7 +1121,7 @@ def attempt_inference(
             "confidence_band": confidence_band,
             "report_kind": report_kind,
             "plate_detections": anpr_result.get("num_detections", 0),
-            "ocr_text": anpr_result["plate_text"],
+            "ocr_text": anpr_result["normalized_plate_text"] or anpr_result["plate_text"],
             "validation_status": anpr_result["validation_status"],
             "claimed_violation_type": claimed_violation_type,
             "inferred_violation_type": inferred_violation_type,
@@ -1098,6 +1134,7 @@ def attempt_inference(
             "needs_manual_review": manual_review_required,
             "has_violation": bool(violation_result.get("has_violation")),
             "anpr_status": anpr_result.get("status", "pending"),
+            "anpr_error": anpr_result.get("error"),
             "attempt": attempt,
         },
     )

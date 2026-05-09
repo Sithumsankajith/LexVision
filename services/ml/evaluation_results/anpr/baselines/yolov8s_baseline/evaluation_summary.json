@@ -1,0 +1,50 @@
+{
+  "generated_at": "2026-05-09T08:50:04.694135+00:00",
+  "model_path": "yolov8s.pt",
+  "data_yaml": "datasets/NumberPlate/Automatic Number Plate Recognition.v9i.yolov8/data.yaml",
+  "imgsz": 640,
+  "conf": 0.25,
+  "iou": 0.7,
+  "output_dir": "evaluation_results/anpr/baselines/yolov8s_baseline",
+  "splits": {
+    "val": {
+      "source_output_dir": "evaluation_results/anpr/baselines/yolov8s_baseline/ultralytics/val",
+      "artifact_dir": "evaluation_results/anpr/baselines/yolov8s_baseline/val",
+      "metrics": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "map50": 0.0,
+        "map50_95": 0.0,
+        "fitness": 0.0,
+        "speed_ms_per_image": {
+          "preprocess": 1.9624,
+          "inference": 202.5844,
+          "postprocess": 1.3157
+        },
+        "per_class": [
+          {
+            "class_index": 0,
+            "class_name": "License_Plate",
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "map50": 0.0,
+            "map50_95": 0.0,
+            "present_in_metrics": true
+          }
+        ]
+      },
+      "artifacts": [
+        "evaluation_results/anpr/baselines/yolov8s_baseline/val/confusion_matrix.png",
+        "evaluation_results/anpr/baselines/yolov8s_baseline/val/confusion_matrix_normalized.png",
+        "evaluation_results/anpr/baselines/yolov8s_baseline/val/val_batch2_labels.jpg",
+        "evaluation_results/anpr/baselines/yolov8s_baseline/val/val_batch1_pred.jpg",
+        "evaluation_results/anpr/baselines/yolov8s_baseline/val/val_batch2_pred.jpg",
+        "evaluation_results/anpr/baselines/yolov8s_baseline/val/val_batch1_labels.jpg",
+        "evaluation_results/anpr/baselines/yolov8s_baseline/val/val_batch0_pred.jpg",
+        "evaluation_results/anpr/baselines/yolov8s_baseline/val/val_batch0_labels.jpg"
+      ]
+    }
+  }
+}

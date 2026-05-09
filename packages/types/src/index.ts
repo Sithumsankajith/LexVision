@@ -101,6 +101,23 @@ export interface AISummary {
   error?: string | null;
   status?: string | null;
   processedAt?: string | null;
+  plateReview?: PlateReview | null;
+}
+
+export interface PlateReview {
+  plateDetected: boolean;
+  plateText?: string | null;
+  normalizedPlateText?: string | null;
+  confidenceLevel?: ConfidenceBand | 'none' | null;
+  plateConfidence: number;
+  ocrConfidence: number;
+  plateBbox?: AIDetectionBBox | null;
+  cropPath?: string | null;
+  status?: string | null;
+  validationStatus?: string | null;
+  error?: string | null;
+  manualCorrection?: string | null;
+  manualCorrectionAt?: string | null;
 }
 
 export interface Report {
@@ -133,6 +150,7 @@ export interface Report {
     confidenceBand?: ConfidenceBand | 'none' | null;
     modelVersion?: string | null;
     bbox?: Record<string, unknown> | null;
+    plateReview?: PlateReview | null;
     ocrOutput?: {
       text?: string | null;
       rawText?: string | null;

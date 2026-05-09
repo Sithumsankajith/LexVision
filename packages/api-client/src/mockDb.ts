@@ -1,4 +1,4 @@
-import type { AppNotification, CitizenReportDetail, ConfidenceBand, NotificationListResult, Report, ReportStatusHistoryEntry, ReportStatusSource, TicketStatus, TicketStatusHistoryEntry, TrafficTicket } from '@lexvision/types';
+import type { AppNotification, CitizenReportDetail, ConfidenceBand, NotificationListResult, PlateReview, Report, ReportStatusHistoryEntry, ReportStatusSource, TicketStatus, TicketStatusHistoryEntry, TrafficTicket } from '@lexvision/types';
 
 const extractErrorMessage = (errorData: any, fallback: string) => {
     if (typeof errorData?.detail === 'string') {
@@ -370,9 +370,45 @@ const mapDetectionToFrontend = (detection: any) => ({
     } : null,
 });
 
+const mapPlateReviewToFrontend = (raw: any, fallbackPayload?: any, fallbackLog?: any): PlateReview => {
+    const payload = raw || {};
+    const bboxPayload = fallbackPayload || {};
+    const plateBbox = payload.plate_bbox || bboxPayload.plate_bbox || bboxPayload.anpr_output?.plate_bbox || bboxPayload.anpr_output?.bbox || null;
+    const plateConfidence = payload.plate_confidence ?? bboxPayload.plate_detection_confidence ?? bboxPayload.plate_confidence ?? bboxPayload.anpr_output?.plate_confidence ?? 0;
+    const ocrConfidence = payload.ocr_confidence ?? bboxPayload.ocr_confidence ?? bboxPayload.anpr_output?.ocr_confidence ?? fallbackLog?.ocr_confidence ?? 0;
+    const level = normalizeConfidenceBand(payload.confidence_level)
+        || (plateConfidence >= 0.8 && ocrConfidence >= 0.8 ? 'high' : plateConfidence >= 0.5 && ocrConfidence >= 0.5 ? 'medium' : 'low');
+
+    return {
+        plateDetected: !!(payload.plate_detected ?? bboxPayload.plate_detected ?? bboxPayload.anpr_output?.plate_detected),
+        plateText: payload.plate_text ?? bboxPayload.plate_text ?? bboxPayload.anpr_output?.plate_text ?? null,
+        normalizedPlateText: payload.normalized_plate_text ?? bboxPayload.normalized_plate_text ?? bboxPayload.anpr_output?.normalized_plate_text ?? fallbackLog?.ocr_text ?? null,
+        confidenceLevel: level,
+        plateConfidence: typeof plateConfidence === 'number' ? plateConfidence : Number(plateConfidence) || 0,
+        ocrConfidence: typeof ocrConfidence === 'number' ? ocrConfidence : Number(ocrConfidence) || 0,
+        plateBbox: plateBbox ? {
+            x: plateBbox.x ?? null,
+            y: plateBbox.y ?? null,
+            width: plateBbox.width ?? null,
+            height: plateBbox.height ?? null,
+            x1: plateBbox.x1 ?? null,
+            y1: plateBbox.y1 ?? null,
+            x2: plateBbox.x2 ?? null,
+            y2: plateBbox.y2 ?? null,
+        } : null,
+        cropPath: payload.crop_path ?? bboxPayload.crop_path ?? bboxPayload.anpr_output?.crop_path ?? null,
+        status: payload.status ?? bboxPayload.anpr_status ?? bboxPayload.anpr_output?.status ?? null,
+        validationStatus: payload.validation_status ?? bboxPayload.validation_status ?? bboxPayload.anpr_output?.validation_status ?? null,
+        error: payload.error ?? bboxPayload.anpr_error ?? bboxPayload.anpr_output?.error ?? null,
+        manualCorrection: payload.manual_correction ?? bboxPayload.manual_plate_correction?.corrected_plate_number ?? null,
+        manualCorrectionAt: payload.manual_correction_at ?? bboxPayload.manual_plate_correction?.corrected_at ?? null,
+    };
+};
+
 const buildAiSummary = (backendReport: any): Report['aiSummary'] | undefined => {
     const rawSummary = backendReport.ai_summary;
     if (rawSummary) {
+        const bboxPayload = backendReport.inference_log?.bbox_coordinates || {};
         return {
             violationFamily: rawSummary.violation_family || null,
             provider: rawSummary.provider || null,
@@ -391,6 +427,7 @@ const buildAiSummary = (backendReport: any): Report['aiSummary'] | undefined => 
             error: rawSummary.error || null,
             status: rawSummary.status || null,
             processedAt: rawSummary.processed_at || null,
+            plateReview: mapPlateReviewToFrontend(rawSummary.plate_review, bboxPayload, backendReport.inference_log),
         };
     }
 
@@ -421,6 +458,7 @@ const buildAiSummary = (backendReport: any): Report['aiSummary'] | undefined => 
         error: bboxPayload.violation_error || null,
         status: bboxPayload.violation_detection_status || null,
         processedAt: bboxPayload.processing_timestamp || backendReport.inference_log.timestamp || null,
+        plateReview: mapPlateReviewToFrontend(null, bboxPayload, backendReport.inference_log),
     };
 };
 
@@ -443,10 +481,11 @@ const buildAiAnalysis = (backendReport: any): Report['aiAnalysis'] | undefined =
         confidenceBand: aiSummary?.confidenceLevel || normalizeConfidenceBand(bboxPayload.confidence_band),
         modelVersion: aiSummary?.modelId || backendReport.inference_log?.model_version || null,
         bbox: bboxPayload.bbox || null,
+        plateReview: aiSummary?.plateReview || mapPlateReviewToFrontend(null, bboxPayload, backendReport.inference_log),
         ocrOutput: {
             text: backendReport.inference_log?.ocr_text || bboxPayload.plate_text || null,
             rawText: ocrOutput.raw_text || null,
-            confidence: backendReport.inference_log?.ocr_confidence ?? bboxPayload.plate_confidence ?? null,
+            confidence: backendReport.inference_log?.ocr_confidence ?? bboxPayload.ocr_confidence ?? null,
             validationStatus: bboxPayload.validation_status || null,
         },
         processedAt: aiSummary?.processedAt || backendReport.inference_log?.timestamp || bboxPayload.processing_timestamp || null,
@@ -985,6 +1024,23 @@ export const mockDb = {
         return mapCitizenReportToFrontend(data);
     },
 
+    updateEvidenceReportPlate: async (reportId: string, correctedPlateNumber: string, notes?: string): Promise<Report> => {
+        const response = await fetch(`${API_BASE_URL}/evidence-reports/${reportId}/plate`, {
+            method: 'PUT',
+            headers: getHeaders(),
+            body: JSON.stringify({
+                corrected_plate_number: correctedPlateNumber,
+                notes,
+            }),
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(extractErrorMessage(errorData, 'Failed to save the corrected plate number.'));
+        }
+        const data = await response.json();
+        return mapCitizenReportToFrontend(data);
+    },
+
     // --- User & Reward Methods ---
     getProfile: async () => {
         const response = await apiFetch(`${API_BASE_URL}/users/me`, {
@@ -1107,6 +1163,19 @@ export const mockDb = {
     adminGetAiMetrics: async (): Promise<{ avg_helmet_confidence: number, avg_ocr_confidence: number, avg_inference_latency_seconds: number }> => {
         const response = await apiFetch(`${API_BASE_URL}/admin/analytics/ai-metrics`, { headers: getHeaders() });
         await ensureOk(response, 'Failed to load AI metrics.');
+        return response.json();
+    },
+
+    adminGetAnprPerformance: async (): Promise<{
+        total_reports_with_plate_detected: number;
+        ocr_succeeded: number;
+        ocr_failed: number;
+        avg_plate_detection_confidence: number;
+        avg_ocr_confidence: number;
+        manual_plate_correction_count: number;
+    }> => {
+        const response = await apiFetch(`${API_BASE_URL}/admin/analytics/anpr-performance`, { headers: getHeaders() });
+        await ensureOk(response, 'Failed to load ANPR analytics.');
         return response.json();
     },
 

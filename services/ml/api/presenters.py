@@ -50,6 +50,27 @@ def build_ai_summary(report: Any) -> schemas.AISummaryResponse | None:
         return None
 
     bbox_payload = inference_log.bbox_coordinates or {}
+    anpr_output = bbox_payload.get("anpr_output") or {}
+    manual_correction = bbox_payload.get("manual_plate_correction") or {}
+    plate_confidence = float(
+        bbox_payload.get("plate_detection_confidence")
+        or bbox_payload.get("plate_confidence")
+        or anpr_output.get("plate_confidence")
+        or 0.0
+    )
+    ocr_confidence = float(
+        bbox_payload.get("ocr_confidence")
+        or anpr_output.get("ocr_confidence")
+        or getattr(inference_log, "ocr_confidence", None)
+        or 0.0
+    )
+    if plate_confidence >= 0.8 and ocr_confidence >= 0.8:
+        plate_confidence_level = "high"
+    elif plate_confidence >= 0.5 and ocr_confidence >= 0.5:
+        plate_confidence_level = "medium"
+    else:
+        plate_confidence_level = "low"
+
     payload = {
         "violation_family": bbox_payload.get("violation_family"),
         "provider": bbox_payload.get("violation_provider"),
@@ -73,6 +94,23 @@ def build_ai_summary(report: Any) -> schemas.AISummaryResponse | None:
         "error": bbox_payload.get("violation_error"),
         "status": bbox_payload.get("violation_detection_status"),
         "processed_at": bbox_payload.get("processing_timestamp"),
+        "plate_review": {
+            "plate_detected": bool(bbox_payload.get("plate_detected") or anpr_output.get("plate_detected")),
+            "plate_text": bbox_payload.get("plate_text") or anpr_output.get("plate_text"),
+            "normalized_plate_text": bbox_payload.get("normalized_plate_text")
+            or anpr_output.get("normalized_plate_text")
+            or getattr(inference_log, "ocr_text", None),
+            "confidence_level": plate_confidence_level,
+            "plate_confidence": plate_confidence,
+            "ocr_confidence": ocr_confidence,
+            "plate_bbox": bbox_payload.get("plate_bbox") or anpr_output.get("plate_bbox") or anpr_output.get("bbox"),
+            "crop_path": bbox_payload.get("crop_path") or anpr_output.get("crop_path"),
+            "status": bbox_payload.get("anpr_status") or anpr_output.get("status"),
+            "validation_status": bbox_payload.get("validation_status") or anpr_output.get("validation_status"),
+            "error": bbox_payload.get("anpr_error") or anpr_output.get("error"),
+            "manual_correction": manual_correction.get("corrected_plate_number"),
+            "manual_correction_at": manual_correction.get("corrected_at"),
+        },
     }
     return _schema_from_orm(schemas.AISummaryResponse, payload)
 

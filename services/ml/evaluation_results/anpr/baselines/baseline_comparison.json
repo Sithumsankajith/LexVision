@@ -1,0 +1,36 @@
+{
+  "dataset": "services/ml/datasets/NumberPlate/Automatic Number Plate Recognition.v9i.yolov8/data.yaml",
+  "split": "val",
+  "imgsz": 640,
+  "generated_from_actual_yolo_outputs": true,
+  "models": [
+    {
+      "model": "yolov8n.pt",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "map50": 0.0,
+      "map50_95": 0.0,
+      "speed_ms_per_image": {
+        "preprocess": 1.8782,
+        "inference": 82.2781,
+        "postprocess": 1.0853
+      },
+      "notes": "Generic COCO detector; not trained for number plate localization."
+    },
+    {
+      "model": "yolov8s.pt",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "map50": 0.0,
+      "map50_95": 0.0,
+      "speed_ms_per_image": {
+        "preprocess": 1.9624,
+        "inference": 202.5844,
+        "postprocess": 1.3157
+      },
+      "notes": "Generic COCO detector; slower on CPU and not trained for number plate localization."
+    }
+  ]
+}

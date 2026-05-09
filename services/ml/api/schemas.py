@@ -307,6 +307,22 @@ class AIDetectionResponse(BaseModel):
     bbox_xyxy: Optional[AIDetectionBBoxResponse] = None
 
 
+class PlateReviewResponse(BaseModel):
+    plate_detected: bool = False
+    plate_text: Optional[str] = None
+    normalized_plate_text: Optional[str] = None
+    confidence_level: Optional[str] = None
+    plate_confidence: float = 0.0
+    ocr_confidence: float = 0.0
+    plate_bbox: Optional[AIDetectionBBoxResponse] = None
+    crop_path: Optional[str] = None
+    status: Optional[str] = None
+    validation_status: Optional[str] = None
+    error: Optional[str] = None
+    manual_correction: Optional[str] = None
+    manual_correction_at: Optional[datetime] = None
+
+
 class AISummaryResponse(BaseModel):
     violation_family: Optional[str] = None
     provider: Optional[str] = None
@@ -325,6 +341,7 @@ class AISummaryResponse(BaseModel):
     error: Optional[str] = None
     status: Optional[str] = None
     processed_at: Optional[datetime] = None
+    plate_review: Optional[PlateReviewResponse] = None
 
 # --- Report Schemas ---
 class ReportCreate(BaseModel):
@@ -407,6 +424,11 @@ class ReportResponse(BaseModel):
 
 class ReportStatusUpdate(BaseModel):
     status: StatusEnum
+    notes: Optional[str] = None
+
+
+class PlateCorrectionUpdate(BaseModel):
+    corrected_plate_number: str = Field(min_length=2, max_length=32)
     notes: Optional[str] = None
 
 # --- Fine Rule Schemas ---

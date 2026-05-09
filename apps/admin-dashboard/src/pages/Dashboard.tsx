@@ -6,6 +6,7 @@ import {
     XCircle,
     MoreHorizontal,
     BrainCircuit,
+    Car,
     Activity,
     Zap,
     TrendingUp
@@ -140,19 +141,28 @@ export const Dashboard: React.FC = () => {
     const [statusRatio, setStatusRatio] = React.useState<{ status: string, count: number }[]>([]);
     const [reportsTrend, setReportsTrend] = React.useState<{ date: string, count: number }[]>([]);
     const [aiMetrics, setAiMetrics] = React.useState<{ avg_helmet_confidence: number, avg_ocr_confidence: number, avg_inference_latency_seconds: number } | null>(null);
+    const [anprPerformance, setAnprPerformance] = React.useState<{
+        total_reports_with_plate_detected: number;
+        ocr_succeeded: number;
+        ocr_failed: number;
+        avg_plate_detection_confidence: number;
+        avg_ocr_confidence: number;
+        manual_plate_correction_count: number;
+    } | null>(null);
     const [loadError, setLoadError] = React.useState<string | null>(null);
 
     React.useEffect(() => {
         const fetchData = async () => {
             try {
-                const [reportsData, logs, stats, districtData, ratioData, trendData, aiData] = await Promise.all([
+                const [reportsData, logs, stats, districtData, ratioData, trendData, aiData, anprData] = await Promise.all([
                     mockDb.getAllReports(),
                     mockDb.adminGetAuditLogs(),
                     mockDb.adminGetViolationTypes(),
                     mockDb.adminGetDistrictAnalytics(),
                     mockDb.adminGetStatusRatio(),
                     mockDb.adminGetReportsTrend(),
-                    mockDb.adminGetAiMetrics()
+                    mockDb.adminGetAiMetrics(),
+                    mockDb.adminGetAnprPerformance()
                 ]);
                 setReports(reportsData.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
                 setAuditLogs(logs);
@@ -161,6 +171,7 @@ export const Dashboard: React.FC = () => {
                 if (Array.isArray(ratioData)) setStatusRatio(ratioData);
                 setReportsTrend(trendData);
                 setAiMetrics(aiData);
+                setAnprPerformance(anprData);
                 setLoadError(null);
             } catch (error: unknown) {
                 setLoadError(error instanceof Error ? error.message : 'Failed to load dashboard data.');
@@ -390,6 +401,43 @@ export const Dashboard: React.FC = () => {
                                 {(aiMetrics?.avg_inference_latency_seconds ?? 0).toFixed(2)}s
                             </div>
                         </div>
+                    </div>
+                </Panel>
+
+                <Panel title="ANPR Performance">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', padding: 'var(--space-2) 0' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 'var(--space-3)' }}>
+                            {[
+                                { label: 'Plate detected', value: anprPerformance?.total_reports_with_plate_detected ?? 0 },
+                                { label: 'OCR succeeded', value: anprPerformance?.ocr_succeeded ?? 0 },
+                                { label: 'OCR failed', value: anprPerformance?.ocr_failed ?? 0 },
+                                { label: 'Manual corrections', value: anprPerformance?.manual_plate_correction_count ?? 0 },
+                            ].map((metric) => (
+                                <div key={metric.label} style={{ padding: 'var(--space-3)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-bg-secondary)' }}>
+                                    <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-text-secondary)', marginBottom: '4px' }}>
+                                        {metric.label}
+                                    </div>
+                                    <div style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--color-text)' }}>{metric.value}</div>
+                                </div>
+                            ))}
+                        </div>
+                        {[
+                            { label: 'Plate detector confidence', value: anprPerformance?.avg_plate_detection_confidence ?? 0, icon: <Car size={16} color="#10b981" />, color: '#10b981' },
+                            { label: 'OCR confidence', value: anprPerformance?.avg_ocr_confidence ?? 0, icon: <Activity size={16} color="#3b82f6" />, color: '#3b82f6' },
+                        ].map((metric) => (
+                            <div key={metric.label}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                                    {metric.icon}
+                                    <span style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--color-text-secondary)', textTransform: 'uppercase' }}>{metric.label}</span>
+                                </div>
+                                <div style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--color-text)', marginBottom: '6px' }}>
+                                    {(metric.value * 100).toFixed(1)}%
+                                </div>
+                                <div style={{ width: '100%', height: '6px', backgroundColor: 'var(--color-border)', borderRadius: '3px', overflow: 'hidden' }}>
+                                    <div style={{ width: `${Math.min(100, metric.value * 100)}%`, height: '100%', backgroundColor: metric.color, borderRadius: '3px' }} />
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </Panel>
 

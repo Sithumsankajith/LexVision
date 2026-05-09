@@ -1,0 +1,301 @@
+{
+  "generated_at": "2026-05-09T08:57:24.093162+00:00",
+  "datasets": [
+    {
+      "dataset_name": "Automatic Number Plate Recognition.v9i.yolov8",
+      "dataset_dir": "datasets/NumberPlate/Automatic Number Plate Recognition.v9i.yolov8",
+      "data_yaml": "datasets/NumberPlate/Automatic Number Plate Recognition.v9i.yolov8/data.yaml",
+      "data_yaml_raw": {
+        "train": "../train/images",
+        "val": "../valid/images",
+        "test": "../test/images",
+        "nc": 1,
+        "names": [
+          "License_Plate"
+        ],
+        "roboflow": {
+          "workspace": "ogject-detection",
+          "project": "automatic-number-plate-recognition-zmxyq",
+          "version": 9,
+          "license": "Public Domain",
+          "url": "https://universe.roboflow.com/ogject-detection/automatic-number-plate-recognition-zmxyq/dataset/9"
+        }
+      },
+      "class_count": 1,
+      "class_names": [
+        "License_Plate"
+      ],
+      "task_type": "single-class plate detection",
+      "single_class_plate_detection": true,
+      "splits": {
+        "train": {
+          "image_count": 1358,
+          "label_count": 1358,
+          "annotation_count": 1486,
+          "missing_labels": 0,
+          "missing_images": 0,
+          "corrupt_images": 0,
+          "empty_labels": 1,
+          "invalid_bounding_boxes": 1,
+          "class_counts": {
+            "License_Plate": 1486
+          },
+          "image_directory": "datasets/NumberPlate/Automatic Number Plate Recognition.v9i.yolov8/train/images",
+          "label_directory": "datasets/NumberPlate/Automatic Number Plate Recognition.v9i.yolov8/train/labels"
+        },
+        "val": {
+          "image_count": 210,
+          "label_count": 210,
+          "annotation_count": 237,
+          "missing_labels": 0,
+          "missing_images": 0,
+          "corrupt_images": 0,
+          "empty_labels": 0,
+          "invalid_bounding_boxes": 0,
+          "class_counts": {
+            "License_Plate": 237
+          },
+          "image_directory": "datasets/NumberPlate/Automatic Number Plate Recognition.v9i.yolov8/valid/images",
+          "label_directory": "datasets/NumberPlate/Automatic Number Plate Recognition.v9i.yolov8/valid/labels"
+        },
+        "test": {
+          "image_count": 10,
+          "label_count": 10,
+          "annotation_count": 10,
+          "missing_labels": 0,
+          "missing_images": 0,
+          "corrupt_images": 0,
+          "empty_labels": 0,
+          "invalid_bounding_boxes": 0,
+          "class_counts": {
+            "License_Plate": 10
+          },
+          "image_directory": "datasets/NumberPlate/Automatic Number Plate Recognition.v9i.yolov8/test/images",
+          "label_directory": "datasets/NumberPlate/Automatic Number Plate Recognition.v9i.yolov8/test/labels"
+        }
+      },
+      "split_ratio_percent": {
+        "train": 86.06,
+        "val": 13.31,
+        "test": 0.63
+      },
+      "totals": {
+        "image_count": 1578,
+        "label_count": 1578,
+        "annotation_count": 1733,
+        "missing_labels": 0,
+        "missing_images": 0,
+        "corrupt_images": 0,
+        "empty_labels": 1,
+        "invalid_bounding_boxes": 1,
+        "duplicate_images": 197,
+        "class_counts": {
+          "License_Plate": 1733
+        },
+        "duplicate_image_groups": 83
+      },
+      "issues": {
+        "missing_labels": 0,
+        "missing_images": 0,
+        "corrupt_images": 0,
+        "invalid_bounding_boxes": 1,
+        "duplicate_images": 197,
+        "empty_labels": 1
+      },
+      "sri_lankan_plate_suitability": {
+        "metadata_indicators": [],
+        "assessment": "No Sri Lanka-specific metadata was found. The dataset is usable for plate localization, but OCR normalization and final enforcement still require officer verification on Sri Lankan plates."
+      },
+      "samples": {
+        "missing_label_examples": [],
+        "missing_image_examples": [],
+        "corrupt_image_examples": [],
+        "invalid_bbox_examples": [
+          {
+            "split": "train",
+            "image": "flipped-148_jpeg.rf.4cdc010664b31e7310ba026892466123.jpg",
+            "label_file": "datasets/NumberPlate/Automatic Number Plate Recognition.v9i.yolov8/train/labels/flipped-148_jpeg.rf.4cdc010664b31e7310ba026892466123.txt",
+            "line_number": 1,
+            "line": "0 0.3407142857142857 0.4024553571428572 0.6814508928571429 0.33877232142857144",
+            "reason": "bbox extends outside normalized image bounds"
+          }
+        ],
+        "duplicate_image_examples": [
+          [
+            "datasets/NumberPlate/Automatic Number Plate Recognition.v9i.yolov8/train/images/flipped-100_png.rf.ee2b3e9c6e875dfc37694489f5ed5658.jpg",
+            "datasets/NumberPlate/Automatic Number Plate Recognition.v9i.yolov8/train/images/immatriculation-31_png.rf.68c5748db5bb6c7693524fd9b4165526.jpg",
+            "datasets/NumberPlate/Automatic Number Plate Recognition.v9i.yolov8/valid/images/immatriculation-430_png.rf.5e033ec46811eaea9eda8994112249be.jpg"
+          ],
+          [
+            "datasets/NumberPlate/Automatic Number Plate Recognition.v9i.yolov8/train/images/flipped-107_png.rf.8ee8ce42c0cb212360b322c0e255b0b0.jpg",
+            "datasets/NumberPlate/Automatic Number Plate Recognition.v9i.yolov8/train/images/immatriculation-381_png.rf.3744d5b396b9c7bc1b357f20e8987744.jpg"
+          ],
+          [
+            "datasets/NumberPlate/Automatic Number Plate Recognition.v9i.yolov8/train/images/flipped-110_png.rf.99f09ab556e0724ab7bf95e19b6bfdfd.jpg",
+            "datasets/NumberPlate/Automatic Number Plate Recognition.v9i.yolov8/train/images/immatriculation-360_png.rf.83b3022baca144c1d616f2e92b7391d4.jpg"
+          ],
+          [
+            "datasets/NumberPlate/Automatic Number Plate Recognition.v9i.yolov8/train/images/flipped-115_png.rf.63962e0c55b1a41f28083a770d81979d.jpg",
+            "datasets/NumberPlate/Automatic Number Plate Recognition.v9i.yolov8/valid/images/immatriculation-30_png.rf.53df80da5a4c03d651d080d9bc0edc37.jpg"
+          ],
+          [
+            "datasets/NumberPlate/Automatic Number Plate Recognition.v9i.yolov8/train/images/flipped-125_png.rf.8e91ee62b8ce8d9413d8d991f30e68bd.jpg",
+            "datasets/NumberPlate/Automatic Number Plate Recognition.v9i.yolov8/train/images/immatriculation-134_png.rf.ba271c7c1864f09d44fd4a42e93a3941.jpg",
+            "datasets/NumberPlate/Automatic Number Plate Recognition.v9i.yolov8/train/images/immatriculation-362_png.rf.8128cad9e4918ff2bf542e086ccc8ae1.jpg"
+          ]
+        ]
+      },
+      "selection_score": 1378
+    },
+    {
+      "dataset_name": "Automatic Plate Number Recognition.v4i.yolov8",
+      "dataset_dir": "datasets/NumberPlate/Automatic Plate Number Recognition.v4i.yolov8",
+      "data_yaml": "datasets/NumberPlate/Automatic Plate Number Recognition.v4i.yolov8/data.yaml",
+      "data_yaml_raw": {
+        "train": "../train/images",
+        "val": "../valid/images",
+        "test": "../test/images",
+        "nc": 1,
+        "names": [
+          "plate-number"
+        ],
+        "roboflow": {
+          "workspace": "fyp-ev7hy",
+          "project": "automatic-plate-number-recognition",
+          "version": 4,
+          "license": "CC BY 4.0",
+          "url": "https://universe.roboflow.com/fyp-ev7hy/automatic-plate-number-recognition/dataset/4"
+        }
+      },
+      "class_count": 1,
+      "class_names": [
+        "plate-number"
+      ],
+      "task_type": "single-class plate detection",
+      "single_class_plate_detection": true,
+      "splits": {
+        "train": {
+          "image_count": 1146,
+          "label_count": 1146,
+          "annotation_count": 1386,
+          "missing_labels": 0,
+          "missing_images": 0,
+          "corrupt_images": 0,
+          "empty_labels": 0,
+          "invalid_bounding_boxes": 0,
+          "class_counts": {
+            "plate-number": 1386
+          },
+          "image_directory": "datasets/NumberPlate/Automatic Plate Number Recognition.v4i.yolov8/train/images",
+          "label_directory": "datasets/NumberPlate/Automatic Plate Number Recognition.v4i.yolov8/train/labels"
+        },
+        "val": {
+          "image_count": 107,
+          "label_count": 107,
+          "annotation_count": 130,
+          "missing_labels": 0,
+          "missing_images": 0,
+          "corrupt_images": 0,
+          "empty_labels": 1,
+          "invalid_bounding_boxes": 0,
+          "class_counts": {
+            "plate-number": 130
+          },
+          "image_directory": "datasets/NumberPlate/Automatic Plate Number Recognition.v4i.yolov8/valid/images",
+          "label_directory": "datasets/NumberPlate/Automatic Plate Number Recognition.v4i.yolov8/valid/labels"
+        },
+        "test": {
+          "image_count": 61,
+          "label_count": 61,
+          "annotation_count": 71,
+          "missing_labels": 0,
+          "missing_images": 0,
+          "corrupt_images": 0,
+          "empty_labels": 0,
+          "invalid_bounding_boxes": 0,
+          "class_counts": {
+            "plate-number": 71
+          },
+          "image_directory": "datasets/NumberPlate/Automatic Plate Number Recognition.v4i.yolov8/test/images",
+          "label_directory": "datasets/NumberPlate/Automatic Plate Number Recognition.v4i.yolov8/test/labels"
+        }
+      },
+      "split_ratio_percent": {
+        "train": 87.21,
+        "val": 8.14,
+        "test": 4.64
+      },
+      "totals": {
+        "image_count": 1314,
+        "label_count": 1314,
+        "annotation_count": 1587,
+        "missing_labels": 0,
+        "missing_images": 0,
+        "corrupt_images": 0,
+        "empty_labels": 1,
+        "invalid_bounding_boxes": 0,
+        "duplicate_images": 414,
+        "class_counts": {
+          "plate-number": 1587
+        },
+        "duplicate_image_groups": 207
+      },
+      "issues": {
+        "missing_labels": 0,
+        "missing_images": 0,
+        "corrupt_images": 0,
+        "invalid_bounding_boxes": 0,
+        "duplicate_images": 414,
+        "empty_labels": 1
+      },
+      "sri_lankan_plate_suitability": {
+        "metadata_indicators": [],
+        "assessment": "No Sri Lanka-specific metadata was found. The dataset is usable for plate localization, but OCR normalization and final enforcement still require officer verification on Sri Lankan plates."
+      },
+      "samples": {
+        "missing_label_examples": [],
+        "missing_image_examples": [],
+        "corrupt_image_examples": [],
+        "invalid_bbox_examples": [],
+        "duplicate_image_examples": [
+          [
+            "datasets/NumberPlate/Automatic Plate Number Recognition.v4i.yolov8/train/images/100_jpg.rf.50a96c905676626b57415ccf359bd8e1.jpg",
+            "datasets/NumberPlate/Automatic Plate Number Recognition.v4i.yolov8/train/images/100_jpg.rf.f6ecdbb8703289c0ab0c083599d36e6f.jpg"
+          ],
+          [
+            "datasets/NumberPlate/Automatic Plate Number Recognition.v4i.yolov8/train/images/101_jpg.rf.f7226b965f25d0fe8927fa4faabe891a.jpg",
+            "datasets/NumberPlate/Automatic Plate Number Recognition.v4i.yolov8/test/images/101_jpg.rf.4802dc1f21cc9c2e26bd17ddffe0c912.jpg"
+          ],
+          [
+            "datasets/NumberPlate/Automatic Plate Number Recognition.v4i.yolov8/train/images/102_jpg.rf.2a49222898fe06c4847779cffff14166.jpg",
+            "datasets/NumberPlate/Automatic Plate Number Recognition.v4i.yolov8/valid/images/102_jpg.rf.a0a1589ef335eeafca2af57f9e89eb99.jpg"
+          ],
+          [
+            "datasets/NumberPlate/Automatic Plate Number Recognition.v4i.yolov8/train/images/103_jpg.rf.34bedfa2fb71aae94e364a7032ec260a.jpg",
+            "datasets/NumberPlate/Automatic Plate Number Recognition.v4i.yolov8/valid/images/103_jpg.rf.0982d144604b91000e486f570a5e1f94.jpg"
+          ],
+          [
+            "datasets/NumberPlate/Automatic Plate Number Recognition.v4i.yolov8/train/images/105_jpg.rf.cfa9f46dbc36dc4eb3e9fc6389cb3aef.jpg",
+            "datasets/NumberPlate/Automatic Plate Number Recognition.v4i.yolov8/train/images/105_jpg.rf.e5796f9dd4dd9547f8da42ce0e84c010.jpg"
+          ]
+        ]
+      },
+      "selection_score": 900
+    }
+  ],
+  "recommendation": {
+    "selected_dataset_name": "Automatic Number Plate Recognition.v9i.yolov8",
+    "selected_data_yaml": "datasets/NumberPlate/Automatic Number Plate Recognition.v9i.yolov8/data.yaml",
+    "selected_dataset_dir": "datasets/NumberPlate/Automatic Number Plate Recognition.v9i.yolov8",
+    "reasons": [
+      "Highest structural score (1378) among audited datasets.",
+      "Largest usable image pool or tied image pool (1578 total images).",
+      "Single-class plate detector target matches the LexVision ANPR detector stage.",
+      "No Sri Lanka-specific metadata was found. The dataset is usable for plate localization, but OCR normalization and final enforcement still require officer verification on Sri Lankan plates."
+    ]
+  },
+  "artifacts": {
+    "json": "evaluation_results/anpr/dataset_audit_report.json",
+    "markdown": "evaluation_results/anpr/dataset_audit_report.md"
+  }
+}

@@ -64,6 +64,9 @@ export const ViolationDetails: React.FC = () => {
     const [rerunLoading, setRerunLoading] = useState(false);
     const [rerunError, setRerunError] = useState('');
     const [zoom, setZoom] = useState(1);
+    const [manualPlateInput, setManualPlateInput] = useState('');
+    const [plateSaving, setPlateSaving] = useState(false);
+    const [plateSaveError, setPlateSaveError] = useState('');
 
     const loadReportDetails = async (reportId: string) => {
         try {
@@ -101,6 +104,16 @@ export const ViolationDetails: React.FC = () => {
         };
         fetchReport();
     }, [id]);
+
+    useEffect(() => {
+        const plateReview = report?.aiSummary?.plateReview || report?.aiAnalysis?.plateReview;
+        setManualPlateInput(
+            plateReview?.manualCorrection ||
+            plateReview?.normalizedPlateText ||
+            report?.vehicle?.plate ||
+            '',
+        );
+    }, [report]);
 
     const openTicketForm = async (currentReport: Report) => {
         setShowTicketForm(true);
@@ -217,7 +230,7 @@ export const ViolationDetails: React.FC = () => {
                     overrideReason: isOverride ? overrideReason : undefined,
                     evidenceReportId: report.source === 'evidence-report' ? report.id : undefined,
                     violationType: report.finalViolationType || undefined,
-                    vehiclePlate: report.vehicle?.plate || report.aiAnalysis?.detectedPlate || undefined,
+                    vehiclePlate: report.aiSummary?.plateReview?.manualCorrection || report.aiSummary?.plateReview?.normalizedPlateText || report.vehicle?.plate || report.aiAnalysis?.detectedPlate || undefined,
                 },
             );
             setTicket(newTicket);
@@ -246,6 +259,23 @@ export const ViolationDetails: React.FC = () => {
         }
     };
 
+    const handleSavePlateCorrection = async () => {
+        if (!report || report.source !== 'evidence-report' || !manualPlateInput.trim()) {
+            return;
+        }
+
+        setPlateSaving(true);
+        setPlateSaveError('');
+        try {
+            const updated = await mockDb.updateEvidenceReportPlate(report.id, manualPlateInput.trim(), officerNotes || undefined);
+            setReport(updated);
+        } catch (error: any) {
+            setPlateSaveError(error.message || 'Failed to save corrected plate number');
+        } finally {
+            setPlateSaving(false);
+        }
+    };
+
     if (loading) {
         return <div style={{ padding: '2rem', textAlign: 'center' }}>Loading Case...</div>;
     }
@@ -256,6 +286,7 @@ export const ViolationDetails: React.FC = () => {
 
     const mainEvidence = report.evidence[0];
     const aiSummary = report.aiSummary;
+    const plateReview = aiSummary?.plateReview || report.aiAnalysis?.plateReview || null;
     const claimedViolation = report.claimedViolationType || report.violationType;
     const isCustomViolation = claimedViolation?.toLowerCase().replace(/-/g, '_') === 'other';
     const aiSuggestion = getOfficerAISuggestion(aiSummary);
@@ -271,6 +302,15 @@ export const ViolationDetails: React.FC = () => {
         imageNaturalSize.width > 0 &&
         imageNaturalSize.height > 0
     );
+    const plateOverlay = plateReview?.plateBbox &&
+        plateReview.plateBbox.x1 != null &&
+        plateReview.plateBbox.y1 != null &&
+        plateReview.plateBbox.x2 != null &&
+        plateReview.plateBbox.y2 != null &&
+        imageNaturalSize.width > 0 &&
+        imageNaturalSize.height > 0
+        ? plateReview.plateBbox
+        : null;
 
     const isEvidenceReport = report.source === 'evidence-report';
     const isSubmitted = report.status === 'submitted';
@@ -417,6 +457,39 @@ export const ViolationDetails: React.FC = () => {
                                             </div>
                                         );
                                     })}
+                                    {plateOverlay && (
+                                        <div
+                                            style={{
+                                                position: 'absolute',
+                                                left: `${((plateOverlay.x1 || 0) / imageNaturalSize.width) * 100}%`,
+                                                top: `${((plateOverlay.y1 || 0) / imageNaturalSize.height) * 100}%`,
+                                                width: `${(((plateOverlay.x2 || 0) - (plateOverlay.x1 || 0)) / imageNaturalSize.width) * 100}%`,
+                                                height: `${(((plateOverlay.y2 || 0) - (plateOverlay.y1 || 0)) / imageNaturalSize.height) * 100}%`,
+                                                border: '2px solid #22c55e',
+                                                borderRadius: '6px',
+                                                boxShadow: '0 0 0 1px rgba(255,255,255,0.18)',
+                                                pointerEvents: 'none',
+                                            }}
+                                        >
+                                            <div
+                                                style={{
+                                                    position: 'absolute',
+                                                    bottom: '-28px',
+                                                    left: '-2px',
+                                                    padding: '4px 8px',
+                                                    borderRadius: '999px',
+                                                    backgroundColor: '#22c55e',
+                                                    color: '#fff',
+                                                    fontSize: '0.72rem',
+                                                    fontWeight: 800,
+                                                    whiteSpace: 'nowrap',
+                                                    boxShadow: '0 6px 14px rgba(15, 23, 42, 0.32)',
+                                                }}
+                                            >
+                                                Number Plate
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             ) : (
                                 <div style={{ color: '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-4)' }}>
@@ -448,7 +521,7 @@ export const ViolationDetails: React.FC = () => {
                                 <Car size={14} style={{ verticalAlign: 'text-bottom' }} /> License Plate
                             </span>
                             <span style={{ fontWeight: '700', color: 'var(--color-text)' }}>
-                                {report.aiAnalysis?.detectedPlate || report.vehicle?.plate || 'Pending'}
+                                {plateReview?.normalizedPlateText || report.aiAnalysis?.detectedPlate || report.vehicle?.plate || 'Pending'}
                             </span>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
@@ -474,6 +547,74 @@ export const ViolationDetails: React.FC = () => {
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                    <Panel
+                        title="Vehicle Plate Review"
+                        style={{
+                            border: '1px solid rgba(15, 23, 42, 0.08)',
+                            boxShadow: '0 14px 32px rgba(15, 23, 42, 0.06)',
+                        }}
+                    >
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 'var(--space-3)' }}>
+                                <div style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-md)', background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
+                                    <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--color-text-secondary)', marginBottom: '6px' }}>Plate detected</div>
+                                    <Badge variant={plateReview?.plateDetected ? 'success' : 'warning'}>{plateReview?.plateDetected ? 'Yes' : 'No'}</Badge>
+                                </div>
+                                <div style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-md)', background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
+                                    <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--color-text-secondary)', marginBottom: '6px' }}>Extracted plate number</div>
+                                    <div style={{ fontSize: '1rem', fontWeight: 800 }}>{plateReview?.plateText || 'Not extracted'}</div>
+                                </div>
+                                <div style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-md)', background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
+                                    <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--color-text-secondary)', marginBottom: '6px' }}>Normalized plate number</div>
+                                    <div style={{ fontSize: '1rem', fontWeight: 800 }}>{plateReview?.manualCorrection || plateReview?.normalizedPlateText || report.vehicle?.plate || 'Manual entry needed'}</div>
+                                </div>
+                                <div style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-md)', background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
+                                    <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--color-text-secondary)', marginBottom: '6px' }}>Confidence</div>
+                                    <Badge variant={plateReview?.confidenceLevel === 'high' ? 'success' : plateReview?.confidenceLevel === 'medium' ? 'info' : 'warning'}>
+                                        {(plateReview?.confidenceLevel || 'low').toUpperCase()}
+                                    </Badge>
+                                </div>
+                            </div>
+
+                            <div style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-md)', background: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.26)', color: '#92400e', lineHeight: 1.5, fontSize: '0.9rem', fontWeight: 700 }}>
+                                Verify the plate number from the image before issuing a ticket.
+                            </div>
+
+                            <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                                <div style={{ flex: 1, minWidth: '220px' }}>
+                                    <Input
+                                        label="Manual correction"
+                                        value={manualPlateInput}
+                                        onChange={(event) => setManualPlateInput(event.target.value.toUpperCase())}
+                                        fullWidth
+                                    />
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    onClick={handleSavePlateCorrection}
+                                    disabled={plateSaving || report.source !== 'evidence-report' || !manualPlateInput.trim()}
+                                >
+                                    {plateSaving ? <Loader2 size={14} className="spin" /> : <ClipboardCheck size={14} />}
+                                    {' '}Save Plate
+                                </Button>
+                            </div>
+                            {plateSaveError && <div style={{ color: '#b91c1c', fontSize: '0.82rem', fontWeight: 700 }}>{plateSaveError}</div>}
+
+                            <details style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', background: 'var(--color-bg-secondary)' }}>
+                                <summary style={{ cursor: 'pointer', fontWeight: 800, color: 'var(--color-text)' }}>Technical details</summary>
+                                <div style={{ marginTop: 'var(--space-3)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 'var(--space-3)', fontSize: '0.82rem', color: 'var(--color-text-secondary)' }}>
+                                    <div><strong>Model confidence:</strong> {formatConfidence(plateReview?.plateConfidence, '0%')}</div>
+                                    <div><strong>OCR confidence:</strong> {formatConfidence(plateReview?.ocrConfidence, '0%')}</div>
+                                    <div><strong>Status:</strong> {plateReview?.status || 'pending'}</div>
+                                    <div><strong>Validation:</strong> {plateReview?.validationStatus || 'pending'}</div>
+                                    <div><strong>Crop path:</strong> {plateReview?.cropPath || 'not available'}</div>
+                                    <div><strong>Error:</strong> {plateReview?.error || 'none'}</div>
+                                    <div style={{ gridColumn: '1 / -1' }}><strong>BBox:</strong> {plateReview?.plateBbox ? JSON.stringify(plateReview.plateBbox) : 'not available'}</div>
+                                </div>
+                            </details>
+                        </div>
+                    </Panel>
+
                     <Panel
                         title="AI Evidence Review"
                         style={{

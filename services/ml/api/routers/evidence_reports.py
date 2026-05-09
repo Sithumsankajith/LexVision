@@ -20,6 +20,13 @@ from ..tracking import apply_evidence_report_status, is_valid_report_status_tran
 from ..worker import attempt_inference
 from ..services.notifications import notify_citizen, notify_admins
 
+try:
+    from services.ml.inference.plate_format import normalize_sri_lankan_plate
+except ModuleNotFoundError as exc:
+    if exc.name not in {"services", "services.ml", "services.ml.inference", "services.ml.inference.plate_format"}:
+        raise
+    from inference.plate_format import normalize_sri_lankan_plate
+
 router = APIRouter(prefix="/api/evidence-reports", tags=["evidence-reports"])
 
 
@@ -297,4 +304,62 @@ def rerun_evidence_report_inference(
         },
     )
 
+    return present_evidence_report(refreshed_report)
+
+
+@router.put("/{report_id}/plate", response_model=schemas.StaffEvidenceReportResponse)
+def update_evidence_report_plate(
+    report_id: str,
+    update: schemas.PlateCorrectionUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_police),
+):
+    report = _staff_report_query(db).filter(models.EvidenceReport.id == report_id).first()
+    if report is None:
+        raise HTTPException(status_code=404, detail="Evidence report not found")
+
+    normalized = normalize_sri_lankan_plate(update.corrected_plate_number)
+    corrected_plate = normalized.normalized_text or normalized.compact_text
+    if not corrected_plate:
+        raise HTTPException(status_code=400, detail="Corrected plate number is empty after normalization.")
+
+    previous_plate = report.vehicle_plate
+    report.vehicle_plate = corrected_plate
+    report.manual_review_required = bool(report.manual_review_required)
+
+    inference_log = db.query(models.InferenceLog).filter(models.InferenceLog.evidence_report_id == report.id).first()
+    if inference_log is not None:
+        payload = dict(inference_log.bbox_coordinates or {})
+        payload["manual_plate_correction"] = {
+            "corrected_plate_number": corrected_plate,
+            "submitted_text": update.corrected_plate_number,
+            "previous_plate_number": previous_plate,
+            "normalization_status": normalized.status,
+            "corrected_by_user_id": current_user.id,
+            "corrected_at": datetime.utcnow().isoformat(),
+            "notes": update.notes,
+        }
+        payload["normalized_plate_text"] = corrected_plate
+        payload["plate_text"] = payload.get("plate_text") or corrected_plate
+        inference_log.bbox_coordinates = payload
+        inference_log.ocr_text = corrected_plate
+
+    log_audit_action(
+        db,
+        current_user.id,
+        "EVIDENCE_REPORT_PLATE_CORRECTION",
+        "EvidenceReport",
+        report.id,
+        details={
+            "tracking_id": report.tracking_id,
+            "previous_plate": previous_plate,
+            "corrected_plate": corrected_plate,
+            "normalization_status": normalized.status,
+        },
+    )
+    db.commit()
+
+    refreshed_report = _staff_report_query(db).filter(models.EvidenceReport.id == report_id).first()
+    if refreshed_report is None:
+        raise HTTPException(status_code=500, detail="Failed to reload the updated evidence report.")
     return present_evidence_report(refreshed_report)

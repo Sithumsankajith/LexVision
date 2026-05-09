@@ -64,9 +64,15 @@ class OCRPipeline:
         # 2. Grayscale
         gray = cv2.cvtColor(deskewed, cv2.COLOR_BGR2GRAY) if len(deskewed.shape) == 3 else deskewed
 
+        target_width = max(320, gray.shape[1] * 2)
+        scale = target_width / max(gray.shape[1], 1)
+        resized = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+
+        denoised = cv2.fastNlMeansDenoising(resized, None, 15, 7, 21)
+
         # 3. CLAHE contrast normalization
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        contrast = clahe.apply(gray)
+        contrast = clahe.apply(denoised)
 
         # 4. Sharpening
         blur = cv2.GaussianBlur(contrast, (9, 9), 10.0)

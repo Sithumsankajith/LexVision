@@ -23,6 +23,13 @@ except ModuleNotFoundError as exc:
         raise
     from inference.ocr_pipeline import OCRPipeline
 
+try:
+    from services.ml.inference.plate_format import normalize_sri_lankan_plate
+except ModuleNotFoundError as exc:
+    if exc.name not in {"services", "services.ml", "services.ml.inference", "services.ml.inference.plate_format"}:
+        raise
+    from inference.plate_format import normalize_sri_lankan_plate
+
 
 logger = logging.getLogger(__name__)
 load_service_env()
@@ -32,10 +39,6 @@ MODELS_DIR = BASE_DIR / "models"
 TEMP_DIR = BASE_DIR / "temp" / "anpr_crops"
 DEFAULT_ANPR_MODEL_PATH = MODELS_DIR / "anpr_best.pt"
 PLATE_CLASS_HINTS = ("plate", "license", "licence", "number")
-SRI_LANKAN_PLATE_REGEX = re.compile(r"^(?P<prefix>[A-Z]{2,5})(?P<number>\d{4})$")
-
-LETTER_TO_DIGIT_MAP = str.maketrans({"O": "0", "Q": "0", "D": "0", "I": "1", "L": "1", "Z": "2", "S": "5", "B": "8", "G": "6"})
-DIGIT_TO_LETTER_MAP = str.maketrans({"0": "O", "1": "I", "2": "Z", "5": "S", "6": "G", "8": "B"})
 
 _plate_detector = None
 _plate_detector_load_attempted = False
@@ -45,7 +48,20 @@ _ocr_pipeline: OCRPipeline | None = None
 def _env_path_or_default(env_var_name: str, default_path: Path) -> Path:
     raw_value = get_env_value(env_var_name)
     if raw_value and raw_value.strip():
-        return Path(raw_value.strip()).expanduser()
+        configured_path = Path(raw_value.strip()).expanduser()
+        if configured_path.is_absolute():
+            return configured_path
+        candidates = [
+            (Path.cwd() / configured_path).resolve(),
+            (BASE_DIR / configured_path).resolve(),
+            (BASE_DIR.parents[1] / configured_path).resolve(),
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+        if configured_path.parts[:2] == ("services", "ml"):
+            return (BASE_DIR.parents[1] / configured_path).resolve()
+        return (BASE_DIR / configured_path).resolve()
     return default_path
 
 
@@ -81,32 +97,18 @@ def _get_ocr_pipeline() -> OCRPipeline:
     return _ocr_pipeline
 
 
-def _normalize_sri_lankan_plate(raw_text: str | None) -> tuple[str | None, str]:
-    if not raw_text:
-        return None, "no_text_detected"
-
-    compact = re.sub(r"[^A-Z0-9]", "", raw_text.upper())
-    if not compact:
-        return None, "no_text_detected"
-    if len(compact) < 6:
-        return compact, "invalid_sri_lankan_format"
-
-    prefix = compact[:-4].translate(DIGIT_TO_LETTER_MAP)
-    suffix = compact[-4:].translate(LETTER_TO_DIGIT_MAP)
-    candidate = f"{prefix}{suffix}"
-    match = SRI_LANKAN_PLATE_REGEX.match(candidate)
-    if not match:
-        return candidate, "invalid_sri_lankan_format"
-    return f"{match.group('prefix')}-{match.group('number')}", "normalized_sri_lankan_format"
-
-
 def _empty_result(status: str, *, error: str | None = None) -> dict[str, Any]:
     return {
+        "plate_detected": False,
         "plate_text": None,
+        "normalized_plate_text": None,
         "plate_confidence": 0.0,
+        "ocr_confidence": 0.0,
+        "plate_bbox": None,
         "bbox": None,
         "crop_path": None,
         "status": status,
+        "validation_status": status,
         "raw_text": None,
         "ocr_candidates": [],
         "detections": [],
@@ -133,7 +135,7 @@ def _is_plate_class(class_name: str) -> bool:
 def _detect_plates(image_path: str) -> tuple[list[dict[str, Any]], str | None]:
     model = _get_plate_detector()
     if model is None:
-        return [], "model_unavailable"
+        return [], "model_missing"
 
     try:
         results = model.predict(source=image_path, verbose=False, device="cpu")
@@ -201,19 +203,21 @@ def _crop_plate(image_path: str, bbox: dict[str, float]) -> tuple[Any | None, st
 def _run_ocr(image_or_crop) -> dict[str, Any]:
     ocr_result = _get_ocr_pipeline().extract_text(image_or_crop)
     raw_text = ocr_result.get("text") or ocr_result.get("all_text")
-    plate_text, validation_status = _normalize_sri_lankan_plate(raw_text)
+    normalized = normalize_sri_lankan_plate(raw_text)
     confidence = round(float(ocr_result.get("confidence") or 0.0), 4)
     return {
-        "plate_text": plate_text,
-        "plate_confidence": confidence,
+        "plate_text": raw_text,
+        "normalized_plate_text": normalized.normalized_text,
+        "ocr_confidence": confidence,
         "raw_text": raw_text,
-        "validation_status": validation_status if plate_text else ocr_result.get("status", "no_text_detected"),
+        "validation_status": normalized.status if normalized.normalized_text else ocr_result.get("status", "no_text_detected"),
         "ocr_candidates": [
             {
                 "raw_text": raw_text,
-                "plate_text": plate_text,
+                "normalized_plate_text": normalized.normalized_text,
+                "display_text": normalized.display_text,
                 "confidence": confidence,
-                "validation_status": validation_status,
+                "validation_status": normalized.status,
             }
         ] if raw_text else [],
     }
@@ -221,39 +225,50 @@ def _run_ocr(image_or_crop) -> dict[str, Any]:
 
 def run_anpr_pipeline(image_path: str | None) -> dict[str, Any]:
     if not image_path:
-        return _empty_result("no_image")
+        return _empty_result("failed", error="No image path was provided.")
 
     image_file = Path(image_path)
     if not image_file.exists():
-        return _empty_result("image_not_found", error=f"Image file not found: {image_path}")
+        return _empty_result("failed", error=f"Image file not found: {image_path}")
 
     detections, detection_error = _detect_plates(str(image_file))
     if detection_error and not detections:
-        ocr_result = _run_ocr(str(image_file))
-        return {
-            **_empty_result(detection_error if detection_error == "model_unavailable" else "detection_error", error=None if detection_error == "model_unavailable" else detection_error),
-            **ocr_result,
-            "status": ocr_result["validation_status"] if ocr_result["plate_text"] else (detection_error if detection_error == "model_unavailable" else "detection_error"),
-        }
+        status = "model_missing" if detection_error == "model_missing" else "failed"
+        return _empty_result(status, error=None if status == "model_missing" else detection_error)
 
     best_detection = max(detections, key=lambda item: item["confidence"], default=None)
     if not best_detection:
-        ocr_result = _run_ocr(str(image_file))
-        return {
-            **_empty_result("no_plate_detected"),
-            **ocr_result,
-            "status": ocr_result["validation_status"] if ocr_result["plate_text"] else "no_plate_detected",
-        }
+        return _empty_result("no_plate")
 
     crop, crop_path = _crop_plate(str(image_file), best_detection["bbox"])
-    ocr_result = _run_ocr(crop if crop is not None else str(image_file))
+    if crop is None:
+        return {
+            **_empty_result("failed", error="Plate detector returned an invalid crop."),
+            "plate_detected": True,
+            "plate_confidence": best_detection["confidence"],
+            "plate_bbox": best_detection["bbox"],
+            "bbox": best_detection["bbox"],
+            "crop_path": crop_path,
+            "detections": detections,
+            "detected_classes": sorted({item["class"] for item in detections}),
+            "num_detections": len(detections),
+            "detection_confidence": best_detection["confidence"],
+        }
+
+    ocr_result = _run_ocr(crop)
+    ocr_succeeded = bool(ocr_result.get("normalized_plate_text"))
+    status = "success" if ocr_succeeded else "ocr_failed"
     return {
+        "plate_detected": True,
         "plate_text": ocr_result["plate_text"],
-        "plate_confidence": ocr_result["plate_confidence"],
+        "normalized_plate_text": ocr_result["normalized_plate_text"],
+        "plate_confidence": best_detection["confidence"],
+        "ocr_confidence": ocr_result["ocr_confidence"],
+        "plate_bbox": best_detection["bbox"],
         "bbox": best_detection["bbox"],
         "crop_path": crop_path,
         "validation_status": ocr_result["validation_status"],
-        "status": ocr_result["validation_status"],
+        "status": status,
         "raw_text": ocr_result["raw_text"],
         "ocr_candidates": ocr_result["ocr_candidates"],
         "detections": detections,
