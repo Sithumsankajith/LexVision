@@ -96,6 +96,8 @@ QUALITY_THRESHOLD = 0.15
 HIGH_CONFIDENCE_THRESHOLD = 0.8
 MEDIUM_CONFIDENCE_THRESHOLD = 0.5
 HELMET_VIOLATION_THRESHOLD = float(get_env_value("HELMET_VIOLATION_THRESHOLD", "0.65") or "0.65")
+PLATE_DETECT_CONFIDENCE = float(get_env_value("ANPR_DETECT_CONFIDENCE", "0.15") or "0.15")
+PLATE_CLASS_HINTS = ("plate", "license", "licence", "number")
 
 _helmet_detector = None
 _helmet_detector_load_attempted = False
@@ -603,6 +605,12 @@ def _run_violation_detection(image_path: str) -> dict:
     return local_result
 
 
+def _is_plate_class(class_name: str) -> bool:
+    """Check if a detected class name refers to a license plate."""
+    normalized = class_name.lower().replace("_", " ")
+    return any(hint in normalized for hint in PLATE_CLASS_HINTS)
+
+
 def _run_plate_detection(image_path: str) -> dict:
     """
     Detect license plates using the dedicated YOLO model and return every box,
@@ -613,7 +621,7 @@ def _run_plate_detection(image_path: str) -> dict:
         return _empty_plate_detection("model_unavailable")
 
     try:
-        results = model.predict(source=image_path, verbose=False, device="cpu")
+        results = model.predict(source=image_path, verbose=False, device="cpu", conf=PLATE_DETECT_CONFIDENCE)
     except Exception as exc:
         logger.error("Plate detection failed for %s: %s", image_path, exc)
         return _empty_plate_detection("detection_error")
@@ -632,6 +640,11 @@ def _run_plate_detection(image_path: str) -> dict:
                 cls_name = result.names[cls_id]
             else:
                 cls_name = PLATE_CLASS_NAME
+
+            # Filter out non-plate classes (e.g. helmet, rider) from combined models
+            if not _is_plate_class(cls_name):
+                continue
+
             conf = float(box.conf[0])
             xyxy = box.xyxy[0].tolist()
             detections.append(

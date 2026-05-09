@@ -425,6 +425,7 @@ const mapPlateReviewToFrontend = (raw: any, fallbackPayload?: any, fallbackLog?:
 
 const buildAiSummary = (backendReport: any): Report['aiSummary'] | undefined => {
     const rawSummary = backendReport.ai_summary;
+    console.log('[DEBUG mockDb] backendReport.ai_summary:', rawSummary);
     if (rawSummary) {
         const bboxPayload = backendReport.inference_log?.bbox_coordinates || {};
         return {

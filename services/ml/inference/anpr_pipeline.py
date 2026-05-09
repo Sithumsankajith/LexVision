@@ -37,7 +37,8 @@ MODELS_DIR = BASE_DIR / "models"
 TEMP_DIR = BASE_DIR / "storage" / "plate_crops"
 DEFAULT_ANPR_MODEL_PATH = MODELS_DIR / "anpr_best.pt"
 PLATE_CLASS_HINTS = ("plate", "license", "licence", "number")
-OCR_MIN_CONFIDENCE = 0.2
+PLATE_DETECT_CONFIDENCE = float(get_env_value("ANPR_DETECT_CONFIDENCE", "0.15") or "0.15")
+OCR_MIN_CONFIDENCE = 0.05
 
 _plate_detector = None
 _plate_detector_load_attempted = False
@@ -153,7 +154,7 @@ def _detect_plates(image_path: str) -> tuple[list[dict[str, Any]], str | None]:
         return [], "model_missing"
 
     try:
-        results = model.predict(source=image_path, verbose=False, device="cpu")
+        results = model.predict(source=image_path, verbose=False, device="cpu", conf=PLATE_DETECT_CONFIDENCE)
     except Exception as exc:
         logger.exception("ANPR plate detection failed for %s", image_path)
         return [], str(exc)
