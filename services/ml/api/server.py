@@ -53,6 +53,27 @@ def ensure_sqlite_schema_compatibility():
         if "inference_logs" in table_names and "evidence_report_id" not in inference_log_columns:
             connection.execute(text("ALTER TABLE inference_logs ADD COLUMN evidence_report_id VARCHAR"))
             connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_inference_logs_evidence_report_id ON inference_logs (evidence_report_id)"))
+        if "inference_logs" in table_names:
+            inference_log_columns = {column["name"] for column in inspector.get_columns("inference_logs")}
+            anpr_columns = {
+                "plate_text": "VARCHAR",
+                "normalized_plate_text": "VARCHAR",
+                "plate_confidence": "FLOAT",
+                "plate_bbox": "JSON",
+                "anpr_status": "VARCHAR",
+                "anpr_error": "TEXT",
+                "plate_crop_path": "TEXT",
+                "officer_corrected_plate_text": "VARCHAR",
+                "plate_corrected_by": "VARCHAR",
+                "plate_corrected_at": "TIMESTAMP",
+            }
+            for column_name, column_type in anpr_columns.items():
+                if column_name not in inference_log_columns:
+                    connection.execute(text(f"ALTER TABLE inference_logs ADD COLUMN {column_name} {column_type}"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_inference_logs_normalized_plate_text ON inference_logs (normalized_plate_text)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_inference_logs_anpr_status ON inference_logs (anpr_status)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_inference_logs_officer_corrected_plate_text ON inference_logs (officer_corrected_plate_text)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_inference_logs_plate_corrected_by ON inference_logs (plate_corrected_by)"))
 
         if "evidence_files" in table_names:
             evidence_file_columns = {column["name"] for column in inspector.get_columns("evidence_files")}

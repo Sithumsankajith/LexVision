@@ -810,7 +810,7 @@ def _build_anpr_result(report_id: str, image_path: str | None) -> dict:
         "plate_text": pipeline_result.get("plate_text"),
         "normalized_plate_text": normalized_plate_text,
         "plate_confidence": round(float(pipeline_result.get("plate_confidence") or 0.0), 4),
-        "ocr_confidence": round(float(pipeline_result.get("ocr_confidence") or pipeline_result.get("plate_confidence") or 0.0), 4),
+        "ocr_confidence": round(float(pipeline_result.get("ocr_confidence") or 0.0), 4),
         "plate_bbox": plate_bbox,
         "bbox": plate_bbox,
         "crop_path": pipeline_result.get("crop_path"),
@@ -1001,7 +1001,15 @@ def attempt_inference(
     manual_review_required = violation_requires_manual_review or anpr_requires_manual_review
     violation_review_reason = violation_result.get("review_reason")
     if anpr_requires_manual_review:
-        anpr_reason = "Plate recognition needs officer verification or manual entry."
+        anpr_status = anpr_result.get("status")
+        if anpr_status == "no_plate":
+            anpr_reason = "Plate number could not be automatically detected."
+        elif anpr_status == "ocr_failed":
+            anpr_reason = "Plate region was detected, but the plate number could not be automatically extracted."
+        elif anpr_status == "model_missing":
+            anpr_reason = "ANPR model is unavailable; officer manual plate review is required."
+        else:
+            anpr_reason = "Plate recognition needs officer verification or manual entry."
         violation_review_reason = f"{violation_review_reason} {anpr_reason}".strip() if violation_review_reason else anpr_reason
     if hasattr(report, "manual_review_required"):
         report.manual_review_required = manual_review_required
@@ -1073,6 +1081,13 @@ def attempt_inference(
     inference_log.confidence = overall_confidence
     inference_log.ocr_text = anpr_result["normalized_plate_text"] or anpr_result["plate_text"]
     inference_log.ocr_confidence = round(anpr_result["ocr_confidence"], 4)
+    inference_log.plate_text = anpr_result["plate_text"]
+    inference_log.normalized_plate_text = anpr_result["normalized_plate_text"]
+    inference_log.plate_confidence = round(anpr_result["plate_confidence"], 4)
+    inference_log.plate_bbox = anpr_result["plate_bbox"]
+    inference_log.anpr_status = anpr_result.get("status")
+    inference_log.anpr_error = anpr_result.get("error")
+    inference_log.plate_crop_path = anpr_result.get("crop_path")
     inference_log.inference_latency = round(latency, 4)
     inference_log.timestamp = processed_at
 

@@ -90,6 +90,24 @@ const resolveMediaUrl = (url?: string | null): string => {
     return url;
 };
 
+const resolvePlateCropUrl = (url?: string | null): string | null => {
+    if (!url) {
+        return null;
+    }
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:') || url.startsWith('blob:')) {
+        return url;
+    }
+    if (url.startsWith('/api/')) {
+        return `${API_ORIGIN}${url}`;
+    }
+    const parts = url.split(/[\\/]/);
+    const filename = parts[parts.length - 1];
+    if (filename && (url.includes('storage/plate_crops') || url.includes('plate_crops'))) {
+        return `${API_ORIGIN}/api/media/plate-crops/${encodeURIComponent(filename)}`;
+    }
+    return url;
+};
+
 const readDemoCitizenReports = (): DemoCitizenReportRecord[] => {
     try {
         const stored = localStorage.getItem(DEMO_CITIZEN_REPORTS_KEY);
@@ -396,7 +414,7 @@ const mapPlateReviewToFrontend = (raw: any, fallbackPayload?: any, fallbackLog?:
             x2: plateBbox.x2 ?? null,
             y2: plateBbox.y2 ?? null,
         } : null,
-        cropPath: payload.crop_path ?? bboxPayload.crop_path ?? bboxPayload.anpr_output?.crop_path ?? null,
+        cropPath: resolvePlateCropUrl(payload.crop_path ?? bboxPayload.crop_path ?? bboxPayload.anpr_output?.crop_path ?? null),
         status: payload.status ?? bboxPayload.anpr_status ?? bboxPayload.anpr_output?.status ?? null,
         validationStatus: payload.validation_status ?? bboxPayload.validation_status ?? bboxPayload.anpr_output?.validation_status ?? null,
         error: payload.error ?? bboxPayload.anpr_error ?? bboxPayload.anpr_output?.error ?? null,
@@ -1026,10 +1044,10 @@ export const mockDb = {
 
     updateEvidenceReportPlate: async (reportId: string, correctedPlateNumber: string, notes?: string): Promise<Report> => {
         const response = await fetch(`${API_BASE_URL}/evidence-reports/${reportId}/plate`, {
-            method: 'PUT',
+            method: 'PATCH',
             headers: getHeaders(),
             body: JSON.stringify({
-                corrected_plate_number: correctedPlateNumber,
+                corrected_plate_text: correctedPlateNumber,
                 notes,
             }),
         });
@@ -1173,6 +1191,7 @@ export const mockDb = {
         avg_plate_detection_confidence: number;
         avg_ocr_confidence: number;
         manual_plate_correction_count: number;
+        anpr_failure_count: number;
     }> => {
         const response = await apiFetch(`${API_BASE_URL}/admin/analytics/anpr-performance`, { headers: getHeaders() });
         await ensureOk(response, 'Failed to load ANPR analytics.');

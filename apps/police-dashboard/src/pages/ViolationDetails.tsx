@@ -287,6 +287,26 @@ export const ViolationDetails: React.FC = () => {
     const mainEvidence = report.evidence[0];
     const aiSummary = report.aiSummary;
     const plateReview = aiSummary?.plateReview || report.aiAnalysis?.plateReview || null;
+    const plateStatusLabel = plateReview?.status === 'ocr_failed'
+        ? 'OCR failed'
+        : plateReview?.plateDetected
+            ? 'Detected'
+            : 'Not detected';
+    const plateStatusVariant = plateReview?.status === 'ocr_failed'
+        ? 'warning'
+        : plateReview?.plateDetected
+            ? 'success'
+            : 'warning';
+    const confidenceLevelFor = (value?: number | null) => {
+        const confidence = Number(value || 0);
+        if (confidence >= 0.8) return 'high';
+        if (confidence >= 0.5) return 'medium';
+        return 'low';
+    };
+    const plateConfidenceLevel = confidenceLevelFor(plateReview?.plateConfidence);
+    const ocrConfidenceLevel = confidenceLevelFor(plateReview?.ocrConfidence);
+    const safeAnprError = plateReview?.error ? 'ANPR failed during processing.' : 'none';
+    const plateCropUrl = plateReview?.cropPath || null;
     const claimedViolation = report.claimedViolationType || report.violationType;
     const isCustomViolation = claimedViolation?.toLowerCase().replace(/-/g, '_') === 'other';
     const aiSuggestion = getOfficerAISuggestion(aiSummary);
@@ -302,15 +322,24 @@ export const ViolationDetails: React.FC = () => {
         imageNaturalSize.width > 0 &&
         imageNaturalSize.height > 0
     );
-    const plateOverlay = plateReview?.plateBbox &&
-        plateReview.plateBbox.x1 != null &&
-        plateReview.plateBbox.y1 != null &&
-        plateReview.plateBbox.x2 != null &&
-        plateReview.plateBbox.y2 != null &&
-        imageNaturalSize.width > 0 &&
-        imageNaturalSize.height > 0
-        ? plateReview.plateBbox
-        : null;
+    const plateOverlay = (() => {
+        const bbox = plateReview?.plateBbox;
+        if (!bbox || imageNaturalSize.width <= 0 || imageNaturalSize.height <= 0) {
+            return null;
+        }
+        if (bbox.x1 != null && bbox.y1 != null && bbox.x2 != null && bbox.y2 != null) {
+            return { x1: bbox.x1, y1: bbox.y1, x2: bbox.x2, y2: bbox.y2 };
+        }
+        if (bbox.x != null && bbox.y != null && bbox.width != null && bbox.height != null) {
+            return {
+                x1: bbox.x - bbox.width / 2,
+                y1: bbox.y - bbox.height / 2,
+                x2: bbox.x + bbox.width / 2,
+                y2: bbox.y + bbox.height / 2,
+            };
+        }
+        return null;
+    })();
 
     const isEvidenceReport = report.source === 'evidence-report';
     const isSubmitted = report.status === 'submitted';
@@ -557,8 +586,8 @@ export const ViolationDetails: React.FC = () => {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 'var(--space-3)' }}>
                                 <div style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-md)', background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
-                                    <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--color-text-secondary)', marginBottom: '6px' }}>Plate detected</div>
-                                    <Badge variant={plateReview?.plateDetected ? 'success' : 'warning'}>{plateReview?.plateDetected ? 'Yes' : 'No'}</Badge>
+                                    <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--color-text-secondary)', marginBottom: '6px' }}>Plate status</div>
+                                    <Badge variant={plateStatusVariant}>{plateStatusLabel}</Badge>
                                 </div>
                                 <div style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-md)', background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
                                     <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--color-text-secondary)', marginBottom: '6px' }}>Extracted plate number</div>
@@ -566,12 +595,21 @@ export const ViolationDetails: React.FC = () => {
                                 </div>
                                 <div style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-md)', background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
                                     <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--color-text-secondary)', marginBottom: '6px' }}>Normalized plate number</div>
-                                    <div style={{ fontSize: '1rem', fontWeight: 800 }}>{plateReview?.manualCorrection || plateReview?.normalizedPlateText || report.vehicle?.plate || 'Manual entry needed'}</div>
+                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                        <span style={{ fontSize: '1rem', fontWeight: 800 }}>{plateReview?.manualCorrection || plateReview?.normalizedPlateText || report.vehicle?.plate || 'Manual entry needed'}</span>
+                                        {plateReview?.manualCorrection && <Badge variant="success">Officer verified</Badge>}
+                                    </div>
                                 </div>
                                 <div style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-md)', background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
-                                    <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--color-text-secondary)', marginBottom: '6px' }}>Confidence</div>
-                                    <Badge variant={plateReview?.confidenceLevel === 'high' ? 'success' : plateReview?.confidenceLevel === 'medium' ? 'info' : 'warning'}>
-                                        {(plateReview?.confidenceLevel || 'low').toUpperCase()}
+                                    <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--color-text-secondary)', marginBottom: '6px' }}>Plate confidence</div>
+                                    <Badge variant={plateConfidenceLevel === 'high' ? 'success' : plateConfidenceLevel === 'medium' ? 'info' : 'warning'}>
+                                        {plateConfidenceLevel.toUpperCase()}
+                                    </Badge>
+                                </div>
+                                <div style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-md)', background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
+                                    <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--color-text-secondary)', marginBottom: '6px' }}>OCR confidence</div>
+                                    <Badge variant={ocrConfidenceLevel === 'high' ? 'success' : ocrConfidenceLevel === 'medium' ? 'info' : 'warning'}>
+                                        {ocrConfidenceLevel.toUpperCase()}
                                     </Badge>
                                 </div>
                             </div>
@@ -579,6 +617,23 @@ export const ViolationDetails: React.FC = () => {
                             <div style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-md)', background: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.26)', color: '#92400e', lineHeight: 1.5, fontSize: '0.9rem', fontWeight: 700 }}>
                                 Verify the plate number from the image before issuing a ticket.
                             </div>
+
+                            {plateCropUrl && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--color-text-secondary)' }}>Detected plate crop</div>
+                                    <img
+                                        src={plateCropUrl}
+                                        alt="Detected number plate crop"
+                                        style={{
+                                            maxWidth: '260px',
+                                            width: '100%',
+                                            borderRadius: 'var(--radius-md)',
+                                            border: '1px solid var(--color-border)',
+                                            background: 'var(--color-bg-secondary)',
+                                        }}
+                                    />
+                                </div>
+                            )}
 
                             <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-end', flexWrap: 'wrap' }}>
                                 <div style={{ flex: 1, minWidth: '220px' }}>
@@ -601,14 +656,14 @@ export const ViolationDetails: React.FC = () => {
                             {plateSaveError && <div style={{ color: '#b91c1c', fontSize: '0.82rem', fontWeight: 700 }}>{plateSaveError}</div>}
 
                             <details style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', background: 'var(--color-bg-secondary)' }}>
-                                <summary style={{ cursor: 'pointer', fontWeight: 800, color: 'var(--color-text)' }}>Technical details</summary>
+                                <summary style={{ cursor: 'pointer', fontWeight: 800, color: 'var(--color-text)' }}>Advanced details</summary>
                                 <div style={{ marginTop: 'var(--space-3)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 'var(--space-3)', fontSize: '0.82rem', color: 'var(--color-text-secondary)' }}>
                                     <div><strong>Model confidence:</strong> {formatConfidence(plateReview?.plateConfidence, '0%')}</div>
                                     <div><strong>OCR confidence:</strong> {formatConfidence(plateReview?.ocrConfidence, '0%')}</div>
                                     <div><strong>Status:</strong> {plateReview?.status || 'pending'}</div>
                                     <div><strong>Validation:</strong> {plateReview?.validationStatus || 'pending'}</div>
                                     <div><strong>Crop path:</strong> {plateReview?.cropPath || 'not available'}</div>
-                                    <div><strong>Error:</strong> {plateReview?.error || 'none'}</div>
+                                    <div><strong>Error:</strong> {safeAnprError}</div>
                                     <div style={{ gridColumn: '1 / -1' }}><strong>BBox:</strong> {plateReview?.plateBbox ? JSON.stringify(plateReview.plateBbox) : 'not available'}</div>
                                 </div>
                             </details>

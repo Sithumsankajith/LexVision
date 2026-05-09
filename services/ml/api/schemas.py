@@ -282,6 +282,16 @@ class InferenceLogResponse(BaseModel):
     confidence: float
     ocr_text: Optional[str]
     ocr_confidence: Optional[float]
+    plate_text: Optional[str] = None
+    normalized_plate_text: Optional[str] = None
+    plate_confidence: Optional[float] = None
+    plate_bbox: Optional[Any] = None
+    anpr_status: Optional[str] = None
+    anpr_error: Optional[str] = None
+    plate_crop_path: Optional[str] = None
+    officer_corrected_plate_text: Optional[str] = None
+    plate_corrected_by: Optional[str] = None
+    plate_corrected_at: Optional[datetime] = None
     inference_latency: float
     timestamp: datetime
     model_config = ConfigDict(from_attributes=True)
@@ -428,8 +438,19 @@ class ReportStatusUpdate(BaseModel):
 
 
 class PlateCorrectionUpdate(BaseModel):
-    corrected_plate_number: str = Field(min_length=2, max_length=32)
+    corrected_plate_text: Optional[str] = Field(default=None, min_length=2, max_length=32)
+    corrected_plate_number: Optional[str] = Field(default=None, min_length=2, max_length=32)
     notes: Optional[str] = None
+
+    @model_validator(mode="after")
+    def require_corrected_plate_text(self):
+        if not (self.corrected_plate_text or self.corrected_plate_number):
+            raise ValueError("corrected_plate_text is required")
+        return self
+
+    @property
+    def submitted_plate_text(self) -> str:
+        return str(self.corrected_plate_text or self.corrected_plate_number or "").strip()
 
 # --- Fine Rule Schemas ---
 class FineRuleBase(BaseModel):

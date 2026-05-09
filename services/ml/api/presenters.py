@@ -56,6 +56,7 @@ def build_ai_summary(report: Any) -> schemas.AISummaryResponse | None:
         bbox_payload.get("plate_detection_confidence")
         or bbox_payload.get("plate_confidence")
         or anpr_output.get("plate_confidence")
+        or getattr(inference_log, "plate_confidence", None)
         or 0.0
     )
     ocr_confidence = float(
@@ -95,21 +96,32 @@ def build_ai_summary(report: Any) -> schemas.AISummaryResponse | None:
         "status": bbox_payload.get("violation_detection_status"),
         "processed_at": bbox_payload.get("processing_timestamp"),
         "plate_review": {
-            "plate_detected": bool(bbox_payload.get("plate_detected") or anpr_output.get("plate_detected")),
-            "plate_text": bbox_payload.get("plate_text") or anpr_output.get("plate_text"),
+            "plate_detected": bool(
+                bbox_payload.get("plate_detected")
+                or anpr_output.get("plate_detected")
+                or getattr(inference_log, "plate_bbox", None)
+            ),
+            "plate_text": bbox_payload.get("plate_text")
+            or anpr_output.get("plate_text")
+            or getattr(inference_log, "plate_text", None),
             "normalized_plate_text": bbox_payload.get("normalized_plate_text")
             or anpr_output.get("normalized_plate_text")
+            or getattr(inference_log, "normalized_plate_text", None)
             or getattr(inference_log, "ocr_text", None),
             "confidence_level": plate_confidence_level,
             "plate_confidence": plate_confidence,
             "ocr_confidence": ocr_confidence,
-            "plate_bbox": bbox_payload.get("plate_bbox") or anpr_output.get("plate_bbox") or anpr_output.get("bbox"),
-            "crop_path": bbox_payload.get("crop_path") or anpr_output.get("crop_path"),
-            "status": bbox_payload.get("anpr_status") or anpr_output.get("status"),
+            "plate_bbox": bbox_payload.get("plate_bbox")
+            or anpr_output.get("plate_bbox")
+            or anpr_output.get("bbox")
+            or getattr(inference_log, "plate_bbox", None),
+            "crop_path": bbox_payload.get("crop_path") or anpr_output.get("crop_path") or getattr(inference_log, "plate_crop_path", None),
+            "status": bbox_payload.get("anpr_status") or anpr_output.get("status") or getattr(inference_log, "anpr_status", None),
             "validation_status": bbox_payload.get("validation_status") or anpr_output.get("validation_status"),
-            "error": bbox_payload.get("anpr_error") or anpr_output.get("error"),
-            "manual_correction": manual_correction.get("corrected_plate_number"),
-            "manual_correction_at": manual_correction.get("corrected_at"),
+            "error": bbox_payload.get("anpr_error") or anpr_output.get("error") or getattr(inference_log, "anpr_error", None),
+            "manual_correction": manual_correction.get("corrected_plate_number")
+            or getattr(inference_log, "officer_corrected_plate_text", None),
+            "manual_correction_at": manual_correction.get("corrected_at") or getattr(inference_log, "plate_corrected_at", None),
         },
     }
     return _schema_from_orm(schemas.AISummaryResponse, payload)

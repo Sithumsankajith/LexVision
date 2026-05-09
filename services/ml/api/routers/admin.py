@@ -202,6 +202,7 @@ def get_anpr_performance(db: Session = Depends(get_db), current_user: models.Use
     reports_with_plate_detected = 0
     ocr_succeeded = 0
     ocr_failed = 0
+    anpr_failure_count = 0
     manual_plate_correction_count = 0
     plate_confidences: list[float] = []
     ocr_confidences: list[float] = []
@@ -209,13 +210,14 @@ def get_anpr_performance(db: Session = Depends(get_db), current_user: models.Use
     for log in logs:
         payload = log.bbox_coordinates or {}
         anpr_output = payload.get("anpr_output") or {}
-        plate_detected = bool(payload.get("plate_detected") or anpr_output.get("plate_detected"))
+        plate_detected = bool(payload.get("plate_detected") or anpr_output.get("plate_detected") or log.plate_bbox)
         normalized_plate_text = (
             payload.get("normalized_plate_text")
             or anpr_output.get("normalized_plate_text")
+            or log.normalized_plate_text
             or log.ocr_text
         )
-        anpr_status = payload.get("anpr_status") or anpr_output.get("status")
+        anpr_status = payload.get("anpr_status") or anpr_output.get("status") or log.anpr_status
 
         if plate_detected:
             reports_with_plate_detected += 1
@@ -223,11 +225,16 @@ def get_anpr_performance(db: Session = Depends(get_db), current_user: models.Use
             ocr_succeeded += 1
         elif plate_detected or anpr_status in {"ocr_failed", "no_plate", "model_missing", "failed"}:
             ocr_failed += 1
+        if anpr_status in {"ocr_failed", "no_plate", "model_missing", "failed"}:
+            anpr_failure_count += 1
 
-        if payload.get("manual_plate_correction"):
+        if payload.get("manual_plate_correction") or log.officer_corrected_plate_text:
             manual_plate_correction_count += 1
 
-        plate_conf = payload.get("plate_detection_confidence", payload.get("plate_confidence", anpr_output.get("plate_confidence")))
+        plate_conf = payload.get(
+            "plate_detection_confidence",
+            payload.get("plate_confidence", anpr_output.get("plate_confidence", log.plate_confidence)),
+        )
         ocr_conf = payload.get("ocr_confidence", anpr_output.get("ocr_confidence", log.ocr_confidence))
         if plate_conf is not None:
             try:
@@ -252,6 +259,7 @@ def get_anpr_performance(db: Session = Depends(get_db), current_user: models.Use
             "avg_plate_detection_confidence": _avg(plate_confidences),
             "avg_ocr_confidence": _avg(ocr_confidences),
             "manual_plate_correction_count": manual_plate_correction_count,
+            "anpr_failure_count": anpr_failure_count,
         },
     )
 

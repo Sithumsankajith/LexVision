@@ -307,6 +307,7 @@ def rerun_evidence_report_inference(
     return present_evidence_report(refreshed_report)
 
 
+@router.patch("/{report_id}/plate", response_model=schemas.StaffEvidenceReportResponse)
 @router.put("/{report_id}/plate", response_model=schemas.StaffEvidenceReportResponse)
 def update_evidence_report_plate(
     report_id: str,
@@ -318,7 +319,8 @@ def update_evidence_report_plate(
     if report is None:
         raise HTTPException(status_code=404, detail="Evidence report not found")
 
-    normalized = normalize_sri_lankan_plate(update.corrected_plate_number)
+    submitted_plate_text = update.submitted_plate_text
+    normalized = normalize_sri_lankan_plate(submitted_plate_text)
     corrected_plate = normalized.normalized_text or normalized.compact_text
     if not corrected_plate:
         raise HTTPException(status_code=400, detail="Corrected plate number is empty after normalization.")
@@ -328,26 +330,32 @@ def update_evidence_report_plate(
     report.manual_review_required = bool(report.manual_review_required)
 
     inference_log = db.query(models.InferenceLog).filter(models.InferenceLog.evidence_report_id == report.id).first()
+    corrected_at = datetime.utcnow()
     if inference_log is not None:
         payload = dict(inference_log.bbox_coordinates or {})
         payload["manual_plate_correction"] = {
             "corrected_plate_number": corrected_plate,
-            "submitted_text": update.corrected_plate_number,
+            "corrected_plate_text": corrected_plate,
+            "submitted_text": submitted_plate_text,
             "previous_plate_number": previous_plate,
             "normalization_status": normalized.status,
             "corrected_by_user_id": current_user.id,
-            "corrected_at": datetime.utcnow().isoformat(),
+            "corrected_at": corrected_at.isoformat(),
             "notes": update.notes,
         }
         payload["normalized_plate_text"] = corrected_plate
         payload["plate_text"] = payload.get("plate_text") or corrected_plate
         inference_log.bbox_coordinates = payload
         inference_log.ocr_text = corrected_plate
+        inference_log.normalized_plate_text = corrected_plate
+        inference_log.officer_corrected_plate_text = corrected_plate
+        inference_log.plate_corrected_by = current_user.id
+        inference_log.plate_corrected_at = corrected_at
 
     log_audit_action(
         db,
         current_user.id,
-        "EVIDENCE_REPORT_PLATE_CORRECTION",
+        "PLATE_NUMBER_CORRECTED",
         "EvidenceReport",
         report.id,
         details={

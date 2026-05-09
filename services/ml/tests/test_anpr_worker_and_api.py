@@ -89,6 +89,10 @@ def test_worker_runs_anpr_for_helmet_red_light_and_white_line(db_session, citize
         inference_log = db_session.query(models.InferenceLog).filter_by(evidence_report_id=report.id).one()
         assert report.vehicle_plate == "WPAB1234"
         assert inference_log.ocr_text == "WPAB1234"
+        assert inference_log.plate_text == "WP AB 1234"
+        assert inference_log.normalized_plate_text == "WPAB1234"
+        assert inference_log.plate_confidence == 0.91
+        assert inference_log.anpr_status == "success"
         assert inference_log.bbox_coordinates["plate_bbox"] == {"x1": 10, "y1": 20, "x2": 120, "y2": 52}
         assert inference_log.bbox_coordinates["anpr_status"] == "success"
 
@@ -155,10 +159,10 @@ def test_police_manual_plate_correction_persists(client, police_token, db_sessio
     )
     db_session.commit()
 
-    response = client.put(
+    response = client.patch(
         f"/api/evidence-reports/{report.id}/plate",
         headers={"Authorization": f"Bearer {police_token}"},
-        json={"corrected_plate_number": "WP AB 1234", "notes": "Verified from image"},
+        json={"corrected_plate_text": "WP AB 1234", "notes": "Verified from image"},
     )
 
     assert response.status_code == 200
@@ -170,7 +174,24 @@ def test_police_manual_plate_correction_persists(client, police_token, db_sessio
     inference_log = db_session.query(models.InferenceLog).filter_by(evidence_report_id=report.id).one()
     assert report.vehicle_plate == "WPAB1234"
     assert inference_log.ocr_text == "WPAB1234"
+    assert inference_log.normalized_plate_text == "WPAB1234"
+    assert inference_log.officer_corrected_plate_text == "WPAB1234"
+    assert inference_log.plate_corrected_by is not None
+    assert inference_log.plate_corrected_at is not None
     assert inference_log.bbox_coordinates["manual_plate_correction"]["corrected_plate_number"] == "WPAB1234"
+    assert inference_log.bbox_coordinates["manual_plate_correction"]["corrected_plate_text"] == "WPAB1234"
+
+
+def test_citizen_cannot_correct_plate_number(client, citizen_token, db_session, citizen_user):
+    report = _create_report(db_session, citizen_user, "helmet")
+
+    response = client.patch(
+        f"/api/evidence-reports/{report.id}/plate",
+        headers={"Authorization": f"Bearer {citizen_token}"},
+        json={"corrected_plate_text": "WP AB 1234"},
+    )
+
+    assert response.status_code in {401, 403}
 
 
 def test_admin_anpr_performance_counts_plate_metrics(client, admin_token, db_session, citizen_user):
@@ -208,3 +229,4 @@ def test_admin_anpr_performance_counts_plate_metrics(client, admin_token, db_ses
     assert payload["avg_plate_detection_confidence"] == 0.9
     assert payload["avg_ocr_confidence"] == 0.8
     assert payload["manual_plate_correction_count"] == 1
+    assert payload["anpr_failure_count"] == 0

@@ -148,6 +148,7 @@ export const Dashboard: React.FC = () => {
         avg_plate_detection_confidence: number;
         avg_ocr_confidence: number;
         manual_plate_correction_count: number;
+        anpr_failure_count: number;
     } | null>(null);
     const [loadError, setLoadError] = React.useState<string | null>(null);
 
@@ -412,6 +413,7 @@ export const Dashboard: React.FC = () => {
                                 { label: 'OCR succeeded', value: anprPerformance?.ocr_succeeded ?? 0 },
                                 { label: 'OCR failed', value: anprPerformance?.ocr_failed ?? 0 },
                                 { label: 'Manual corrections', value: anprPerformance?.manual_plate_correction_count ?? 0 },
+                                { label: 'ANPR failures', value: anprPerformance?.anpr_failure_count ?? 0 },
                             ].map((metric) => (
                                 <div key={metric.label} style={{ padding: 'var(--space-3)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-bg-secondary)' }}>
                                     <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-text-secondary)', marginBottom: '4px' }}>

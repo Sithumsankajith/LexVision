@@ -276,11 +276,22 @@ class InferenceLog(Base):
     confidence = Column(Float)
     ocr_text = Column(String, index=True)
     ocr_confidence = Column(Float)
+    plate_text = Column(String, nullable=True)
+    normalized_plate_text = Column(String, nullable=True, index=True)
+    plate_confidence = Column(Float, nullable=True)
+    plate_bbox = Column(JSON, nullable=True)
+    anpr_status = Column(String, nullable=True, index=True)
+    anpr_error = Column(Text, nullable=True)
+    plate_crop_path = Column(Text, nullable=True)
+    officer_corrected_plate_text = Column(String, nullable=True, index=True)
+    plate_corrected_by = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    plate_corrected_at = Column(DateTime, nullable=True)
     inference_latency = Column(Float)
     timestamp = Column(DateTime, default=func.now())
 
     report = relationship("Report", back_populates="inference_log", foreign_keys=[report_id])
     evidence_report = relationship("EvidenceReport", back_populates="inference_log", foreign_keys=[evidence_report_id])
+    plate_corrected_by_user = relationship("User", foreign_keys=[plate_corrected_by])
 
 
 class FineRule(Base):

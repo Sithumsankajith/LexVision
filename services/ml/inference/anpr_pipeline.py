@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import logging
-import re
-import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -24,11 +22,11 @@ except ModuleNotFoundError as exc:
     from inference.ocr_pipeline import OCRPipeline
 
 try:
-    from services.ml.inference.plate_format import normalize_sri_lankan_plate
+    from services.ml.inference.plate_format import normalize_plate_text, normalize_sri_lankan_plate, score_plate_candidate
 except ModuleNotFoundError as exc:
     if exc.name not in {"services", "services.ml", "services.ml.inference", "services.ml.inference.plate_format"}:
         raise
-    from inference.plate_format import normalize_sri_lankan_plate
+    from inference.plate_format import normalize_plate_text, normalize_sri_lankan_plate, score_plate_candidate
 
 
 logger = logging.getLogger(__name__)
@@ -36,9 +34,10 @@ load_service_env()
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 MODELS_DIR = BASE_DIR / "models"
-TEMP_DIR = BASE_DIR / "temp" / "anpr_crops"
+TEMP_DIR = BASE_DIR / "storage" / "plate_crops"
 DEFAULT_ANPR_MODEL_PATH = MODELS_DIR / "anpr_best.pt"
 PLATE_CLASS_HINTS = ("plate", "license", "licence", "number")
+OCR_MIN_CONFIDENCE = 0.2
 
 _plate_detector = None
 _plate_detector_load_attempted = False
@@ -132,6 +131,22 @@ def _is_plate_class(class_name: str) -> bool:
     return any(hint in normalized for hint in PLATE_CLASS_HINTS)
 
 
+def _bbox_from_xyxy(xyxy: list[float]) -> dict[str, float]:
+    x1, y1, x2, y2 = [float(value) for value in xyxy]
+    width = max(0.0, x2 - x1)
+    height = max(0.0, y2 - y1)
+    return {
+        "x": round(x1 + width / 2, 1),
+        "y": round(y1 + height / 2, 1),
+        "width": round(width, 1),
+        "height": round(height, 1),
+        "x1": round(x1, 1),
+        "y1": round(y1, 1),
+        "x2": round(x2, 1),
+        "y2": round(y2, 1),
+    }
+
+
 def _detect_plates(image_path: str) -> tuple[list[dict[str, Any]], str | None]:
     model = _get_plate_detector()
     if model is None:
@@ -161,12 +176,7 @@ def _detect_plates(image_path: str) -> tuple[list[dict[str, Any]], str | None]:
                 {
                     "class": class_name,
                     "confidence": confidence,
-                    "bbox": {
-                        "x1": round(float(xyxy[0]), 1),
-                        "y1": round(float(xyxy[1]), 1),
-                        "x2": round(float(xyxy[2]), 1),
-                        "y2": round(float(xyxy[3]), 1),
-                    },
+                    "bbox": _bbox_from_xyxy(xyxy),
                 }
             )
 
@@ -200,26 +210,111 @@ def _crop_plate(image_path: str, bbox: dict[str, float]) -> tuple[Any | None, st
     return crop, relative_crop_path
 
 
-def _run_ocr(image_or_crop) -> dict[str, Any]:
-    ocr_result = _get_ocr_pipeline().extract_text(image_or_crop)
-    raw_text = ocr_result.get("text") or ocr_result.get("all_text")
-    normalized = normalize_sri_lankan_plate(raw_text)
-    confidence = round(float(ocr_result.get("confidence") or 0.0), 4)
+def _candidate_status(normalized: dict[str, Any]) -> str:
+    if normalized.get("is_valid"):
+        if normalized.get("cleaned") == normalized.get("normalized"):
+            return "valid_sri_lankan_format"
+        return "normalized_sri_lankan_format"
+    if normalized.get("normalized"):
+        return "invalid_sri_lankan_format"
+    return "no_text_detected"
+
+
+def _select_best_ocr_candidate(candidates: list[dict[str, Any]], detection_confidence: float) -> dict[str, Any] | None:
+    ranked_candidates: list[dict[str, Any]] = []
+    for candidate in candidates:
+        raw_text = candidate.get("text")
+        if not raw_text:
+            continue
+        ocr_confidence = float(candidate.get("confidence") or 0.0)
+        normalized = normalize_plate_text(raw_text)
+        format_score = score_plate_candidate(raw_text)
+        selection_score = ocr_confidence + format_score + float(normalized.get("confidence_adjustment") or 0.0)
+        selection_score += min(max(detection_confidence, 0.0), 1.0) * 0.1
+        ranked_candidates.append(
+            {
+                **candidate,
+                "raw_text": raw_text,
+                "normalized_plate_text": normalized.get("normalized"),
+                "normalization": normalized,
+                "validation_status": _candidate_status(normalized),
+                "selection_score": round(selection_score, 4),
+            }
+        )
+
+    if not ranked_candidates:
+        return None
+    return max(ranked_candidates, key=lambda item: (item["selection_score"], item.get("confidence") or 0.0))
+
+
+def _run_ocr(image_or_crop, detection_confidence: float) -> dict[str, Any]:
+    ocr_pipeline = _get_ocr_pipeline()
+    candidates: list[dict[str, Any]] = []
+    if hasattr(ocr_pipeline, "extract_candidates"):
+        candidates = ocr_pipeline.extract_candidates(image_or_crop, min_confidence=OCR_MIN_CONFIDENCE)
+
+    if not candidates:
+        ocr_result = ocr_pipeline.extract_text(image_or_crop)
+        raw_text = ocr_result.get("text") or ocr_result.get("all_text")
+        confidence = round(float(ocr_result.get("confidence") or 0.0), 4)
+        if raw_text:
+            candidates = [
+                {
+                    "text": raw_text,
+                    "confidence": confidence,
+                    "variant": "fallback",
+                    "fragments": [],
+                }
+            ]
+        else:
+            return {
+                "plate_text": None,
+                "normalized_plate_text": None,
+                "ocr_confidence": 0.0,
+                "raw_text": None,
+                "validation_status": ocr_result.get("status", "no_text_detected"),
+                "ocr_candidates": [],
+            }
+
+    best_candidate = _select_best_ocr_candidate(candidates, detection_confidence)
+    if best_candidate is None:
+        return {
+            "plate_text": None,
+            "normalized_plate_text": None,
+            "ocr_confidence": 0.0,
+            "raw_text": None,
+            "validation_status": "no_text_detected",
+            "ocr_candidates": [],
+        }
+
+    raw_text = best_candidate["raw_text"]
+    normalized_text = best_candidate.get("normalized_plate_text")
+    confidence = round(float(best_candidate.get("confidence") or 0.0), 4)
     return {
         "plate_text": raw_text,
-        "normalized_plate_text": normalized.normalized_text,
+        "normalized_plate_text": normalized_text,
         "ocr_confidence": confidence,
         "raw_text": raw_text,
-        "validation_status": normalized.status if normalized.normalized_text else ocr_result.get("status", "no_text_detected"),
-        "ocr_candidates": [
-            {
-                "raw_text": raw_text,
-                "normalized_plate_text": normalized.normalized_text,
-                "display_text": normalized.display_text,
-                "confidence": confidence,
-                "validation_status": normalized.status,
-            }
-        ] if raw_text else [],
+        "validation_status": best_candidate.get("validation_status") or normalize_sri_lankan_plate(raw_text).status,
+        "ocr_candidates": sorted(
+            [
+                {
+                    "raw_text": candidate.get("raw_text") or candidate.get("text"),
+                    "normalized_plate_text": candidate.get("normalized_plate_text"),
+                    "confidence": round(float(candidate.get("confidence") or 0.0), 4),
+                    "variant": candidate.get("variant"),
+                    "validation_status": candidate.get("validation_status"),
+                    "selection_score": candidate.get("selection_score"),
+                    "format_type": (candidate.get("normalization") or {}).get("format_type"),
+                }
+                for candidate in (
+                    [_select_best_ocr_candidate([candidate], detection_confidence) for candidate in candidates]
+                )
+                if candidate is not None
+            ],
+            key=lambda item: item.get("selection_score") or 0.0,
+            reverse=True,
+        ),
     }
 
 
@@ -255,7 +350,7 @@ def run_anpr_pipeline(image_path: str | None) -> dict[str, Any]:
             "detection_confidence": best_detection["confidence"],
         }
 
-    ocr_result = _run_ocr(crop)
+    ocr_result = _run_ocr(crop, best_detection["confidence"])
     ocr_succeeded = bool(ocr_result.get("normalized_plate_text"))
     status = "success" if ocr_succeeded else "ocr_failed"
     return {

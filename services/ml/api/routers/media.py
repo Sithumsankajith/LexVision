@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File, status
@@ -20,6 +21,7 @@ from ..services.evidence_storage import (
 
 
 router = APIRouter(prefix="/api/media", tags=["media"])
+PLATE_CROP_DIR = Path(__file__).resolve().parents[2] / "storage" / "plate_crops"
 
 
 def _bearer_token_from_request(request: Request) -> str | None:
@@ -110,6 +112,27 @@ def get_evidence_media(
         path=local_path,
         media_type=evidence_file.mime_type or "application/octet-stream",
         filename=evidence_file.original_name,
+        headers={
+            "Cache-Control": "private, max-age=300",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.get("/plate-crops/{filename}")
+def get_plate_crop_media(filename: str):
+    if "/" in filename or "\\" in filename or filename.startswith("."):
+        raise HTTPException(status_code=400, detail="Invalid plate crop filename.")
+
+    crop_dir = PLATE_CROP_DIR.resolve()
+    crop_path = (crop_dir / filename).resolve()
+    if not str(crop_path).startswith(str(crop_dir)) or not crop_path.exists():
+        raise HTTPException(status_code=404, detail="Plate crop not found.")
+
+    return FileResponse(
+        path=crop_path,
+        media_type="image/png",
+        filename=filename,
         headers={
             "Cache-Control": "private, max-age=300",
             "X-Content-Type-Options": "nosniff",
